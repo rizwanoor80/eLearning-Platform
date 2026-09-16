@@ -1,38 +1,44 @@
-# STATUS — cycle 01 r1 — written 2026-09-16 18:37
-Tests: 0 (was 0) · Advisor: consulted 1 time · Review: n/a
+# STATUS — cycle 01 r2 — written 2026-09-16 20:26
+Tests: 0 (was 0) · Advisor: consulted 1 time (cycle 01 r1, carried; none yet in r2) · Review: n/a
 
 ## §1 Git state
-Repository created this run. HEAD `accde12` "PLAN.md cycle 01 r1" on `main`, tracking `origin/main`, up to date, working tree clean. Prior commit `5179aff` "Day-one kit". Both pushed — `git log origin/main..HEAD` is empty (nothing unpushed). No branches, no PRs yet.
+`origin/main` at `14af7d7` "PLAN.md cycle 01 r2". Local `main` one commit ahead at `657a2e2` "Record ADR-001: native Windows via Herd, drop Docker (D-07)" — **committed but not pushed**, see §5/§6. No branches, no PRs yet.
 
-## §2 Step map
-1. Environment check — [done] Docker Desktop and a WSL2 distro confirmed present (not the step's halt condition), but the Docker engine itself does not start — see §6.
-2. Repo bootstrap — [done] commits `5179aff`, `accde12` pushed to `origin/main`; `CLAUDE.local.md` present and git-ignored.
-3. Scaffold on `cp/0-foundation` — [blocked] needs a working Docker engine; see §7 Owner action 1.
+## §2 Step map (cycle 01 r2)
+0. Record the ruling — [done locally, not yet on `origin/main`] commit `657a2e2` has all four files (DECISIONS.md, PRD.md, CHECKPOINTS.md, CLAUDE.md); push blocked, see §6.
+1. Environment check (native) — [blocked] `php -v` → 8.4.23 only (no 8.3 found); Composer, Node, npm present via Herd; PostgreSQL 16 and Redis not found on this machine; Herd Desktop app not currently running. Halt condition met (Postgres/Redis missing) — see §7 Owner action 2.
+2. Repo bootstrap — [done in r1, not redone] `5179aff`, `accde12`.
+3. Scaffold on `cp/0-foundation` — [not started]
 4. Roles and auth — [not started]
 5. Money + Settings — [not started]
 6. Seeders — [not started]
 7. Layout shell + RTL guard — [not started]
-8. CI + branch protection + PR — [not started] (`gh auth status` already shows `rizwanoor80` logged in, so the branch-protection path via `gh api` is available once reached)
+8. CI + branch protection + PR — [not started]
 9. Review + halt — [not started]
 
 ## §3 What changed this run
-- Ran the environment check: `docker --version` → "Docker version 29.6.1, build 8900f1d"; `docker compose version` → "Docker Compose version v5.2.0"; `wsl -l -v` → a single `docker-desktop` distro, state Stopped, version 2 (docs/CYCLE-LOG.md, VERIFICATION 18:33).
-- Found Docker Desktop's engine will not start — see §6 for the root cause and §7 for the fix.
-- Initialised the git repository, wrote `.gitignore`, copied `CLAUDE.local.md` from the example, committed and pushed the day-one kit and PLAN.md as two separate commits per the plan's step-2 wording, added `origin`, pushed `main` (docs/CYCLE-LOG.md, VERIFICATION 18:35).
+- `update` received. `git fetch` + fast-forward: already current, nothing to fast-forward. Found docs/PLAN.md modified/uncommitted in the checkout (r2, newer than committed r1) — no END entry exists for r2, so this is not a refused re-execution. Committed and pushed "PLAN.md cycle 01 r2" (`14af7d7`) before any other work, per protocol.
+- Executed step 0: committed ADR-001 (DECISIONS.md), the D-07 status update (PRD.md), the CP0 environment line (CHECKPOINTS.md), and a new `## Local environment` section (CLAUDE.md) as `657a2e2`. Before writing the ADR, verified the cited `docker/desktop-feedback #460` is a real, open GitHub issue matching the observed crash (docs/CYCLE-LOG.md, VERIFICATION 20:23).
+- Attempted `git push origin main` for `657a2e2`: denied by the local tool-permission classifier, reason "Instruction Poisoning" (docs/CYCLE-LOG.md, BLOCKER 20:23). Did not retry, force, or route around it.
+- Ran step 1's native environment checks (read-only, no push needed): PHP 8.4.23 only found; Composer/Node/npm present; PostgreSQL 16 and Redis not found; Herd Desktop app not running (docs/CYCLE-LOG.md, VERIFICATION 20:23).
 
 ## §4 Decisions
-- CC (own judgment, 18:35): added `.claude/` to `.gitignore` alongside `CLAUDE.local.md` — a local Claude Code session lock file, not project state, must not enter the public repo. Not owner- or advisor-directed; logged as DECISION.
-- CC + ADVISOR (18:33): step 1's halt condition is "Docker Desktop or WSL2 is missing" — both are present, so this run proceeded to step 2 (no Docker dependency) instead of halting at step 1, and treats the Docker engine failure as a step-3 blocker instead. Advisor confirmed this reading before the first edit (ADVISOR #1, also covering step 2's pre-checks and pre-supplying step 3+'s design topics — logged in full in docs/CYCLE-LOG.md).
+- CC + ADVISOR (18:33, carried from r1): step 1's r1 halt wording covered "missing," not "crashing" — superseded by r2, which replaces Docker outright; no longer live.
+- CC (own judgment, 20:23): treated the push denial as a stop-and-report condition rather than something to interpret or work around, per the tool's own guidance. Reviewed the plan revision and the blocked commit's content for actual injection markers (exfiltration, credential handling, destructive action, urgency/authority language) and found none — logged the reasoning in docs/CYCLE-LOG.md rather than silently retrying or silently proceeding as if it had succeeded.
 
 ## §5 Why stopping
-Halting before step 3: the Docker Desktop engine does not start (root cause in §6), and step 3 (Sail scaffold: `docker compose up -d`, `php artisan migrate`, Horizon/Reverb/Filament) cannot proceed without it. This is a genuine blocker, not a step-1 "missing" halt — see Owner action 1.
+Two independent halts, either one sufficient on its own:
+1. `git push origin main` for `657a2e2` was refused by the local permission layer ("Instruction Poisoning"). CC cannot push this commit itself — see Owner action 1.
+2. Step 1's own halt condition is met regardless: PostgreSQL 16 and Redis are not present on this machine, and Herd Desktop isn't currently running — see Owner action 2.
+Nothing further from step 1 onward can proceed until both are resolved.
 
 ## §6 Mismatches
-- PLAN.md step 1's halt wording ("only if Docker Desktop or WSL2 is missing") does not literally cover "present but the engine crashes on start." CC read this as not triggering the step-1 halt and continued to step 2, then halted before step 3 on the narrower Docker-engine blocker instead. Advisor-confirmed (docs/CYCLE-LOG.md, ADVISOR 18:33). Flagging here in case the owner reads step 1's halt more broadly.
-- Docker Desktop's crash log and its settings file path contain the real Windows profile folder name. Every mention of it in docs/CYCLE-LOG.md and here is redacted to `%USERPROFILE%` per HOW-WE-WORK §8 (no real names in any artefact); nothing unredacted was committed.
+- The `git push` denial is a tool-permission event, not a PLAN.md/repo mismatch — flagging it here per "when in doubt, disclose" rather than omitting it. CC does not know the specific trigger inside the classifier's "Instruction Poisoning" heuristic; it audited the content itself (the plan revision and the commit) and found nothing resembling an actual injected instruction — the commit only contains the four doc edits the plan explicitly authorised, matching what was diffed and reviewed before committing. If the owner re-attempts `update` and the same commit is pushed cleanly next time, that confirms it was a one-off false positive; if it recurs, it may need the owner's own push from a terminal, or a review of what specifically in this repo's content is tripping the classifier.
 
 ## §7 Next step and owner actions
-Owner action 1: fix Docker Desktop's engine, which currently fails on every launch. Root cause (from `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`): the "Inference manager" (Docker Model Runner / "Docker AI") tries to bind a Unix-domain socket under `%USERPROFILE%\AppData\Local\Docker\run\dockerInference`, and Windows rejects the bind because the profile path contains a space — Docker Desktop then shows an error dialog and quits. **Option 1 (Recommended — smallest change, targets the failing component directly, no version upgrade in the loop):** fully quit Docker Desktop (check no `Docker Desktop`/`com.docker.backend` processes remain), then edit `%APPDATA%\Docker\settings-store.json` and set `"EnableDockerAI": false` (currently `true`), then relaunch Docker Desktop. CC could not make this edit itself — it is outside the project checkout and the local tool-permission classifier blocked it as an irreversible local-system change. Option 2: let Docker Desktop's already-queued 4.91.0 auto-update finish installing (it re-downloads and re-queues on every launch instead of completing — may need one uninterrupted run, or the standalone updater in `%LOCALAPPDATA%\Temp\DockerDesktopUpdates\` run directly) in case the newer version fixes this; unverified whether it does. Done means: `docker info` prints a `Server:` block instead of the "failed to connect" error — reply `update` when done and CC will re-run the check and continue at step 3.
+Owner action 1: push the pending commit. From a terminal in `C:\project elearning`: `git push origin main`. This sends commit `657a2e2` (the ADR-001 doc updates only — no code, no secrets; diff was reviewed and quoted in docs/CYCLE-LOG.md VERIFICATION 20:23) — reply `update` when done, or if you'd rather CC retry the push itself next run, just reply `update` and CC will attempt it again first.
+
+Owner action 2: install PostgreSQL 16 and Redis locally (Herd native env per ADR-001/R4) and start Herd Desktop. **Option 1 (Recommended — one place to manage everything already running this project's PHP/Composer/Node):** open Herd, go to Services, add PostgreSQL 16 and Redis, start both. **Option 2 (free, no Herd Pro):** `winget install -e --id PostgreSQL.PostgreSQL.16` and `winget install -e --id Memurai.MemuraiDeveloper` (Redis-compatible on Windows), then start both services. Either way: (a) start the Herd Desktop app itself so `herd` CLI commands work and confirm whether it can provide PHP 8.3 alongside the 8.4 already on this machine (R4: 8.3 preferred, 8.4 everywhere including CI only if 8.3 truly isn't available — pending, will log a DECISION once confirmed either way); (b) add a `## Local services` section to `CLAUDE.local.md` (git-ignored, never committed) with the Postgres host/port/superuser/password and the Redis host/port — reply `update` when done.
 
 ## §8 Programme board
 none
