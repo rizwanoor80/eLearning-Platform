@@ -202,5 +202,5 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 | D-04 | Legal entity that holds the licence and collects funds | TBD with counsel | Open — settle by the CP5 plan (gateway account, VAT line, tutor agreement all depend on it) |
 | D-05 | Brand name and domain | `project-elearning` placeholder | Open — settle by CP6 (domain and sender email need warming up before CP8 launch mails) |
 | D-06 | Trial discount % | 50% | **Confirmed: 50%** |
-| D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Open — must be settled before cycle 01 |
+| D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Decided (owner, 2026-09-16): Herd native, no Docker — ADR-001 |
 | D-08 | GitHub account and plan (branch protection on a private repo needs Pro or Team) | Private repo under Rizwan's account on GitHub Pro; Rizwan creates the empty repo, Claude Code pushes | **Decided differently: public repo `rizwanoor80/eLearning-Platform` on the Free plan** — branch protection works on public repos; the code is world-readable, so the no-secrets rule is absolute |

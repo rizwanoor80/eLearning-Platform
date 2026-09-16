@@ -4,3 +4,4 @@ _Accepted architecture and policy decisions that outlive any single plan. Writte
 
 | # | Date | Decision | Reason | Status |
 |---|---|---|---|---|
+| ADR-001 | 2026-09-16 | Local dev environment = Laravel Herd, native Windows, no Docker | Docker Desktop crash-loops on a stale inference socket (docker/desktop-feedback #460) and recovery needs manual steps CC cannot perform; native is also faster | Accepted (owner ruling) |

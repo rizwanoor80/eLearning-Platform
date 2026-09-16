@@ -10,6 +10,9 @@ Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `
 - The only checkout: `C:\project elearning` — the path contains a space; quote it in every shell command.
 - Remote `origin`: `https://github.com/rizwanoor80/eLearning-Platform.git` — **public** repository, default branch `main`. Nothing that must stay private ever enters it: no secrets, no `.env`, no `CLAUDE.local.md`, no real names, emails, phones or documents (see HOW-WE-WORK §8).
 
+## Local environment
+Native Windows via Laravel Herd — no Docker, no Sail, no WSL (D-07 / ADR-001; Docker Desktop crash-loops here, see docker/desktop-feedback #460). PHP from Herd (8.3, or 8.4 everywhere incl. CI if Herd cannot provide 8.3 — DECISION logged if so); Composer/Node from Herd; PostgreSQL 16 and Redis on localhost. Horizon is installed but never run locally (`php artisan queue:work redis` in dev); Reverb likewise may be deferred to CP7 if it cannot boot on Windows. Local service credentials (Postgres/Redis host, port, superuser, password) live only in `CLAUDE.local.md` under `## Local services` and in `.env` — both git-ignored; never quote them in a log entry, STATUS.md, commit, report or PR.
+
 ## Commands
 - `composer test` → full Pest suite. Must be green before any checkpoint closes.
 - `php artisan ledger:verify` → asserts every lesson's ledger sums to zero. Must be green before any checkpoint from CP5 onward closes.
