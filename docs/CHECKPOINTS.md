@@ -9,7 +9,7 @@ _Backend dev reviews CP3, CP4, CP5. UI dev reviews every CP's front-end. CP0–C
 **Goal:** empty but runnable app with roles, CI, and the skeleton every later CP hangs on.
 
 Tasks
-- Laravel 12 on Laravel Herd (native Windows, per D-07 / ADR-001): PostgreSQL 16, Redis, Horizon (installed, not run locally — `queue:work` in dev), Reverb, Inertia + Vue, Tailwind, Filament, Pest.
+- Laravel 12 on Laravel Herd Pro (native Windows, PHP 8.4, per D-07 / ADR-001/002): PostgreSQL 18, Redis, Horizon (installed, not run locally — `queue:work` in dev), Reverb, Inertia + Vue, Tailwind, Filament, Pest.
 - `users` with `role` enum; registration + login + email verification for `account_owner` and `tutor` (separate entry points `/register` and `/tutor/register`). Admin created by seeder only.
 - `role` column + Policies. No permission package.
 - `Money` value object (integer fils) with tests.

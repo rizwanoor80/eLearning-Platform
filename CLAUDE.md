@@ -3,7 +3,7 @@
 Read docs/HOW-WE-WORK.md, docs/PROJECT_BRIEF.md, docs/PRD.md, docs/DATA_MODEL.md, docs/CHECKPOINTS.md, docs/PLAN.md, docs/STATUS.md and the tail of docs/CYCLE-LOG.md at the start of every session, in that order. HOW-WE-WORK.md is binding. Work only on what the current docs/PLAN.md authorises; CHECKPOINTS.md is the backlog the plans are cut from, not a licence to run ahead.
 
 ## Stack
-Laravel 12 · PHP 8.3 · PostgreSQL 16 · Redis · Horizon · Reverb · Inertia + Vue 3 (see D-01) · Tailwind · Filament (admin) · Pest.
+Laravel 12 · PHP 8.4 · PostgreSQL 18 · Redis · Horizon · Reverb · Inertia + Vue 3 (see D-01) · Tailwind · Filament (admin) · Pest.
 Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `App\Services\Payments\PaymentGateway` (driver: see D-02).
 
 ## Repository
@@ -11,7 +11,7 @@ Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `
 - Remote `origin`: `https://github.com/rizwanoor80/eLearning-Platform.git` — **public** repository, default branch `main`. Nothing that must stay private ever enters it: no secrets, no `.env`, no `CLAUDE.local.md`, no real names, emails, phones or documents (see HOW-WE-WORK §8).
 
 ## Local environment
-Native Windows via Laravel Herd — no Docker, no Sail, no WSL (D-07 / ADR-001; Docker Desktop crash-loops here, see docker/desktop-feedback #460). PHP from Herd (8.3, or 8.4 everywhere incl. CI if Herd cannot provide 8.3 — DECISION logged if so); Composer/Node from Herd; PostgreSQL 16 and Redis on localhost. Horizon is installed but never run locally (`php artisan queue:work redis` in dev); Reverb likewise may be deferred to CP7 if it cannot boot on Windows. Local service credentials (Postgres/Redis host, port, superuser, password) live only in `CLAUDE.local.md` under `## Local services` and in `.env` — both git-ignored; never quote them in a log entry, STATUS.md, commit, report or PR.
+Native Windows via Laravel Herd Pro — no Docker, no Sail, no WSL (D-07 / ADR-001; Docker Desktop crash-loops here, see docker/desktop-feedback #460). PHP 8.4 everywhere (local, CI, servers) — no 8.3 fallback. Composer/Node from Herd; PostgreSQL 18 and Redis on localhost, plus a Herd mail catcher. Horizon is installed but never run locally (`php artisan queue:work redis` in dev); Reverb likewise may be deferred to CP7 if it cannot boot on Windows. Local service details live only in `CLAUDE.local.md` under `## Local services` and in `.env` — both git-ignored; never quote a password, connection string or password-bearing URL in any log entry, STATUS.md, commit, report or PR.
 
 ## Commands
 - `composer test` → full Pest suite. Must be green before any checkpoint closes.

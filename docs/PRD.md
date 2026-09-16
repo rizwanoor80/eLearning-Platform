@@ -181,7 +181,7 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 
 ## 10. Non-functional
 
-- Laravel 12 / PHP 8.3 / PostgreSQL 16 / Redis. Inertia (Vue or React — UI dev's call) + Tailwind. Filament for admin. Pest for tests.
+- Laravel 12 / PHP 8.4 / PostgreSQL 18 / Redis. Inertia (Vue or React — UI dev's call) + Tailwind. Filament for admin. Pest for tests.
 - All timestamps stored UTC; displayed in the user's timezone (default Asia/Dubai). Weekly slots store their own timezone and generate occurrences from local time, so a tutor abroad keeps a stable local time.
 - **RTL-ready from CP0:** `dir` attribute on `<html>`, Tailwind logical properties only (`ms-`/`me-`/`ps-`/`pe-`/`start-`/`end-`), no `ml-`/`mr-`/`left-`/`right-`. English only at launch; Arabic is a later translation job, not a layout job.
 - Every lesson state transition and every ledger entry is covered by a feature test. Auto-charge and report submission are idempotent.
@@ -202,5 +202,5 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 | D-04 | Legal entity that holds the licence and collects funds | TBD with counsel | Open — settle by the CP5 plan (gateway account, VAT line, tutor agreement all depend on it) |
 | D-05 | Brand name and domain | `project-elearning` placeholder | Open — settle by CP6 (domain and sender email need warming up before CP8 launch mails) |
 | D-06 | Trial discount % | 50% | **Confirmed: 50%** |
-| D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Decided (owner, 2026-09-16): Herd native, no Docker — ADR-001 |
+| D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Decided (owner, 2026-09-17): Herd Pro native, PHP 8.4, PostgreSQL 18, Redis 7, Herd mail catcher — ADR-001/002 |
 | D-08 | GitHub account and plan (branch protection on a private repo needs Pro or Team) | Private repo under Rizwan's account on GitHub Pro; Rizwan creates the empty repo, Claude Code pushes | **Decided differently: public repo `rizwanoor80/eLearning-Platform` on the Free plan** — branch protection works on public repos; the code is world-readable, so the no-secrets rule is absolute |
