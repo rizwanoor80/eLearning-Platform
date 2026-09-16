@@ -1,0 +1,190 @@
+# CHECKPOINTS — v1.1 build plan
+
+_Each checkpoint = one or more plan cycles, one branch, one PR, fresh-subagent review, full test suite green, STATUS.md rewritten. Acceptance criteria are written as tests where possible. The planner cuts PLAN.md revisions from this file; Claude Code executes only what the current plan authorises._
+_Backend dev reviews CP3, CP4, CP5. UI dev reviews every CP's front-end. CP0–CP6 is the launchable MVP._
+
+---
+
+## CP0 — Foundation
+**Goal:** empty but runnable app with roles, CI, and the skeleton every later CP hangs on.
+
+Tasks
+- Laravel 12 project on Laravel Sail (WSL2 + Docker Desktop per D-07): Postgres 16, Redis, Horizon, Reverb, Inertia + Vue, Tailwind, Filament, Pest. `sail up` brings the whole stack; no native-Windows PHP path is supported.
+- `users` with `role` enum; registration + login + email verification for `account_owner` and `tutor` (separate entry points `/register` and `/tutor/register`). Admin created by seeder only.
+- `role` column + Policies. No permission package.
+- `Money` value object (integer fils) with tests.
+- `settings` table + `Settings` facade with cache.
+- Seeders: curricula, subjects (≈25 common ones across the 4 curricula), price bands, settings, admin user.
+- Layout shell with `dir` on `<html>` and a lint rule (Stylelint/ESLint or a simple grep in CI) rejecting `ml-`, `mr-`, `pl-`, `pr-`, `left-`, `right-`, `text-left`, `text-right` utilities. Logical properties only.
+- GitHub Actions: Pint, `composer test`, `npm run build`, the RTL grep, on every PR. Branch protection on `main` (available on the Free plan because the repo is public — D-08), CODEOWNERS = Rizwan. The empty public repo already exists: `https://github.com/rizwanoor80/eLearning-Platform.git` (created by Rizwan, 2026-09-16).
+- docs/STATUS.md, docs/CYCLE-LOG.md, docs/DECISIONS.md initialised; `CLAUDE.local.md` created from the example and git-ignored.
+
+Acceptance
+- [ ] A parent can register, verify email, log in, and see an empty dashboard.
+- [ ] A tutor can register and lands on the onboarding wizard placeholder.
+- [ ] Admin can log into Filament.
+- [ ] `Money` unit tests: add, subtract, percentage, format ("AED 120.00"), no float leakage.
+- [ ] CI fails on a component that uses `ml-4`; passes with `ms-4`.
+
+---
+
+## CP1 — Tutor onboarding and approval
+**Goal:** a tutor can complete onboarding; admin can approve; only approved tutors with valid permits are "bookable".
+
+Tasks
+- Onboarding wizard (multi-step, resumable): personal → permit → documents (private disk, signed URLs) → subjects (curriculum × subject × level range, derives `level_tier`) → rate (band-validated against highest tier; shows the derived trial price) → bio/headline/video → availability (weekly template + exceptions) → tutor agreement acceptance.
+- `TutorProfile` statuses + `bookable()` scope.
+- Filament: approval queue with document viewer, accept/reject per document, "request changes" note, approve/reject/suspend actions. Audit log entries.
+- Scheduled job: permit expiry warnings (30d, 7d) and auto-hide on expiry.
+- Emails: submitted for review, changes requested, approved, rejected, permit expiring/expired.
+
+Acceptance
+- [ ] Rate outside band is rejected on save with a clear message showing the band.
+- [ ] Tutor with `approved` status and expired permit is NOT returned by `bookable()`.
+- [ ] Document URLs are signed and expire; direct path access returns 403.
+- [ ] Admin approve action sets `approved_by/approved_at` and writes an audit log row.
+- [ ] Onboarding cannot complete without `agreement_accepted_at`.
+
+---
+
+## CP2 — Learners, search, tutor profile, match request
+**Goal:** a parent can add learners, find a tutor, and request a match.
+
+Tasks
+- Learner CRUD under the account owner (adult students get a self-learner created at registration).
+- `SlotCalculator` service: given tutor rules + exceptions + existing lessons + active recurring slots + settings, returns bookable hourly slots for the next N days in a requested timezone. Unit-tested heavily.
+- Search page: filters (curriculum, subject, year group, price range, day/time, min rating), sort (rating, price). Postgres query with indexes. Only `bookable()` tutors with ≥1 slot in the next 14 days.
+- Tutor public profile page with rate, trial price, next available slots.
+- Match request form → Filament queue → admin picks 1–3 tutors → email with suggestions.
+
+Acceptance
+- [ ] Search never returns a non-bookable tutor (test with suspended / expired-permit / no-availability fixtures).
+- [ ] `SlotCalculator` excludes blocked exceptions, includes extra exceptions, excludes booked lessons, excludes an active recurring slot's weekday/time even 10 weeks out, respects `booking_min_lead_hours` and `booking_max_days`.
+- [ ] Match request status flows open → suggested; email contains only bookable tutors.
+
+---
+
+## CP3 — Booking, trial, cancellation
+**Goal:** a parent can book a single lesson (trial or regular); the lifecycle up to `confirmed` works; cancellations follow PRD §4. Money is stubbed with a fake gateway. **Backend dev reviews.**
+
+Tasks
+- `LessonStateMachine` with every state from DATA_MODEL.md including `reserved`; transitions guarded; each fires an event.
+- `BookLesson` action: validates slot via `SlotCalculator`, decides `type` (trial if no prior non-cancelled lesson for this learner–tutor pair), computes price (trial discount applied), band-validates, freezes commission and cancellation policy, creates `pending_payment` lesson, DB-level overlap and one-trial-per-pair protection.
+- `FakePaymentGateway` driver that captures instantly (real driver in CP5).
+- `CancelLesson` / `SkipLesson` actions with 24h rule, tutor-cancel strike logic, `expired` sweep job for unpaid bookings.
+- Parent dashboard: upcoming lessons. Tutor dashboard: today/upcoming.
+- Emails: confirmed, cancelled, skipped, reminders (24h, 1h) via scheduled job.
+
+Acceptance
+- [ ] Every transition in the state diagram has a passing feature test; every invalid transition throws.
+- [ ] First booking for a learner–tutor pair is `trial` at the discounted price; second is `regular` at full price; a cancelled trial does not consume the trial.
+- [ ] Double-booking the same tutor slot fails under concurrent requests (test with DB constraint).
+- [ ] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created.
+- [ ] Changing `cancel_window_hours` in settings does not change the outcome for an already-booked lesson.
+- [ ] 3 strikes within 90 days → tutor `suspended`, admin emailed.
+
+---
+
+## CP4 — Recurring weekly slots (no money yet)
+**Goal:** parent can set up, skip, and end a weekly slot; tutor can end with notice; occurrences generate on a rolling horizon as `reserved`. Charging comes in CP5. **Backend dev reviews.**
+
+Tasks
+- `recurring_slots` model + `CreateRecurringSlot` action (validates weekday/time against tutor availability and existing slots, requires a learner who has completed a trial with this tutor OR admin override, requires a saved card — stubbed in this CP).
+- `recurring:generate` nightly job with idempotent `(slot, starts_at)` keys; collision handling (skip + email).
+- `EndRecurringSlot` (parent: immediate; tutor: with `recurring_tutor_end_notice_days`), `SkipLesson` for `reserved` occurrences, admin pause/end in Filament.
+- Parent portal: learner page shows weekly slots; tutor calendar shows slots as fixed blocks; "Set up a weekly slot" entry points on tutor profile and learner page (the trial-report CTA is wired in CP6).
+- Emails: slot created / ended / occurrence skipped by collision.
+
+Acceptance
+- [ ] Running `recurring:generate` twice produces no duplicate lessons.
+- [ ] A weekly slot on Tue 17:00 Asia/Karachi generates lessons at the correct UTC times and blocks that slot in `SlotCalculator` for a Dubai parent.
+- [ ] Tutor end with 7-day notice: `reserved` lessons beyond day 7 cancelled without strike; a `reserved` lesson at day 3 skipped by tutor → strike only if inside 24h.
+- [ ] Parent end: all `reserved` lessons cancelled free; `confirmed` lessons (seeded via fake gateway) follow §4.
+- [ ] Two parents cannot create active slots on the same tutor weekday/time.
+
+---
+
+## CP5 — Ledger, real payments, saved cards, auto-charge, payouts
+**Goal:** real money in, escrow ledger, saved card and 48h auto-charge for weekly slots, release on report (report itself comes in CP6 — trigger wired, tested via stub), dispute settlement math, payouts out. **Backend dev reviews.**
+
+Tasks
+- `LedgerService` with `hold / release / refund / settle / payout`, append-only, zero-sum assertion, `goodwill` entries allowed to push `platform` negative per lesson.
+- Real `PaymentGateway` driver (per D-02): checkout, `saveCard`, `chargeSavedCard` with idempotency key = lesson id, webhook capture, refund. Idempotent webhook handling.
+- `payment_methods`: add/replace card page in parent portal; expired-card detection.
+- `recurring:charge` hourly job with retry schedule from settings, failure emails, slot pause after threshold, counter reset on success.
+- `ledger:verify` artisan command + nightly schedule + alert email on failure.
+- Tutor earnings page: five buckets (pending, on hold, available, processing, paid to date), payout history.
+- Filament: payout batches (generate for period → CSV → mark paid, `bank_reference` required), refunds from lesson view, settings editor, weekly slot pause/resume.
+- Receipts page for parents (with VAT line); auto-charge receipt email.
+
+Acceptance
+- [ ] `ledger:verify` passes on a seeded DB with 50 mixed-state lessons including two settled disputes with goodwill.
+- [ ] Refund after cancel ≥24h produces correct entries and a gateway refund call; webhook replay does not double-refund.
+- [ ] `recurring:charge` on a `reserved` lesson at T−48h → `confirmed` + HOLD; simulated failures at 48/36/24 → `cancelled_payment_failed`; second consecutive failure pauses the slot; a success resets the counter.
+- [ ] Payout batch only includes tutors above `payout_min`; cannot be marked paid without a bank reference; marking paid writes `payout` entries; buckets move available → processing → paid correctly.
+- [ ] `settle()` with 60% refund / 100% tutor pay yields a negative `platform` entry and the lesson still sums to zero.
+- [ ] Commission setting change does not alter any existing lesson's `commission_amount`.
+
+---
+
+## CP6 — Lesson room, attendance, progress and trial reports
+**Goal:** the lesson happens on the platform, the parent gets a report, and a good trial turns into a weekly slot.
+
+Tasks
+- `VideoRoomProvider` interface + Daily driver: create room at T−15 (scheduled job), per-party join tokens, webhook for join/leave → `tutor_joined_at / learner_joined_at`, close at end + 10 min.
+- Lesson page for both parties with embedded room; join buttons active T−10.
+- `in_progress → completed` sweep job; no-show marking actions per PRD §4; admin `provider_failure` action.
+- Progress report form (5 fields; +3 trial fields when `type = trial`) → `SubmitProgressReport` action → email to parent → `LedgerService::release`. 72h auto-release job with late flag.
+- Trial report email and portal view carry the "Set up a weekly slot" CTA pre-filled with the tutor, subject, and recommended frequency.
+- Parent portal: learner timeline of reports; "recent focus areas" from last 5 reports.
+- Stretch: embedded tldraw whiteboard on the lesson page.
+
+Acceptance
+- [ ] Room is created exactly once per lesson even if the job runs twice.
+- [ ] Both join → `completed` at end; only tutor joins → student no-show path after grace; only learner joins → tutor no-show path after grace.
+- [ ] Trial report without the three trial fields is rejected; regular report with them is rejected.
+- [ ] Submitting a report releases escrow exactly once; second submit is rejected; auto-release after 72h sets the late flag.
+- [ ] Parent receives the report email within one queue cycle; the trial email contains a working weekly-slot link.
+
+---
+
+## CP7 — Messaging, reviews, report button, notifications polish
+**Goal:** families and tutors can talk safely; ratings drive search; anyone can flag a problem.
+
+Tasks
+- Conversations created on first booking (paid or reserved); messages with Reverb live badges; masking of emails/phones/URLs until `first_lesson_completed_at`.
+- Reviews after `completed*`; `rating_avg / rating_count` maintained; visible on profile and search sort.
+- Report button on tutor profile, conversation, and lesson page → `abuse_reports` → Filament safeguarding queue with suspend-tutor / suspend-account actions (history preserved) → admin email.
+- Notification centre (in-app list) + all remaining emails from PRD §8.
+- Admin read-only conversation view.
+
+Acceptance
+- [ ] A message containing a phone number before the first completed lesson is stored masked and shown masked to the recipient.
+- [ ] Cannot open a conversation without a lesson between the parties.
+- [ ] One review per lesson; rating aggregates update; search sorts by rating.
+- [ ] Filing a report creates an open `abuse_reports` row, emails admin, and does not notify the reported party.
+- [ ] Suspending a tutor from the safeguarding queue removes them from search immediately and cancels their `reserved` lessons without deleting anything.
+
+---
+
+## CP8 — Disputes, admin hardening, soft launch
+**Goal:** the platform can be operated by Rizwan and the manager without touching code.
+
+Tasks
+- Disputes: open within 48h, pauses release (lesson → `disputed`, tutor bucket "on hold"), Filament resolution with two dials (parent refund %, tutor pay %), defaults per PRD §2.10, → `LedgerService::settle` + gateway refund.
+- Filament: lessons index with force-cancel / force-complete / provider-failure (note + audit), tutor detail with strikes/flags/late reports, dashboard widgets (lessons this week, revenue, reports overdue, permits expiring, failed charges, open reports).
+- Legal pages: terms, privacy, tutor agreement, safeguarding (content from Rizwan).
+- Production hardening: rate limiting, backups verified restore, error tracking, uptime check, `.env` review, seed data removed, webhook signature verification confirmed on both providers.
+- Launch checklist run with 5 real tutors and 3 friendly families, including one full trial → weekly slot → auto-charge → report → payout loop.
+
+Acceptance
+- [ ] Dispute on a lesson in `completed` blocks auto-release; two-dial resolution leaves ledger zero-sum; trial dispute defaults to 100% refund.
+- [ ] Force-complete by admin writes an audit row and follows the normal release path.
+- [ ] Restore from last night's backup on a scratch server succeeds.
+- [ ] End-to-end: parent registers → adds child → books trial → trial completes → trial report → weekly slot → auto-charge → lesson → report → payout batch → tutor sees "paid to date". Green as a single feature test.
+- [ ] Soft-launch checklist signed off by Rizwan.
+
+---
+
+## After v1 (do not start without a new PLAN.md)
+Lesson packs · WhatsApp notifications · Meilisearch · group classes · courses · learning plans · homework · multi-currency · B2B organisations.

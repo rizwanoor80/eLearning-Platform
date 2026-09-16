@@ -1,0 +1,17 @@
+# CLAUDE.local.md — security boundary (copy to CLAUDE.local.md; git-ignored; never committed)
+
+## Servers
+No servers yet. Fill in when the rehearsal server exists.
+
+## Read-only commands (run freely)
+- git status / log / diff, ls, cat of non-secret files, php artisan route:list, php artisan config:show <key>, tail of application logs
+
+## State-changing commands (per-command "yes" from Rizwan)
+- php artisan migrate (rehearsal only), queue restarts, cache clears on rehearsal
+
+## Never-list (absolute)
+- Display or copy .env, tokens, API keys, recovery codes, TOTP seeds
+- Interactive shells, sudo, key changes
+- Seeding or resetting production, migrate:fresh anywhere but local
+- Rollbacks, raw SQL on production, deletes
+- composer setup or any destructive reset
