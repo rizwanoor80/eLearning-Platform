@@ -69,10 +69,14 @@
         "types:check": [
             "phpstan analyse --memory-limit=512M"
         ],
+        "rtl:check": [
+            "bash scripts/rtl-check.sh"
+        ],
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
             "@types:check",
+            "@rtl:check",
             "@php artisan test"
         ],
         "post-autoload-dump": [
