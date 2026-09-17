@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Enums\Role;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -24,6 +27,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureGates();
+    }
+
+    /**
+     * Define the role-based area gates.
+     */
+    protected function configureGates(): void
+    {
+        Gate::define('access-parent-area', fn (User $user): bool => $user->role === Role::AccountOwner);
+        Gate::define('access-tutor-area', fn (User $user): bool => $user->role === Role::Tutor);
     }
 
     /**
