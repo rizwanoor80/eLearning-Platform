@@ -1,13 +1,13 @@
-# STATUS — cycle 02 r1 — written 2026-09-17 20:38
-Tests: 110 (up from 89) · Advisor: consulted 2 times this run so far (1a design 19:35, 1a pre-PR 20:05) · Review: sub-cycle 1a's review: 9 PASS (2 with Low, non-blocking notes), no Medium/High, merged
+# STATUS — cycle 02 r1 — written 2026-09-17 21:00
+Tests: 126 (up from 110) · Advisor: consulted 2 times this run so far (1b design 20:45, 1b pre-PR 20:55) · Review: sub-cycle 1a's review: 9 PASS (2 Low notes), no Medium/High, merged; sub-cycle 1b's review: pending
 
 ## §1 Git state
-Cycle 01 remains merged (`646ce06`). Sub-cycle 1a merged: `main` at `c08bad8` "Merge pull request #2 from rizwanoor80/cp/1a-onboarding-core" (a real merge commit, not squashed), fast-forwarded locally and pushed. `cp/1a-onboarding-core` left in place (not deleted). `main`'s branch protection: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14) still not created — optional, carried.
+Cycles 01 and sub-cycle 1a remain merged (`646ce06`, `c08bad8`). `cp/1b-onboarding-complete` is code-complete, pushed (5 commits), not yet opened as a PR. `main`'s branch protection: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14) still not created — optional, carried.
 
 ## §2 Step map (cycle 02 r1)
 0. Merge PR #1 and close cycle 01 — [done] `646ce06`.
 1. Sub-cycle 1a `cp/1a-onboarding-core` — [done] merged `c08bad8`.
-2. Sub-cycle 1b `cp/1b-onboarding-complete` — [in progress] — next.
+2. Sub-cycle 1b `cp/1b-onboarding-complete` — [in progress] — code complete, opening PR next.
 3. Sub-cycle 1c `cp/1c-admin-approval` — [not started] (closes CP1)
 4. Sub-cycle 2a `cp/2a-learners-slots` — [not started]
 5. Sub-cycle 2b `cp/2b-search-profile` — [not started]
@@ -15,32 +15,37 @@ Cycle 01 remains merged (`646ce06`). Sub-cycle 1a merged: `main` at `c08bad8` "M
 7. Programme end — [not started] — this cycle's planned halt (24-hour owner review).
 
 ## §3 What changed this run
-- **Sub-cycle 1a implemented and merged**: `document_types`/`tutor_profiles`/`tutor_documents` schema + models + seeder; ownership-checked signed document downloads (framework's `storage.local` disabled via `'serve' => false` — CP1 box 3, closed); onboarding wizard (personal → permit → one step per active document type, server-derived, resumable); `bank_iban` encryption + masking (CP1 box 7 model half, closed; admin half correctly deferred to CP5 under R25); R24's rtl-check regression test, closing cycle 01's Low review note.
-- **Second mandatory ADVISOR (pre-PR, R21, 20:05)** caught CP1 box 7 was claimed closed with no proving test — fixed before the PR opened. Suite grew 108/303 → 110/308.
-- **[PR #2](https://github.com/rizwanoor80/eLearning-Platform/pull/2)** opened, CI green (`gh pr checks 2` → pass, 1m11s), fresh-subagent adversarial review: 9 PASS (2 Low notes — step-order leniency on personal/permit steps, UTC handling not independently re-verified — both non-blocking), no Medium/High. Merged under R21's self-applied merge rule, no owner GO needed (R22).
-- **Post-merge smoke**: `composer.bat test` on `main` → 110/110 tests, 308 assertions, Pint/PHPStan/RTL all green. `curl` (R20, no browser): `/` → 200, `/login` → 200, `/admin/login` → 200, `/dashboard` (unauth) → 302, `/tutor/onboarding` (unauth) → 302 — all as expected.
-- Full detail in CYCLE-LOG.md (19:35–20:38).
+- **Sub-cycle 1b implemented** on `cp/1b-onboarding-complete`: `tutor_subjects`/`availability_rules`/`availability_exceptions`/`pages`/`page_versions` schema + models + factories; `PageSeeder` seeds a `tutor_agreement` placeholder at version 1 (built directly against DATA_MODEL.md's full schema, not a throwaway table — migrations are forward-only); wizard extended with bank, subjects (curriculum × subject × explicit level tier), rate (band-validated against the current `price_bands` row for the highest tier taught, band shown in the rejection message and as a prop), bio/headline/video, availability (weekly rules + exceptions, overlap-checked, replace-all), agreement (records the page's current version server-side) and a `CompleteTutorOnboarding` action that sets `pending_review`.
+- **Design ADVISOR (20:45)**: confirmed building `pages`/`page_versions` in full now rather than a placeholder; confirmed no PRD label→tier mapping exists so `level_tier` is an explicit tutor-selected field; gave the rate-band and step-order-guard mechanics.
+- **Two real bugs found and fixed while testing**: `TutorProfile::$fillable` missing `status` (silently dropped by `firstOrCreate()`); `UserFactory` missing a default `timezone` (in-memory null despite a DB column default, breaking `storeAvailability()`). Both disclosed in CYCLE-LOG 20:48.
+- **Pre-PR ADVISOR (20:55)** then caught that the `status`-fillable fix itself was a Medium-risk regression (1a's review praised excluding privileged columns like `role` from mass assignment) — reverted to `firstOrNew()`+`forceFill()`; also caught that a submitted profile could still be edited via earlier steps, and that the Vue rate step did float arithmetic on money (invariant #3). All three fixed and re-tested. Suite: 126 tests, 378 assertions, Pint/PHPStan/RTL all green.
+- Full detail in CYCLE-LOG.md (20:45–21:00).
 
 ## §4 Decisions
-- Wizard shows one step per active `document_types` row (not a single combined step) — required by CP1 box 6, a deviation from the first ADVISOR's suggested single step, confirmed correct by the second consult. CYCLE-LOG 20:06.
-- CP1 box 7 split under R25: sub-cycle 1a closes the model/tutor half only; the admin payout view (full IBAN) does not exist yet and is CP5 scope. CYCLE-LOG 20:07.
-- Merge-rule self-check disclosed: the diff touched `config/filesystems.php` and `scripts/rtl-check.sh`, outside the step's literally-named areas but treated as in-scope (the config change *is* the box-3 hardening; the script argument is required for R24's own test in this same step) — confirmed clean by the fresh-subagent review's own diff-scope check (finding 7). CYCLE-LOG 20:09.
+- `level_tier` is an explicit tutor-selected field constrained to `CurriculumCode::tiers()`, never parsed from the free-text level labels — no such mapping exists in the PRD (illustrative examples only) and DATA_MODEL stores it as its own column. CYCLE-LOG 20:46.
+- `pages`/`page_versions` built in full in 1b (not a placeholder); 2c's "migrate the 1b placeholder" clause becomes a no-op. CYCLE-LOG 20:47.
+- `TutorProfile.status` stays out of `$fillable` (matching the `User::role` convention); every write uses `forceFill()`. CYCLE-LOG 20:57 (reverting an intermediate mistake logged and disclosed at 20:48/20:56).
+- Once a profile leaves `draft`, every onboarding step handler refuses outright; `changes_requested` re-entry is 1c's scope. CYCLE-LOG 20:58.
+- Availability weekdays use Carbon's `0 = Sunday`..`6 = Saturday`; `recurring_slots` (CP2) must match. CYCLE-LOG 20:59.
+- `LevelTier::rank()` added to the CP0 enum in-step (disclosed, same pattern as 1a's `filesystems.php` exception). CYCLE-LOG 21:00.
+- Kept `Onboarding.vue` as one file rather than splitting per-step, since R20 means no browser rendering is exercised this programme. CYCLE-LOG 20:49 (a deviation from the design ADVISOR's suggestion).
 
 ## §5 Why stopping
-Not stopping — sub-cycle 1a is fully merged and verified; continuing into sub-cycle 1b (`cp/1b-onboarding-complete`) in this same run per the no-stop rule (R21).
+Not stopping — opening the PR for `cp/1b-onboarding-complete` next, then waiting on CI (asynchronous). Will resume automatically per the no-stop rule (R21).
 
 ## §6 Mismatches
 - **`main` branch protection still not set** (owner action, carried from cycle 01). Per R23 this does not block the programme.
-- **CP1 box 7 is only half-closeable pre-CP5**: the plan's sub-cycle 1a "done means" text says 1a "closes CHECKPOINTS CP1 boxes 3 and 7", but box 7's second clause ("admin payout view sees the full value") requires an admin payout view that does not exist in any cycle to date and is CP5/Ledger scope per CLAUDE.md. Disclosed per R25 rather than silently redefining "closes"; the model/tutor half is fully proven now, the admin half is deferred to CP5 by design, not by oversight.
+- **CP1 box 7's admin half remains deferred to CP5** (carried from 1a, unchanged this sub-cycle).
+- **Own process slip, disclosed**: pushed `cp/1b-onboarding-complete`'s first four commits (~20:44) without rewriting STATUS.md first, as HOW-WE-WORK §5 requires at every push. Caught in the 20:55 ADVISOR consult; STATUS.md is being rewritten now, before the PR opens, and the push carrying the pre-PR fixes follows this write.
 
 ## §7 Next step and owner actions
-No owner action required to proceed — the programme is authorised and running. Automatic continuations used under R21's cap: **1/8** (this session will halt automatically after 8, or at any stop condition — smoke failure, a fix loop exceeding 2 rounds, a High security finding, an unreachable local service, or the owner typing `stop` — whichever comes first). Next: sub-cycle 1b design ADVISOR consult, then branch `cp/1b-onboarding-complete`. Carried, optional: Owner action A (R7 branch protection, exact GitHub UI steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002).
+No owner action required to proceed — the programme is authorised and running. Automatic continuations used under R21's cap: **2/8** (1a's CI wait, 1b's CI wait to follow — this session will halt automatically after 8, or at any stop condition, whichever comes first). Next: open the PR for `cp/1b-onboarding-complete` (checklist = CP1 boxes 1, 2, 5), wait for CI, dispatch the fresh-subagent review. Carried, optional: Owner action A (R7 branch protection, exact GitHub UI steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002).
 
 ## §8 Programme board (R21)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge hash |
 |---|---|---|---|---|---|
 | 1a onboarding-core | **merged** | `cp/1a-onboarding-core` | [#2](https://github.com/rizwanoor80/eLearning-Platform/pull/2) | 9 PASS, 2 Low notes, no Medium/High | `c08bad8` |
-| 1b onboarding-complete | in progress | `cp/1b-onboarding-complete` | — | — | — |
+| 1b onboarding-complete | code complete, opening PR | `cp/1b-onboarding-complete` | — | — | — |
 | 1c admin-approval | not started | `cp/1c-admin-approval` | — | — | — |
 | 2a learners-slots | not started | `cp/2a-learners-slots` | — | — | — |
 | 2b search-profile | not started | `cp/2b-search-profile` | — | — | — |
