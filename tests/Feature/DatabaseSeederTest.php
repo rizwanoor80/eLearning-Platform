@@ -5,6 +5,8 @@ use App\Enums\LevelTier;
 use App\Enums\Role;
 use App\Models\Curriculum;
 use App\Models\DocumentType;
+use App\Models\Page;
+use App\Models\PageVersion;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\User;
@@ -19,7 +21,7 @@ beforeEach(function () {
     ]);
 });
 
-it('seeds curricula, subjects, price bands, settings, document types and one admin user', function () {
+it('seeds curricula, subjects, price bands, settings, document types, the tutor agreement page and one admin user', function () {
     $this->seed();
 
     expect(Curriculum::query()->count())->toBe(5)
@@ -27,6 +29,8 @@ it('seeds curricula, subjects, price bands, settings, document types and one adm
         ->and(PriceBand::query()->count())->toBe(9)
         ->and(DB::table('settings')->count())->toBe(20)
         ->and(DocumentType::query()->count())->toBe(4)
+        ->and(Page::query()->count())->toBe(1)
+        ->and(PageVersion::query()->count())->toBe(1)
         ->and(User::query()->where('role', Role::Admin)->count())->toBe(1);
 });
 
@@ -39,6 +43,8 @@ it('is idempotent — seeding twice does not change the row counts', function ()
         ->and(PriceBand::query()->count())->toBe(9)
         ->and(DB::table('settings')->count())->toBe(20)
         ->and(DocumentType::query()->count())->toBe(4)
+        ->and(Page::query()->count())->toBe(1)
+        ->and(PageVersion::query()->count())->toBe(1)
         ->and(User::query()->where('role', Role::Admin)->count())->toBe(1);
 });
 

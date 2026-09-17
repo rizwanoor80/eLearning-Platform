@@ -47,7 +47,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'headline', 'bio', 'intro_video_url', 'hourly_rate',
+        'user_id', 'status', 'headline', 'bio', 'intro_video_url', 'hourly_rate',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
@@ -114,5 +114,29 @@ class TutorProfile extends Model
     public function tutorDocuments(): HasMany
     {
         return $this->hasMany(TutorDocument::class);
+    }
+
+    /**
+     * @return HasMany<TutorSubject, $this>
+     */
+    public function tutorSubjects(): HasMany
+    {
+        return $this->hasMany(TutorSubject::class);
+    }
+
+    /**
+     * @return HasMany<AvailabilityRule, $this>
+     */
+    public function availabilityRules(): HasMany
+    {
+        return $this->hasMany(AvailabilityRule::class);
+    }
+
+    /**
+     * @return HasMany<AvailabilityException, $this>
+     */
+    public function availabilityExceptions(): HasMany
+    {
+        return $this->hasMany(AvailabilityException::class);
     }
 }
