@@ -81,4 +81,16 @@ jobs:
         run: composer test
 
       - name: Prove Horizon boots on Linux
-        run: php artisan horizon:status
+        run: |
+          php artisan horizon > horizon.log 2>&1 &
+          HORIZON_PID=$!
+          for i in $(seq 1 20); do
+            if php artisan horizon:status; then
+              break
+            fi
+            sleep 1
+          done
+          php artisan horizon:status
+          php artisan horizon:terminate
+          wait "$HORIZON_PID" || true
+          cat horizon.log
