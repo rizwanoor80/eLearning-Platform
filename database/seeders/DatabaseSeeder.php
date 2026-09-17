@@ -10,9 +10,7 @@ class DatabaseSeeder extends Seeder
     use WithoutModelEvents;
 
     /**
-     * Seed the application's database. CP0 scope only: curricula, subjects,
-     * price bands, platform-group settings, one admin user (R10). No demo
-     * tutors/parents yet — TutorProfile doesn't exist until CP1.
+     * Seed the application's database. No demo tutors/parents yet.
      */
     public function run(): void
     {
@@ -21,6 +19,7 @@ class DatabaseSeeder extends Seeder
             SubjectSeeder::class,
             PriceBandSeeder::class,
             SettingsSeeder::class,
+            DocumentTypeSeeder::class,
             AdminUserSeeder::class,
         ]);
     }

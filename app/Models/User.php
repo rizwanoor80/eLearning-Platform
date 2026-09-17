@@ -10,6 +10,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -22,6 +23,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Role $role
  * @property string $name
  * @property string $email
+ * @property string|null $phone
+ * @property string $timezone
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -31,7 +34,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'phone', 'timezone'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail, PasskeyUser
 {
@@ -56,5 +59,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail, Pas
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->role === Role::Admin;
+    }
+
+    /**
+     * @return HasOne<TutorProfile, $this>
+     */
+    public function tutorProfile(): HasOne
+    {
+        return $this->hasOne(TutorProfile::class);
     }
 }
