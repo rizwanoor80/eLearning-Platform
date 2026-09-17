@@ -191,13 +191,19 @@ const submitRate = () => {
     rateForm.post('/tutor/onboarding/rate');
 };
 
-const trialPrice = () => {
-    const rate = parseFloat(rateForm.hourly_rate);
-    if (Number.isNaN(rate)) {
+// Display-only preview mirroring Money::percentage's half-up integer-fils
+// rounding (invariant #3 — no float arithmetic on money). The authoritative
+// trial price is computed server-side at booking time (CP3).
+const trialPriceFils = () => {
+    const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(rateForm.hourly_rate);
+    if (!match) {
         return null;
     }
 
-    return (rate * (1 - props.trialDiscountPct / 100)).toFixed(2);
+    const fils = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
+    const pct = 100 - props.trialDiscountPct;
+
+    return Math.floor((fils * pct + 50) / 100);
 };
 
 const profileForm = useForm({
@@ -424,7 +430,7 @@ const submitComplete = () => {
                 <InputError :message="rateForm.errors.hourly_rate" />
             </div>
 
-            <p v-if="trialPrice()" class="text-muted-foreground text-sm">Trial lesson price: {{ trialPrice() }} AED</p>
+            <p v-if="trialPriceFils() !== null" class="text-muted-foreground text-sm">Trial lesson price: {{ formatFils(trialPriceFils()!) }} AED</p>
 
             <Button type="submit" :disabled="rateForm.processing" class="w-fit">
                 <Spinner v-if="rateForm.processing" />

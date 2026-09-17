@@ -153,3 +153,15 @@ it('shows submitted once the profile has left draft status', function () {
 
     $response->assertInertia(fn ($page) => $page->where('step', 'submitted'));
 });
+
+it('refuses every step handler once the profile has been submitted for review', function () {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00'])
+        ->assertStatus(409);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
+        'bank_name' => 'Other Bank', 'bank_account_name' => 'Someone Else', 'bank_iban' => 'AE999999999999999999999',
+    ])->assertStatus(409);
+});

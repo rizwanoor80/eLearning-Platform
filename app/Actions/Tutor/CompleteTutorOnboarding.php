@@ -14,6 +14,6 @@ class CompleteTutorOnboarding
      */
     public function __invoke(TutorProfile $profile): void
     {
-        $profile->update(['status' => TutorProfileStatus::PendingReview]);
+        $profile->forceFill(['status' => TutorProfileStatus::PendingReview])->save();
     }
 }

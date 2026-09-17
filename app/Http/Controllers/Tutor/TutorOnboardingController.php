@@ -102,8 +102,10 @@ class TutorOnboardingController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
+        $profile = $this->profileFor($user);
+        $this->guardStepNotAhead($user, $profile, 'personal');
+
         $user->update($request->validated());
-        $this->profileFor($user);
 
         return redirect()->route('tutor.onboarding');
     }
@@ -328,12 +330,20 @@ class TutorOnboardingController extends Controller
         return redirect()->route('tutor.onboarding');
     }
 
+    /**
+     * `status` is deliberately not mass-assignable (same convention as
+     * `User::role`) since 1c's admin-approval flow writes it too — every
+     * write path here sets it explicitly via `forceFill()` instead.
+     */
     private function profileFor(User $user): TutorProfile
     {
-        return TutorProfile::query()->firstOrCreate(
-            ['user_id' => $user->id],
-            ['status' => TutorProfileStatus::Draft],
-        );
+        $profile = TutorProfile::query()->firstOrNew(['user_id' => $user->id]);
+
+        if (! $profile->exists) {
+            $profile->forceFill(['status' => TutorProfileStatus::Draft])->save();
+        }
+
+        return $profile;
     }
 
     /**
@@ -398,13 +408,17 @@ class TutorOnboardingController extends Controller
 
     /**
      * Refuses a step handler unless the step it's for is at or before the
-     * wizard's own derived position, so a request can't skip ahead. Steps
-     * not on the ordered list (`submitted`, `complete`) are never blocked
-     * here — closes cycle 01 review note #8.
+     * wizard's own derived position, so a request can't skip ahead. Once the
+     * profile has left `draft` (submitted for review), every step is
+     * refused outright — re-entry via `changes_requested` is 1c's scope.
+     * Closes cycle 01 review note #8.
      */
     private function guardStepNotAhead(User $user, TutorProfile $profile, string $step): void
     {
         $current = $this->currentStep($user, $profile)['name'];
+
+        abort_if($current === 'submitted', 409);
+
         $currentIndex = array_search($current, self::STEP_ORDER, true);
         $stepIndex = array_search($step, self::STEP_ORDER, true);
 
