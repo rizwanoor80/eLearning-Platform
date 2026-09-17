@@ -3,7 +3,7 @@
 Read docs/HOW-WE-WORK.md, docs/PROJECT_BRIEF.md, docs/PRD.md, docs/DATA_MODEL.md, docs/CHECKPOINTS.md, docs/PLAN.md, docs/STATUS.md and the tail of docs/CYCLE-LOG.md at the start of every session, in that order. HOW-WE-WORK.md is binding. Work only on what the current docs/PLAN.md authorises; CHECKPOINTS.md is the backlog the plans are cut from, not a licence to run ahead.
 
 ## Stack
-Laravel 12 · PHP 8.4 · PostgreSQL 18 · Redis · Horizon · Reverb · Inertia + Vue 3 (see D-01) · Tailwind · Filament (admin) · Pest.
+Laravel 13 · PHP 8.4 · PostgreSQL 18 · Redis · Horizon · Reverb · Inertia 3 + Vue 3 (D-01) · Tailwind 4 · Filament 5 · Pest.
 Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `App\Services\Payments\PaymentGateway` (driver: see D-02).
 
 ## Repository
@@ -18,6 +18,8 @@ Native Windows via Laravel Herd Pro — no Docker, no Sail, no WSL (D-07 / ADR-0
 - `php artisan ledger:verify` → asserts every lesson's ledger sums to zero. Must be green before any checkpoint from CP5 onward closes.
 - `php artisan recurring:generate` / `recurring:charge` → the two weekly-slot jobs. Both must be safe to run twice.
 - `npm run build` must succeed before a checkpoint closes.
+- Every artisan, composer, npm/npx and gh command runs with its non-interactive flag (`--no-interaction`/`-n`, `--yes`, `--no-input`). Some `*:install` commands prompt by default — never assume.
+- A single command still running after 10 minutes is a stall: stop it, log a BLOCKER naming the command, work around it. Never wait on it.
 
 ## Scope guard
 v1 is: 1-on-1 60-minute lessons · tutor vetting · search + match request · trial lesson · single booking · recurring weekly slot with saved-card auto-charge · escrow ledger · lesson room · progress + trial reports emailed + parent portal · messaging · reviews · report button · two-dial disputes · admin.
@@ -41,6 +43,7 @@ If a task or a "helpful" abstraction would introduce one of these, do not build 
 13. **Refund-to-parent and pay-to-tutor are independent decisions.** `LedgerService::settle()` takes both percentages; nothing else may infer one from the other.
 14. **Recurring jobs are idempotent.** Generation keys on `(recurring_slot_id, starts_at)`; charging uses the lesson id as the gateway idempotency key. Running either job twice must be a no-op.
 15. **Never store card numbers.** `payment_methods` holds the gateway token, brand, last four, expiry — nothing else.
+16. **Integration credentials and provider choice live in the admin registries** (`payment_gateways`, `video_providers` — PRD §12): encrypted at rest, masked in the UI, never logged, never in the repo; drivers are resolved from the active row, never hard-wired.
 
 ## Code conventions
 - Business logic in `app/Actions` (single-purpose, invokable) and `app/Services`. Controllers are thin; Form Requests validate; Policies authorise.

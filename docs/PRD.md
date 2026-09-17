@@ -1,8 +1,9 @@
 # PRD — 1-on-1 Tutoring Platform v1
 
-_Version 1.1 · Sept 2026 · Owner: Rizwan_
+_Version 1.2 · Sept 2026 · Owner: Rizwan_
 _Scope rule: if a feature is not in this document, it is not in v1._
 _v1.1 adds: trial lesson, recurring weekly slot with auto-charge, two-dial dispute resolution, tutor balance buckets, frozen cancellation policy, report-to-admin button, RTL-ready layout._
+_v1.2 adds (owner ruling 2026-09-17): the configurability principle (§12) — integrations behind admin-entered keys (payment gateways, video providers), legal and marketing content edited in the admin, site settings and branding, configurable onboarding document types, tutor bank details, admin-user management, feature toggles._
 
 ---
 
@@ -13,7 +14,7 @@ _v1.1 adds: trial lesson, recurring weekly slot with auto-charge, two-dial dispu
 | **Parent** | Account owner for one or more minor learners. Pays. | Add learners, search/book tutors, request a match, book trials, set up weekly slots, pay, message tutors, view reports, rate lessons, open disputes, report a tutor |
 | **Adult student** | Learner who is their own account owner (18+) | Same as parent, for themselves |
 | **Tutor** | Vetted, admin-approved teacher | Manage profile/subjects/availability, run lessons, file progress and trial reports, message booked families, view earnings/payouts, report a family |
-| **Admin** | Rizwan + manager | Approve tutors, handle match requests, resolve disputes and abuse reports, run payouts, edit settings |
+| **Admin** | Rizwan + manager (further admins created in Filament by an existing admin, audited) | Approve tutors, handle match requests, resolve disputes and abuse reports, run payouts, edit settings, pages, content, integrations |
 
 Internally, "Parent" and "Adult student" are the same role (`account_owner`); the difference is whether the learner record is a minor under that account or the owner themselves.
 
@@ -25,7 +26,7 @@ Internally, "Parent" and "Adult student" are the same role (`account_owner`); th
 
 ### 2.1 Tutor onboarding
 1. Tutor registers (email + password, email verification).
-2. Onboarding wizard: personal details → UAE private-tutor permit number + expiry → Emirates ID / passport upload → qualifications upload → police clearance / good-conduct certificate upload → subjects (curriculum × subject × year-group range) → hourly rate (must fall within the platform band for the highest level they teach) → bio, headline, optional intro video link → weekly availability → accept tutor agreement (includes the trial discount and cancellation policy).
+2. Onboarding wizard: personal details → UAE private-tutor permit number + expiry → document uploads, one step per **required document type** configured in the admin (defaults: Emirates ID / passport, qualifications, police clearance / good-conduct certificate; admin can add, drop or make optional without code) → bank details for payouts (bank name, account name, IBAN, optional SWIFT — stored encrypted, shown masked) → subjects (curriculum × subject × year-group range) → hourly rate (must fall within the platform band for the highest level they teach) → bio, headline, optional intro video link → weekly availability → accept the tutor agreement (the current published version of the admin-edited page; the version number accepted is recorded on the profile).
 3. Status `pending_review`. Admin reviews documents in the approval queue, can request changes (note to tutor), approve, or reject.
 4. On approval: profile becomes searchable. On permit expiry: profile auto-hidden until a new permit is uploaded and re-approved.
 
@@ -57,8 +58,8 @@ Internally, "Parent" and "Adult student" are the same role (`account_owner`); th
 8. No packs, no credits, no subscriptions: each lesson is an individual charge on the saved card. Skipping a week costs nothing.
 
 ### 2.6 Lesson
-1. Lesson room is created automatically 15 min before start. "Join" buttons become active 10 min before start for both parties.
-2. Both join via the platform (video provider embedded). Join/leave events are recorded as attendance.
+1. Lesson room is created automatically 15 min before start by the **active video provider** (configured in the admin, §12; Daily.co is the only driver built in v1). "Join" buttons become active 10 min before start for both parties.
+2. Both join via the platform: embedded in our lesson page when the provider supports embedding, otherwise as a join link to the provider's app. Join/leave events are recorded as attendance from the provider's webhooks when it offers them; a provider without attendance webhooks falls back to each party pressing "I've joined" on the lesson page (weaker evidence — disputes on such lessons default to admin judgment).
 3. Room closes at scheduled end + 10 min grace.
 4. Lesson status becomes `completed` when the scheduled end passes and both parties joined; otherwise it follows the no-show rules in §4.
 
@@ -103,7 +104,8 @@ Account owner can open a dispute within 48h of a lesson's scheduled end (reason 
 - **Escrow release:** on progress-report submission (or 72h auto-release). Release creates ledger entries: escrow → tutor balance (tutor amount) and escrow → platform (commission).
 - **Tutor balance buckets** (shown separately, never as one "wallet"): **Pending** (held in escrow, lesson not yet reported) · **On hold** (disputed) · **Available** (released, not yet in a payout batch) · **Processing** (in a batch not yet paid) · **Paid to date**.
 - **Payouts:** weekly (Monday) for tutors whose available balance ≥ AED 200. Admin generates a batch → CSV → bank transfer → marks paid with the bank reference. A batch is not "paid" without a reference. No automated payout rails in v1.
-- **Payment gateway:** behind a `PaymentGateway` interface with `charge`, `saveCard` (tokenise), `chargeSavedCard`, `refund`, `verifyWebhook`. First driver: whichever of Stripe (UAE) / Tap / Telr the backend dev confirms supports saved-card charging for our entity. Platform collects; tutors are paid from platform funds. (Legal note: confirm with counsel whether holding funds this way needs any licence — not a lawyer.)
+- **Payment gateway:** behind a `PaymentGateway` interface with `charge`, `saveCard` (tokenise), `chargeSavedCard`, `refund`, `verifyWebhook`. Gateways are **registry entries managed in the admin** (§12): each has its keys (encrypted, entered by the owner, never in the repo), a test/live mode and an active flag; the app resolves the active entry at runtime, and a gateway marked as not supporting saved cards cannot be made active while weekly slots are enabled. Adding a gateway to the registry does not build its driver — each provider still needs its own driver and tests. First driver: Stripe (UAE), pending the backend dev's saved-card and entity-eligibility check (D-02); Tap / Telr / PayPal drivers on request (PayPal for one-off payments only — it does not suit saved-card auto-charge). Platform collects; tutors are paid from platform funds. (Legal note: confirm with counsel whether holding funds this way needs any licence — not a lawyer.)
+- **Receipts** carry the legal entity name, TRN and address from site settings; VAT % from settings.
 
 ---
 
@@ -142,7 +144,7 @@ Pages: **Dashboard** (today's lessons, join buttons, reports due) · **Calendar 
 
 ## 7. Admin (Filament)
 
-Tutor approval queue · Match requests · Lessons (search, force-cancel, force-complete, mark provider failure — all with note + audit) · Weekly slots (pause/end with note) · Disputes (two-dial resolution) · Abuse reports (safeguarding queue, suspend actions) · Payout batches · Settings (commission %, bands, trial discount, cancel window, grace minutes, report due/auto-release hours, recurring lead/horizon/retries, payout threshold/day, VAT %) · Audit log · Read-only access to conversations.
+Tutor approval queue · Match requests · Lessons (search, force-cancel, force-complete, mark provider failure — all with note + audit) · Weekly slots (pause/end with note) · Disputes (two-dial resolution) · Abuse reports (safeguarding queue, suspend actions) · Payout batches · Settings (commission %, bands, trial discount, cancel window, grace minutes, report due/auto-release hours, recurring lead/horizon/retries, payout threshold/day, VAT %) · **Site settings** (site name, logo, favicon, contact details, social links, footer text, head scripts for analytics, legal entity name / TRN / address, currency code and symbol, default timezone, mail sender name / address / reply-to / support address / email footer) · **Feature toggles** (match-request path, reviews, messaging) · **Pages** (terms, privacy, tutor agreement, safeguarding, about, contact — versioned, published from the admin) · **Content blocks** (homepage hero, how it works, FAQ) · **Document types** for tutor onboarding · **Payment gateways** and **Video providers** registries (keys encrypted and masked, test/live, active flag) · **Admin users** (create, disable; audited) · Audit log · Read-only access to conversations.
 
 ---
 
@@ -171,21 +173,22 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 
 - Tutors must hold the UAE private-tutor permit (MoHRE/MoE). Permit number and expiry captured, verified by admin, enforced by the system.
 - Minors have no login; parents own all communication. Contact details masked until first completed lesson. Admin can audit conversations. Report button everywhere a tutor and family interact.
-- Police clearance / good-conduct certificate required for approval.
+- Police clearance / good-conduct certificate required for approval (a required document type in the admin; the requirement is data, the enforcement — no approval while a required document is missing or rejected — is code).
 - Saved cards are tokenised at the gateway; the platform stores only brand, last four, and expiry.
 - UAE PDPL: documents stored in private storage with expiring signed URLs; data-export and account-deletion request handled by admin in v1 (manual).
 - VAT: platform commission is the taxable supply. Receipts show VAT line where applicable (setting: VAT %).
-- Terms of service, privacy policy, tutor agreement (incl. trial discount and cancellation terms), and safeguarding policy pages exist before soft launch (content by Rizwan/counsel).
+- Terms of service, privacy policy, tutor agreement (incl. trial discount and cancellation terms), safeguarding policy, about and contact pages exist as **admin-edited, versioned pages from CP2**, rendered on the public site; the words are entered by Rizwan/counsel before soft launch. Each tutor's agreement acceptance records the page version accepted; publishing a new agreement version does not silently re-bind existing tutors (re-acceptance is a v2 feature; v1 shows admin who accepted which version).
+- Integration credentials (gateway and video-provider keys) are stored encrypted, displayed masked in the admin, never written to logs, and never committed to the repository.
 
 ---
 
 ## 10. Non-functional
 
-- Laravel 12 / PHP 8.4 / PostgreSQL 18 / Redis. Inertia (Vue or React — UI dev's call) + Tailwind. Filament for admin. Pest for tests.
+- Laravel 13 / PHP 8.4 / PostgreSQL 18 / Redis. Inertia 3 + Vue 3 (D-01) + Tailwind 4. Filament 5 for admin. Pest for tests. (Framework major pinned at what the official installer produced on 2026-09-17 — ADR-003; the kit's "Laravel 12" is superseded.)
 - All timestamps stored UTC; displayed in the user's timezone (default Asia/Dubai). Weekly slots store their own timezone and generate occurrences from local time, so a tutor abroad keeps a stable local time.
 - **RTL-ready from CP0:** `dir` attribute on `<html>`, Tailwind logical properties only (`ms-`/`me-`/`ps-`/`pe-`/`start-`/`end-`), no `ml-`/`mr-`/`left-`/`right-`. English only at launch; Arabic is a later translation job, not a layout job.
 - Every lesson state transition and every ledger entry is covered by a feature test. Auto-charge and report submission are idempotent.
-- Video: `VideoRoomProvider` interface; first driver Daily.co. Whiteboard: optional embedded tldraw (CP6 stretch).
+- Video: `VideoRoomProvider` interface with two capability flags per provider — `supports_embed` (room inside our lesson page vs. an external join link) and `supports_attendance_webhooks` (join/leave from the provider vs. manual "I've joined"); providers are registry entries in the admin (§12). First and only v1 driver: Daily.co (embed + webhooks). Zoom (embed + webhooks), Google Meet and Microsoft Teams (link mode) are later drivers, not v1. Whiteboard: optional embedded tldraw (CP6 stretch).
 - Search: PostgreSQL queries with proper indexes. No search engine in v1.
 - Queues: Horizon. Realtime (message badges, join-button state): Reverb.
 - Hosting: single VPS or Forge-managed server is enough for v1. Daily backups of DB and document storage; restore tested before launch.
@@ -197,10 +200,26 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 | # | Decision | Default if undecided | Status (owner rulings, 2026-09-16) |
 |---|---|---|---|
 | D-01 | Inertia + Vue vs React | Vue | **Confirmed: Vue** |
-| D-02 | Payment gateway driver (must support saved-card charging) | Stripe (UAE) if available; else Tap | Open — settle by the CP5 plan; backend dev verifies saved-card charging and that the D-04 entity is eligible |
+| D-02 | Payment gateway driver (must support saved-card charging) | Stripe (UAE) if available; else Tap | Open — the gateway registry (§12) lands in CP5 with Stripe as the first driver; keys are entered in the admin by the owner, never in code; backend dev verifies saved-card charging and that the D-04 entity is eligible |
 | D-03 | Video provider | Daily.co | **Confirmed: Daily.co** |
 | D-04 | Legal entity that holds the licence and collects funds | TBD with counsel | Open — settle by the CP5 plan (gateway account, VAT line, tutor agreement all depend on it) |
-| D-05 | Brand name and domain | `project-elearning` placeholder | Open — settle by CP6 (domain and sender email need warming up before CP8 launch mails) |
+| D-05 | Brand name and domain | `project-elearning` placeholder | Open — the brand name becomes a site setting in CP1 (no code change when decided); the domain and sender address still need settling by CP6 so email warm-up precedes the CP8 launch mails |
 | D-06 | Trial discount % | 50% | **Confirmed: 50%** |
 | D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Decided (owner, 2026-09-17): Herd Pro native, PHP 8.4, PostgreSQL 18, Redis 7, Herd mail catcher — ADR-001/002 |
 | D-08 | GitHub account and plan (branch protection on a private repo needs Pro or Team) | Private repo under Rizwan's account on GitHub Pro; Rizwan creates the empty repo, Claude Code pushes | **Decided differently: public repo `rizwanoor80/eLearning-Platform` on the Free plan** — branch protection works on public repos; the code is world-readable, so the no-secrets rule is absolute |
+
+---
+
+## 12. Configurability principle (v1.2, owner ruling 2026-09-17)
+
+**Data is configured in the admin; behaviour stays in code.** Anything that is a key, a text, a list, a number or a toggle is entered and changed in Filament without a deploy. Anything that is a rule — how money moves, how a lesson changes state, who may see what — is code, tested, and changed only through a checkpoint.
+
+| Configurable in the admin (data) | Fixed in code (behaviour) |
+|---|---|
+| **Integrations registry:** payment gateways and video providers as entries with encrypted keys, test/live mode, active flag and capability flags; notification providers (WhatsApp/SMS) join the same registry when they arrive (roadmap 1). The registry gives the slot; each provider's driver is still code. | The `PaymentGateway` and `VideoRoomProvider` interfaces, every driver, webhook verification, idempotency. |
+| **Content:** legal and static pages (versioned), homepage content blocks, site settings and branding (name, logo, favicon, contact, social, footer, head scripts), mail sender identity and footer. | Page layouts, the email templates themselves (they read brand name, sender and footer from settings; editable templates are a v2 feature). |
+| **Lists:** curricula, subjects, price bands, required onboarding document types. | The enums that drive outcomes: lesson states, dispute reasons and their default settlements, abuse-report reasons, roles, report form fields. |
+| **Numbers:** every value in the `settings` table (commission, trial discount, windows, grace, retries, payout rules, VAT, currency code/symbol, default timezone, legal entity details). | The 60-minute lesson (the slot calculator and hourly pricing are built on it; `duration_minutes` exists so it can open up later), integer-fils money, UTC storage. |
+| **Toggles:** match-request path, reviews, messaging — so pieces can be switched off at soft launch. | The state machine, the ledger, the fifteen invariants in CLAUDE.md. |
+
+Rules that follow from the principle: credentials are encrypted at rest, masked in the admin, never logged, never committed. Policy values are still frozen onto each lesson at creation (§3) — configurability never changes an existing lesson. A registry entry that is inactive or incomplete is not an error at boot: the app runs, and the affected flow shows a clear admin notice instead.
