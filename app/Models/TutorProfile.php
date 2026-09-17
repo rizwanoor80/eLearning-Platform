@@ -47,7 +47,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'headline', 'bio', 'intro_video_url', 'hourly_rate',
+        'user_id', 'headline', 'bio', 'intro_video_url', 'hourly_rate',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
