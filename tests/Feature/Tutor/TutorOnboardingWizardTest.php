@@ -119,7 +119,10 @@ it('uploads a document and advances to the next document type', function () {
     $next->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType.id', $second->id));
 });
 
-it('reaches the complete step once every active document type has an upload', function () {
+it('moves to the bank step once every active document type has an upload', function () {
+    // Sub-cycle 1b adds the bank/subjects/rate/profile/availability/agreement
+    // steps after documents and before 'complete' — see TutorOnboardingBankSubjectsRateTest.php
+    // and TutorOnboardingAvailabilityAgreementTest.php for the rest of the chain.
     DocumentType::query()->delete();
     $only = DocumentType::factory()->create(['sort' => 0]);
 
@@ -134,7 +137,7 @@ it('reaches the complete step once every active document type has an upload', fu
 
     $response = $this->actingAs($tutor)->get(route('tutor.onboarding'));
 
-    $response->assertInertia(fn ($page) => $page->where('step', 'complete'));
+    $response->assertInertia(fn ($page) => $page->where('step', 'bank'));
 });
 
 it('lets a soft-deleted document be replaced without a unique-constraint collision', function () {
