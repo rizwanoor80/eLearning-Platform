@@ -33,7 +33,10 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Never the framework's own signed route: it only checks the
+            // signature, not which tutor is asking. Ownership-checked access
+            // goes through TutorDocumentController::show() instead.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

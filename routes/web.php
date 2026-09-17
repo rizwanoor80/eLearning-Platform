@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
+use App\Http\Controllers\Tutor\TutorDocumentController;
+use App\Http\Controllers\Tutor\TutorOnboardingController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -18,7 +20,14 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function () {
-    Route::inertia('tutor/onboarding', 'TutorOnboarding')->name('tutor.onboarding');
+    Route::get('tutor/onboarding', [TutorOnboardingController::class, 'show'])->name('tutor.onboarding');
+    Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');
+    Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->name('tutor.onboarding.permit');
+    Route::post('tutor/onboarding/documents', [TutorOnboardingController::class, 'storeDocument'])->name('tutor.onboarding.documents');
+
+    Route::get('tutor/documents/{document}', [TutorDocumentController::class, 'show'])
+        ->middleware('signed')
+        ->name('tutor.documents.show');
 });
 
 require __DIR__.'/settings.php';
