@@ -25,7 +25,7 @@ defineProps<Props>();
 
 <template>
     <DropdownMenuLabel class="p-0 font-normal">
-        <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+        <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
             <UserInfo :user="user" :show-email="true" />
         </div>
     </DropdownMenuLabel>
@@ -33,7 +33,7 @@ defineProps<Props>();
     <DropdownMenuGroup>
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
-                <Settings class="mr-2 h-4 w-4" />
+                <Settings class="me-2 h-4 w-4" />
                 Settings
             </Link>
         </DropdownMenuItem>
@@ -47,7 +47,7 @@ defineProps<Props>();
             as="button"
             data-test="logout-button"
         >
-            <LogOut class="mr-2 h-4 w-4" />
+            <LogOut class="me-2 h-4 w-4" />
             Log out
         </Link>
     </DropdownMenuItem>

@@ -55,7 +55,7 @@ import { register } from '@/routes';
                     </p>
                     <ul class="mb-4 flex flex-col lg:mb-6">
                         <li
-                            class="relative flex items-center gap-4 py-2 before:absolute before:top-1/2 before:bottom-0 before:left-[0.4rem] before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A]"
+                            class="relative flex items-center gap-4 py-2 before:absolute before:top-1/2 before:bottom-0 before:start-[0.4rem] before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A]"
                         >
                             <span
                                 class="relative bg-white py-1 dark:bg-[#161615]"
@@ -73,7 +73,7 @@ import { register } from '@/routes';
                                 <a
                                     href="https://laravel.com/docs"
                                     target="_blank"
-                                    class="ml-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
+                                    class="ms-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
                                 >
                                     <span>Documentation</span>
                                     <svg
@@ -94,7 +94,7 @@ import { register } from '@/routes';
                             </span>
                         </li>
                         <li
-                            class="relative flex items-center gap-4 py-2 before:absolute before:top-0 before:bottom-1/2 before:left-[0.4rem] before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A]"
+                            class="relative flex items-center gap-4 py-2 before:absolute before:top-0 before:bottom-1/2 before:start-[0.4rem] before:border-l before:border-[#e3e3e0] dark:before:border-[#3E3E3A]"
                         >
                             <span
                                 class="relative bg-white py-1 dark:bg-[#161615]"
@@ -112,7 +112,7 @@ import { register } from '@/routes';
                                 <a
                                     href="https://laracasts.com"
                                     target="_blank"
-                                    class="ml-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
+                                    class="ms-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
                                 >
                                     <span>Laracasts</span>
                                     <svg
@@ -146,7 +146,7 @@ import { register } from '@/routes';
                     </ul>
                 </div>
                 <div
-                    class="relative -mb-px aspect-[335/364] w-full shrink-0 overflow-hidden rounded-t-lg bg-[#fff2f2] lg:mb-0 lg:-ml-px lg:aspect-auto lg:w-[438px] lg:rounded-t-none lg:rounded-r-lg dark:bg-[#1D0002]"
+                    class="relative -mb-px aspect-[335/364] w-full shrink-0 overflow-hidden rounded-t-lg bg-[#fff2f2] lg:mb-0 lg:-ms-px lg:aspect-auto lg:w-[438px] lg:rounded-t-none lg:rounded-r-lg dark:bg-[#1D0002]"
                 >
                     <!-- Laravel Logo -->
                     <svg
@@ -187,7 +187,7 @@ import { register } from '@/routes';
 
                     <!-- 13 -->
                     <svg
-                        class="relative -mt-[6.6rem] -ml-8 w-[438px] max-w-none [--stroke-color:#1B1B18] lg:ml-0 dark:[--stroke-color:#FF750F]"
+                        class="relative -mt-[6.6rem] -ms-8 w-[438px] max-w-none [--stroke-color:#1B1B18] lg:ms-0 dark:[--stroke-color:#FF750F]"
                         viewBox="0 0 440 392"
                         fill="none"
                         xmlns="http://www.w3.org/2000/svg"
