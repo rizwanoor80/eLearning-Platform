@@ -24,6 +24,13 @@ Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function
     Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');
     Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->name('tutor.onboarding.permit');
     Route::post('tutor/onboarding/documents', [TutorOnboardingController::class, 'storeDocument'])->name('tutor.onboarding.documents');
+    Route::post('tutor/onboarding/bank', [TutorOnboardingController::class, 'storeBank'])->name('tutor.onboarding.bank');
+    Route::post('tutor/onboarding/subjects', [TutorOnboardingController::class, 'storeSubjects'])->name('tutor.onboarding.subjects');
+    Route::post('tutor/onboarding/rate', [TutorOnboardingController::class, 'storeRate'])->name('tutor.onboarding.rate');
+    Route::post('tutor/onboarding/profile', [TutorOnboardingController::class, 'storeProfile'])->name('tutor.onboarding.profile');
+    Route::post('tutor/onboarding/availability', [TutorOnboardingController::class, 'storeAvailability'])->name('tutor.onboarding.availability');
+    Route::post('tutor/onboarding/agreement', [TutorOnboardingController::class, 'storeAgreement'])->name('tutor.onboarding.agreement');
+    Route::post('tutor/onboarding/complete', [TutorOnboardingController::class, 'complete'])->name('tutor.onboarding.complete');
 
     Route::get('tutor/documents/{document}', [TutorDocumentController::class, 'show'])
         ->middleware('signed')

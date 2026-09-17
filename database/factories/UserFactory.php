@@ -29,6 +29,7 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'phone' => fake()->e164PhoneNumber(),
+            'timezone' => 'Asia/Dubai',
             'role' => Role::AccountOwner,
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
