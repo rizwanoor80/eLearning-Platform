@@ -12,6 +12,7 @@ Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `
 
 ## Local environment
 Native Windows via Laravel Herd Pro — no Docker, no Sail, no WSL (D-07 / ADR-001; Docker Desktop crash-loops here, see docker/desktop-feedback #460). PHP 8.4 everywhere (local, CI, servers) — no 8.3 fallback. Composer/Node from Herd; PostgreSQL 18 and Redis on localhost, plus a Herd mail catcher. Horizon is installed but never run locally (`php artisan queue:work redis` in dev); Reverb likewise may be deferred to CP7 if it cannot boot on Windows. Local service details live only in `CLAUDE.local.md` under `## Local services` and in `.env` — both git-ignored; never quote a password, connection string or password-bearing URL in any log entry, STATUS.md, commit, report or PR.
+Herd and its services (PostgreSQL, Redis, mail) are started and stopped only by the owner in the Herd app. Never launch, restart or "clean-relaunch" Herd or a service from this shell; if a service is down, halt with an Owner action.
 
 ## Commands
 - `composer test` → full Pest suite. Must be green before any checkpoint closes.
