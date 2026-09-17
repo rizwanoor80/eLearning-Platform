@@ -1,7 +1,8 @@
-# CHECKPOINTS — v1.1 build plan
+# CHECKPOINTS — v1.2 build plan
 
 _Each checkpoint = one or more plan cycles, one branch, one PR, fresh-subagent review, full test suite green, STATUS.md rewritten. Acceptance criteria are written as tests where possible. The planner cuts PLAN.md revisions from this file; Claude Code executes only what the current plan authorises._
 _Backend dev reviews CP3, CP4, CP5. UI dev reviews every CP's front-end. CP0–CP6 is the launchable MVP._
+_v1.2 (owner ruling 2026-09-17, PRD §12): configurability items added to CP1 (site settings, document types, bank details, admin users), CP2 (pages, content blocks, feature toggles), CP5 (payment-gateway registry), CP6 (video-provider registry with capability flags); CP8's legal-page task becomes content entry. CP0 is unchanged and was already in progress when v1.2 was approved._
 
 ---
 
@@ -9,7 +10,7 @@ _Backend dev reviews CP3, CP4, CP5. UI dev reviews every CP's front-end. CP0–C
 **Goal:** empty but runnable app with roles, CI, and the skeleton every later CP hangs on.
 
 Tasks
-- Laravel 12 on Laravel Herd Pro (native Windows, PHP 8.4, per D-07 / ADR-001/002): PostgreSQL 18, Redis, Horizon (installed, not run locally — `queue:work` in dev), Reverb, Inertia + Vue, Tailwind, Filament, Pest.
+- Laravel 13 (ADR-003) on Laravel Herd Pro (native Windows, PHP 8.4, per D-07 / ADR-001/002): PostgreSQL 18, Redis, Horizon (installed, not run locally — `queue:work` in dev), Reverb, Inertia 3 + Vue 3, Tailwind 4, Filament 5, Pest.
 - `users` with `role` enum; registration + login + email verification for `account_owner` and `tutor` (separate entry points `/register` and `/tutor/register`). Admin created by seeder only.
 - `role` column + Policies. No permission package.
 - `Money` value object (integer fils) with tests.
@@ -32,18 +33,25 @@ Acceptance
 **Goal:** a tutor can complete onboarding; admin can approve; only approved tutors with valid permits are "bookable".
 
 Tasks
-- Onboarding wizard (multi-step, resumable): personal → permit → documents (private disk, signed URLs) → subjects (curriculum × subject × level range, derives `level_tier`) → rate (band-validated against highest tier; shows the derived trial price) → bio/headline/video → availability (weekly template + exceptions) → tutor agreement acceptance.
-- `TutorProfile` statuses + `bookable()` scope.
+- `document_types` table + seeder (permit scan, ID/passport, qualifications, police clearance) + Filament CRUD (name, description, required, active, sort). `tutor_documents.type` → `document_type_id`.
+- Onboarding wizard (multi-step, resumable): personal → permit number/expiry → one upload step per active document type (private disk, signed URLs) → bank details (bank name, account name, IBAN, optional SWIFT — `encrypted` casts, masked display) → subjects (curriculum × subject × level range, derives `level_tier`) → rate (band-validated against highest tier; shows the derived trial price) → bio/headline/video → availability (weekly template + exceptions) → tutor agreement acceptance (records `agreement_version` from the published `tutor_agreement` page; until CP2 ships pages, a seeded placeholder page version 1 stands in).
+- `TutorProfile` statuses + `bookable()` scope. Approval blocked while any required document type lacks an `accepted` document.
 - Filament: approval queue with document viewer, accept/reject per document, "request changes" note, approve/reject/suspend actions. Audit log entries.
+- Site settings: `settings.group` column; Filament settings editor with tabs platform / site / mail / features (keys per DATA_MODEL.md); logo and favicon uploads; `head_scripts` admin-only. Layout, page titles and email sender/footer read from settings.
+- Admin users: Filament resource to create and disable `admin` users (no self-registration route), audited; the seeded admin remains.
 - Scheduled job: permit expiry warnings (30d, 7d) and auto-hide on expiry.
-- Emails: submitted for review, changes requested, approved, rejected, permit expiring/expired.
+- Emails: submitted for review, changes requested, approved, rejected, permit expiring/expired — sender name/address and footer from settings.
 
 Acceptance
 - [ ] Rate outside band is rejected on save with a clear message showing the band.
 - [ ] Tutor with `approved` status and expired permit is NOT returned by `bookable()`.
 - [ ] Document URLs are signed and expire; direct path access returns 403.
 - [ ] Admin approve action sets `approved_by/approved_at` and writes an audit log row.
-- [ ] Onboarding cannot complete without `agreement_accepted_at`.
+- [ ] Onboarding cannot complete without `agreement_accepted_at`, and `agreement_version` equals the page version published at acceptance.
+- [ ] Adding a required document type in Filament adds a wizard step and blocks approval until it is accepted; setting it inactive removes both — no code change.
+- [ ] `bank_iban` raw column value is not the plaintext; the tutor sees only the last four; the admin payout view sees the full value.
+- [ ] Changing `site_name` in settings changes the layout title and the next email's sender name without a deploy.
+- [ ] A non-admin cannot reach the admin-users resource; creating an admin writes an audit row.
 
 ---
 
@@ -55,12 +63,18 @@ Tasks
 - `SlotCalculator` service: given tutor rules + exceptions + existing lessons + active recurring slots + settings, returns bookable hourly slots for the next N days in a requested timezone. Unit-tested heavily.
 - Search page: filters (curriculum, subject, year group, price range, day/time, min rating), sort (rating, price). Postgres query with indexes. Only `bookable()` tutors with ≥1 slot in the next 14 days.
 - Tutor public profile page with rate, trial price, next available slots.
-- Match request form → Filament queue → admin picks 1–3 tutors → email with suggestions.
+- Match request form → Filament queue → admin picks 1–3 tutors → email with suggestions. Hidden everywhere when `features.match_requests` is off.
+- `pages` + `page_versions`: Filament editor with markdown body, preview, "Publish" (new version row, bumps `pages.version`); public routes `/terms`, `/privacy`, `/tutor-agreement`, `/safeguarding`, `/about`, `/contact` rendered from the current version; footer links from the same list. Seeded with placeholder text marked "DRAFT — replace before launch".
+- `content_blocks`: Filament editor; homepage renders hero, how-it-works and FAQ from blocks; seeded placeholders.
+- Feature toggles enforced: `reviews` and `messaging` gate their routes and UI (the features themselves arrive in CP7; the gates exist now so CP7 lands behind them).
 
 Acceptance
 - [ ] Search never returns a non-bookable tutor (test with suspended / expired-permit / no-availability fixtures).
 - [ ] `SlotCalculator` excludes blocked exceptions, includes extra exceptions, excludes booked lessons, excludes an active recurring slot's weekday/time even 10 weeks out, respects `booking_min_lead_hours` and `booking_max_days`.
-- [ ] Match request status flows open → suggested; email contains only bookable tutors.
+- [ ] Match request status flows open → suggested; email contains only bookable tutors; with `features.match_requests=false` the form route returns 404 and the entry points are absent.
+- [ ] Publishing a page writes a `page_versions` row and increments `pages.version`; the public route shows the new body immediately; the previous version remains readable in admin.
+- [ ] A tutor who accepted agreement version 1 keeps `agreement_version = 1` after version 2 is published.
+- [ ] Editing `home_hero_title` in admin changes the homepage without a deploy.
 
 ---
 
@@ -109,7 +123,8 @@ Acceptance
 
 Tasks
 - `LedgerService` with `hold / release / refund / settle / payout`, append-only, zero-sum assertion, `goodwill` entries allowed to push `platform` negative per lesson.
-- Real `PaymentGateway` driver (per D-02): checkout, `saveCard`, `chargeSavedCard` with idempotency key = lesson id, webhook capture, refund. Idempotent webhook handling.
+- `payment_gateways` registry: Filament resource (code, name, mode test/live, credentials as encrypted json entered field-by-field and shown masked, `supports_saved_cards`, `is_active` with the one-active partial index); `PaymentGateway` resolved from the active row via a manager class; `fake` row for local/CI that refuses to activate in production; a gateway without saved-card support cannot be activated while an active weekly slot exists; switching to `live` mode is a named authorisation.
+- Real `PaymentGateway` driver — Stripe first (per D-02): checkout, `saveCard`, `chargeSavedCard` with idempotency key = lesson id, webhook capture, refund. Idempotent webhook handling. Keys entered by the owner in the admin (Owner action), never in the repo. Other drivers (Tap, Telr, PayPal one-off) are separate cycles on request.
 - `payment_methods`: add/replace card page in parent portal; expired-card detection.
 - `recurring:charge` hourly job with retry schedule from settings, failure emails, slot pause after threshold, counter reset on success.
 - `ledger:verify` artisan command + nightly schedule + alert email on failure.
@@ -124,6 +139,8 @@ Acceptance
 - [ ] Payout batch only includes tutors above `payout_min`; cannot be marked paid without a bank reference; marking paid writes `payout` entries; buckets move available → processing → paid correctly.
 - [ ] `settle()` with 60% refund / 100% tutor pay yields a negative `platform` entry and the lesson still sums to zero.
 - [ ] Commission setting change does not alter any existing lesson's `commission_amount`.
+- [ ] Activating a different gateway row changes which driver the container resolves; credentials never appear in logs, the Filament form shows them masked, and `fake` cannot be activated when `APP_ENV=production`.
+- [ ] With no active gateway, booking shows an admin-notice page and creates no `payments` row.
 
 ---
 
@@ -131,8 +148,9 @@ Acceptance
 **Goal:** the lesson happens on the platform, the parent gets a report, and a good trial turns into a weekly slot.
 
 Tasks
-- `VideoRoomProvider` interface + Daily driver: create room at T−15 (scheduled job), per-party join tokens, webhook for join/leave → `tutor_joined_at / learner_joined_at`, close at end + 10 min.
-- Lesson page for both parties with embedded room; join buttons active T−10.
+- `video_providers` registry: Filament resource (code, name, encrypted credentials shown masked, `supports_embed`, `supports_attendance_webhooks`, `is_active` one-active index); `VideoRoomProvider` resolved from the active row; `fake` row for local/CI.
+- `VideoRoomProvider` interface + Daily driver (embed + webhooks): create room at T−15 (scheduled job), per-party join tokens, webhook for join/leave → `tutor_joined_at / learner_joined_at`, close at end + 10 min. `lessons.room_provider` records the provider per lesson.
+- Lesson page for both parties: embedded room when the active provider `supports_embed`, otherwise a join link; when the provider lacks attendance webhooks, "I've joined" buttons set the joined-at timestamps manually. Join buttons active T−10.
 - `in_progress → completed` sweep job; no-show marking actions per PRD §4; admin `provider_failure` action.
 - Progress report form (5 fields; +3 trial fields when `type = trial`) → `SubmitProgressReport` action → email to parent → `LedgerService::release`. 72h auto-release job with late flag.
 - Trial report email and portal view carry the "Set up a weekly slot" CTA pre-filled with the tutor, subject, and recommended frequency.
@@ -145,6 +163,7 @@ Acceptance
 - [ ] Trial report without the three trial fields is rejected; regular report with them is rejected.
 - [ ] Submitting a report releases escrow exactly once; second submit is rejected; auto-release after 72h sets the late flag.
 - [ ] Parent receives the report email within one queue cycle; the trial email contains a working weekly-slot link.
+- [ ] With a link-mode provider fixture (`supports_embed=false`, `supports_attendance_webhooks=false`) the lesson page shows a join link and manual "I've joined" sets the timestamps; with Daily the timestamps come only from the webhook.
 
 ---
 
@@ -173,7 +192,7 @@ Acceptance
 Tasks
 - Disputes: open within 48h, pauses release (lesson → `disputed`, tutor bucket "on hold"), Filament resolution with two dials (parent refund %, tutor pay %), defaults per PRD §2.10, → `LedgerService::settle` + gateway refund.
 - Filament: lessons index with force-cancel / force-complete / provider-failure (note + audit), tutor detail with strikes/flags/late reports, dashboard widgets (lessons this week, revenue, reports overdue, permits expiring, failed charges, open reports).
-- Legal pages: terms, privacy, tutor agreement, safeguarding (content from Rizwan).
+- Legal page content: Rizwan/counsel enter the final terms, privacy, tutor agreement, safeguarding, about and contact text in the CP2 pages editor and publish (no code; the "DRAFT" placeholders must be gone before the checklist is signed).
 - Production hardening: rate limiting, backups verified restore, error tracking, uptime check, `.env` review, seed data removed, webhook signature verification confirmed on both providers.
 - Launch checklist run with 5 real tutors and 3 friendly families, including one full trial → weekly slot → auto-charge → report → payout loop.
 
@@ -182,6 +201,7 @@ Acceptance
 - [ ] Force-complete by admin writes an audit row and follows the normal release path.
 - [ ] Restore from last night's backup on a scratch server succeeds.
 - [ ] End-to-end: parent registers → adds child → books trial → trial completes → trial report → weekly slot → auto-charge → lesson → report → payout batch → tutor sees "paid to date". Green as a single feature test.
+- [ ] No page body still contains "DRAFT"; the active payment gateway is in `live` mode under a named authorisation; the active video provider has real credentials.
 - [ ] Soft-launch checklist signed off by Rizwan.
 
 ---

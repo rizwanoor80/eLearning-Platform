@@ -24,6 +24,13 @@ School curriculum: GCSE/IGCSE, A-Level, IB (MYP/DP), CBSE. Single currency (AED)
 single default timezone (Asia/Dubai). Supply first: 30–50 hand-vetted tutors before any
 student acquisition spend.
 
+## Configurability principle (owner ruling 2026-09-17, PRD §12)
+Data is configured in the admin; behaviour stays in code. Keys, texts, lists, numbers and
+toggles — payment gateways, video providers, legal pages, homepage copy, branding, document
+types, settings — are entered in Filament without a deploy. Rules — the state machine, the
+ledger, who sees what — are code, tested, changed only through a checkpoint. A registry
+entry gives a provider its slot; each provider's driver is still built and tested as code.
+
 ## Explicit non-goals for v1 (do not build, do not scaffold "for later")
 - Courses, self-paced content, recorded lesson libraries
 - Group classes, cohorts, webinars
