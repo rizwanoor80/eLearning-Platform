@@ -115,4 +115,28 @@ class TutorProfile extends Model
     {
         return $this->hasMany(TutorDocument::class);
     }
+
+    /**
+     * @return HasMany<TutorSubject, $this>
+     */
+    public function tutorSubjects(): HasMany
+    {
+        return $this->hasMany(TutorSubject::class);
+    }
+
+    /**
+     * @return HasMany<AvailabilityRule, $this>
+     */
+    public function availabilityRules(): HasMany
+    {
+        return $this->hasMany(AvailabilityRule::class);
+    }
+
+    /**
+     * @return HasMany<AvailabilityException, $this>
+     */
+    public function availabilityExceptions(): HasMany
+    {
+        return $this->hasMany(AvailabilityException::class);
+    }
 }

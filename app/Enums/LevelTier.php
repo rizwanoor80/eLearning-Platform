@@ -21,4 +21,17 @@ enum LevelTier: string
             self::Exam2 => [13000, 26000],
         };
     }
+
+    /**
+     * Ordering from youngest to oldest students, used to pick the "highest
+     * tier" a tutor teaches when validating their rate against a price band.
+     */
+    public function rank(): int
+    {
+        return match ($this) {
+            self::LowerSecondary => 0,
+            self::Exam1 => 1,
+            self::Exam2 => 2,
+        };
+    }
 }

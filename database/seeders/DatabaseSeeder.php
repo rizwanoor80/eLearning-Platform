@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             PriceBandSeeder::class,
             SettingsSeeder::class,
             DocumentTypeSeeder::class,
+            PageSeeder::class,
             AdminUserSeeder::class,
         ]);
     }
