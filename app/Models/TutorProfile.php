@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Support\Money;
 use Database\Factories\TutorProfileFactory;
@@ -138,5 +139,26 @@ class TutorProfile extends Model
     public function availabilityExceptions(): HasMany
     {
         return $this->hasMany(AvailabilityException::class);
+    }
+
+    /**
+     * CP1 box 6/acceptance: approval is blocked while any active, required
+     * document type lacks an `accepted` current document. Never
+     * re-implement this condition elsewhere — the approval action and the
+     * Filament approval queue's UI both read it from here.
+     */
+    public function hasAllRequiredDocumentsAccepted(): bool
+    {
+        $requiredTypeIds = DocumentType::query()->active()->where('required', true)->pluck('id');
+
+        if ($requiredTypeIds->isEmpty()) {
+            return true;
+        }
+
+        $acceptedTypeIds = $this->tutorDocuments()
+            ->where('status', TutorDocumentStatus::Accepted)
+            ->pluck('document_type_id');
+
+        return $requiredTypeIds->diff($acceptedTypeIds)->isEmpty();
     }
 }

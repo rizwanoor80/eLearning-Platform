@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Actions\Tutor;
+
+use App\Actions\RecordAuditLog;
+use App\Enums\TutorProfileStatus;
+use App\Models\TutorProfile;
+use App\Models\User;
+
+class SuspendTutor
+{
+    public function __construct(private RecordAuditLog $recordAuditLog) {}
+
+    /**
+     * Suspends a previously approved tutor — `bookable()` (invariant #5)
+     * already excludes any non-`approved` status, so suspending removes the
+     * tutor from search/booking with no separate flag to maintain. No email
+     * is sent (not one of CP1's named triggers); suspension is expected to
+     * carry a note explaining why, shown to the tutor on next login.
+     */
+    public function __invoke(User $admin, TutorProfile $profile, string $note): void
+    {
+        $before = ['status' => $profile->status->value];
+
+        $profile->forceFill([
+            'status' => TutorProfileStatus::Suspended,
+            'review_note' => $note,
+        ])->save();
+
+        ($this->recordAuditLog)($admin, 'tutor.suspended', $profile, $before, [
+            'status' => TutorProfileStatus::Suspended->value,
+            'review_note' => $note,
+        ]);
+    }
+}
