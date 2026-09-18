@@ -154,6 +154,30 @@ it('shows submitted once the profile has left draft status', function () {
     $response->assertInertia(fn ($page) => $page->where('step', 'submitted'));
 });
 
+it('refuses completion when an admin narrows the price band after the rate step but before completion', function () {
+    // R27 defence in depth: nothing in the normal flow re-touches the
+    // subjects between the rate and agreement steps here, so this
+    // exercises complete()'s own re-check directly rather than the
+    // subjects-change path already covered in the rate test file.
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+
+    $curriculum = Curriculum::query()->where('code', CurriculumCode::Gcse)->firstOrFail();
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculum->id,
+        'level_tier' => LevelTier::Exam1,
+        'min_rate' => 16000,
+        'max_rate' => 20000,
+        'effective_from' => now()->toDateString(),
+    ]);
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $response->assertStatus(409);
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->status)->toBe(TutorProfileStatus::Draft);
+});
+
 it('refuses every step handler once the profile has been submitted for review', function () {
     $tutor = agreementReadyTutor();
     test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);

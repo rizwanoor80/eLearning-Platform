@@ -266,3 +266,88 @@ it('rejects every rate when two curricula have non-overlapping bands, naming bot
         ->toContain($curriculumB->name);
     expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate)->toBeNull();
 });
+
+/**
+ * R27: hourly_rate must never survive a subjects change that moves it
+ * out of band — invalidateRateIfOutOfBand() clears it so the wizard sends
+ * the tutor back through the rate step instead of letting a stale value
+ * reach completion.
+ */
+it('clears a stale rate when a later subjects change no longer fits its band', function () {
+    [$tutor, $curriculum, $subject] = subjectsReadyTutor();
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculum->id, 'level_tier' => LevelTier::Exam1,
+        'min_rate' => 10000, 'max_rate' => 100000, 'effective_from' => now()->subYear()->toDateString(),
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [[
+            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
+            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
+        ]],
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '900.00']);
+    expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate->toFils())->toBe(90000);
+
+    $narrowCurriculum = Curriculum::factory()->create(['code' => CurriculumCode::IbMyp]);
+    $narrowSubject = Subject::factory()->create();
+    PriceBand::factory()->create([
+        'curriculum_id' => $narrowCurriculum->id, 'level_tier' => LevelTier::Exam1,
+        'min_rate' => 10000, 'max_rate' => 20000, 'effective_from' => now()->subYear()->toDateString(),
+    ]);
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [[
+            'curriculum_id' => $narrowCurriculum->id, 'subject_id' => $narrowSubject->id,
+            'level_min' => 'MYP4', 'level_max' => 'MYP5', 'level_tier' => 'exam_1',
+        ]],
+    ]);
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->hourly_rate)->toBeNull();
+
+    $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
+    $response->assertInertia(fn ($page) => $page->where('step', 'rate'));
+});
+
+it('keeps the rate when a later subjects change still fits its band', function () {
+    [$tutor, $curriculum, $subject] = subjectsReadyTutor();
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculum->id, 'level_tier' => LevelTier::Exam1,
+        'min_rate' => 10000, 'max_rate' => 20000, 'effective_from' => now()->subYear()->toDateString(),
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [[
+            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
+            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
+        ]],
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
+
+    $secondSubject = Subject::factory()->create();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [
+            ['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
+            ['curriculum_id' => $curriculum->id, 'subject_id' => $secondSubject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
+        ],
+    ]);
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->hourly_rate->toFils())->toBe(15000);
+});
+
+it('names a curriculum with no current price band as a conflict, rather than silently dropping it', function () {
+    [$tutor, $curriculum, $subject] = subjectsReadyTutor();
+    // Deliberately no PriceBand row for this curriculum/tier at all.
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [[
+            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
+            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
+        ]],
+    ]);
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
+
+    $response->assertSessionHasErrors('hourly_rate');
+    expect(session('errors')->first('hourly_rate'))->toContain($curriculum->name);
+    expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate)->toBeNull();
+});

@@ -212,6 +212,8 @@ class TutorOnboardingController extends Controller
             }
         });
 
+        $this->invalidateRateIfOutOfBand($profile);
+
         return redirect()->route('tutor.onboarding');
     }
 
@@ -335,6 +337,20 @@ class TutorOnboardingController extends Controller
 
         abort_unless($this->currentStep($user, $profile)['name'] === 'complete', 409);
 
+        // Defence in depth (R27): completion re-checks the stored rate
+        // against the *current* band rather than trusting that it was
+        // still valid when saved — invalidateRateIfOutOfBand() already
+        // clears a stale rate on every subjects change, so this should
+        // never actually fire, but a 409 here is cheap insurance against
+        // any other path that could leave hourly_rate stale.
+        $band = $this->rateBandFor($profile);
+        $rateFils = $profile->hourly_rate?->toFils();
+        abort_if(
+            $band === null || $band['conflicting'] !== [] || $rateFils === null
+                || $rateFils < $band['min'] || $rateFils > $band['max'],
+            409,
+        );
+
         $action($profile);
 
         return redirect()->route('tutor.onboarding');
@@ -440,12 +456,14 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * The current `price_bands` row (latest `effective_from` not in the
-     * future) per curriculum the tutor teaches at their highest level tier
-     * — never hard-coded, so an admin edit to the bands takes effect
-     * immediately. Empty until the tutor has at least one subject.
+     * Each curriculum the tutor teaches at their highest level tier, mapped
+     * to its current `price_bands` row (latest `effective_from` not in the
+     * future) or `null` if that curriculum has none — never hard-coded, so
+     * an admin edit to the bands takes effect immediately, and a missing
+     * band is surfaced rather than silently skipped (R27). Empty until the
+     * tutor has at least one subject.
      *
-     * @return Collection<int, PriceBand>
+     * @return Collection<int, array{curriculum: Curriculum, band: PriceBand|null}>
      */
     private function currentBandsFor(TutorProfile $profile): Collection
     {
@@ -461,49 +479,79 @@ class TutorOnboardingController extends Controller
 
         $curriculumIds = $tutorSubjects->where('level_tier', $highestTier)->pluck('curriculum_id')->unique();
 
-        /** @var Collection<int, PriceBand> $bands */
-        $bands = $curriculumIds
-            ->map(fn (int $curriculumId) => PriceBand::query()
-                ->with('curriculum')
-                ->where('curriculum_id', $curriculumId)
-                ->where('level_tier', $highestTier)
-                ->where('effective_from', '<=', now()->toDateString())
-                ->orderByDesc('effective_from')
-                ->first())
-            ->filter()
+        /** @var Collection<int, array{curriculum: Curriculum, band: PriceBand|null}> $entries */
+        $entries = Curriculum::query()->whereIn('id', $curriculumIds)->get()
+            ->map(fn (Curriculum $curriculum) => [
+                'curriculum' => $curriculum,
+                'band' => PriceBand::query()
+                    ->where('curriculum_id', $curriculum->id)
+                    ->where('level_tier', $highestTier)
+                    ->where('effective_from', '<=', now()->toDateString())
+                    ->orderByDesc('effective_from')
+                    ->first(),
+            ])
             ->values();
 
-        return $bands;
+        return $entries;
     }
 
     /**
-     * R26: a tutor's single `hourly_rate` must satisfy every curriculum they
-     * teach at their highest tier — the intersection of each curriculum's
-     * band, never the union (a union would accept a rate outside one
-     * curriculum's real band). `conflicting` lists the curricula by name
-     * when their bands don't overlap at all (`min` ends up above `max`), so
-     * nothing is silently picked. Null until the tutor has at least one
-     * subject or none of their curricula has a current band.
+     * R26/R27: a tutor's single `hourly_rate` must satisfy every curriculum
+     * they teach at their highest tier — the intersection of each
+     * curriculum's band, never the union (a union would accept a rate
+     * outside one curriculum's real band). `conflicting` lists curricula by
+     * name, never silently picking one, when: their bands don't overlap at
+     * all (`min` ends up above `max`), or a curriculum has no current band
+     * at all (R27 — previously silently dropped from the calculation).
+     * Null only when the tutor has no subjects yet.
      *
      * @return array{min: int, max: int, conflicting: array<int, string>}|null
      */
     private function rateBandFor(TutorProfile $profile): ?array
     {
-        $bands = $this->currentBandsFor($profile);
+        $entries = $this->currentBandsFor($profile);
 
-        if ($bands->isEmpty()) {
+        if ($entries->isEmpty()) {
             return null;
         }
 
-        $min = $bands->max(fn (PriceBand $band) => $band->min_rate->toFils());
-        $max = $bands->min(fn (PriceBand $band) => $band->max_rate->toFils());
+        $missing = $entries->filter(fn (array $entry) => $entry['band'] === null)
+            ->map(fn (array $entry) => $entry['curriculum']->name);
+
+        if ($missing->isNotEmpty()) {
+            return ['min' => 0, 'max' => 0, 'conflicting' => $missing->values()->all()];
+        }
+
+        $min = $entries->max(fn (array $entry) => $entry['band']->min_rate->toFils());
+        $max = $entries->min(fn (array $entry) => $entry['band']->max_rate->toFils());
 
         return [
             'min' => $min,
             'max' => $max,
             'conflicting' => $min > $max
-                ? $bands->map(fn (PriceBand $band) => $band->curriculum->name)->all()
+                ? $entries->map(fn (array $entry) => $entry['curriculum']->name)->all()
                 : [],
         ];
+    }
+
+    /**
+     * R27: a subjects change can move the tutor's highest tier or
+     * curriculum set, so a previously valid `hourly_rate` may no longer
+     * fit. Rather than leaving a stale rate in place — which let a tutor
+     * reach `complete` with a rate outside their real band — clear it so
+     * `currentStep()` sends them back through `rate` with the correct band.
+     */
+    private function invalidateRateIfOutOfBand(TutorProfile $profile): void
+    {
+        if ($profile->hourly_rate === null) {
+            return;
+        }
+
+        $band = $this->rateBandFor($profile);
+        $rateFils = $profile->hourly_rate->toFils();
+
+        if ($band === null || $band['conflicting'] !== [] || $rateFils < $band['min'] || $rateFils > $band['max']) {
+            $profile->update(['hourly_rate' => null]);
+        }
     }
 }
