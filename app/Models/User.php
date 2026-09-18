@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Role;
+use App\Enums\UserStatus;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -21,6 +22,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 /**
  * @property int $id
  * @property Role $role
+ * @property UserStatus $status
+ * @property string|null $suspended_reason
  * @property string $name
  * @property string $email
  * @property string|null $phone
@@ -50,15 +53,20 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail, Pas
     {
         return [
             'role' => Role::class,
+            'status' => UserStatus::class,
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
+    /**
+     * Admin panel access requires the admin role AND an active account — a
+     * disabled admin (CP1 admin-users) genuinely loses access, not just a flag.
+     */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->role === Role::Admin;
+        return $this->role === Role::Admin && $this->status === UserStatus::Active;
     }
 
     /**
