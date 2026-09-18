@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Learner\SyncSelfLearnerName;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
@@ -28,7 +29,7 @@ class ProfileController extends Controller
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(ProfileUpdateRequest $request, SyncSelfLearnerName $sync): RedirectResponse
     {
         $request->user()->fill($request->validated());
 
@@ -37,6 +38,9 @@ class ProfileController extends Controller
         }
 
         $request->user()->save();
+
+        // An adult student's learner row carries the account name.
+        $sync($request->user());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 

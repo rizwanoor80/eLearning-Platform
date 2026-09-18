@@ -89,10 +89,27 @@ defineOptions({
                 <InputError :message="errors.password_confirmation" />
             </div>
 
+            <div class="grid gap-1">
+                <label class="flex items-center gap-2 text-sm" for="is_adult_student">
+                    <input
+                        id="is_adult_student"
+                        type="checkbox"
+                        name="is_adult_student"
+                        value="1"
+                        :tabindex="5"
+                    />
+                    I am an adult student (18+) booking lessons for myself
+                </label>
+                <p class="text-muted-foreground text-xs">
+                    Leave this unticked if you are a parent adding your children.
+                </p>
+                <InputError :message="errors.is_adult_student" />
+            </div>
+
             <Button
                 type="submit"
                 class="mt-2 w-full"
-                tabindex="5"
+                tabindex="6"
                 :disabled="processing"
                 data-test="register-user-button"
             >
@@ -106,7 +123,7 @@ defineOptions({
             <TextLink
                 :href="login()"
                 class="underline underline-offset-4"
-                :tabindex="6"
+                :tabindex="7"
                 >Log in</TextLink
             >
         </div>
