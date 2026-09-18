@@ -13,13 +13,16 @@ class RecordAuditLog
      * actually changed in `before`/`after` — never a full model dump — so a
      * reviewer can see what happened at a glance.
      *
+     * A null `$actor` records a system-originated entry (e.g. the scheduled
+     * permit-expiry job).
+     *
      * @param  array<string, mixed>|null  $before
      * @param  array<string, mixed>|null  $after
      */
-    public function __invoke(User $actor, string $action, Model $subject, ?array $before = null, ?array $after = null): AuditLog
+    public function __invoke(?User $actor, string $action, Model $subject, ?array $before = null, ?array $after = null): AuditLog
     {
         return AuditLog::query()->create([
-            'actor_user_id' => $actor->id,
+            'actor_user_id' => $actor?->id,
             'action' => $action,
             'subject_type' => $subject::class,
             'subject_id' => $subject->getKey(),

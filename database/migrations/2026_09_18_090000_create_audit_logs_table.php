@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('audit_logs', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('actor_user_id')->constrained('users')->restrictOnDelete();
+            // Null = a system-originated entry (e.g. the permit-expiry job) with no acting user.
+            $table->foreignId('actor_user_id')->nullable()->constrained('users')->restrictOnDelete();
             $table->string('action');
             $table->string('subject_type');
             $table->unsignedBigInteger('subject_id');

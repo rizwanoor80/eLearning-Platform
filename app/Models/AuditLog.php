@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
  * column and callers must never call `update()` on a row.
  *
  * @property int $id
- * @property int $actor_user_id
+ * @property int|null $actor_user_id
  * @property string $action
  * @property string $subject_type
  * @property int $subject_id
