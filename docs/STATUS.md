@@ -1,45 +1,52 @@
-# STATUS — cycle 02 r3 — written 2026-09-18 14:46
-Tests: 133 (up from 129) · Advisor: consulted 4 times this resumed run (carried: 1b design 20:45, 1b pre-PR 20:55, halt money-judgment 21:59, fix-loop-round money-judgment 00:46) · Review: sub-cycle 1a's review: 9 PASS (2 Low notes), no Medium/High, merged; sub-cycle 1b's three review rounds: 10/10/13 PASS across rounds, 2 Medium findings found-and-fixed (R26, R27), no Medium/High on the final round — **merged**
+# STATUS — cycle 02 r3 — written 2026-09-18 17:30
+Tests: 205 (up from 133) · Advisor: consulted 2 times this sub-cycle (1c design 15:05, 1c pre-PR 17:24) · Review: sub-cycle 1a: 9 PASS, merged; sub-cycle 1b: three rounds, merged; sub-cycle 1c: PR opening now
 
 ## §1 Git state
-Cycles 01, sub-cycle 1a and sub-cycle 1b all merged (`646ce06`, `c08bad8`, `10e6198`). `main` fast-forwarded cleanly. `cp/1b-onboarding-complete` left in place (not deleted). `main`'s branch protection: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14) still not created — optional, carried.
+Cycles 01, sub-cycles 1a and 1b merged (`646ce06`, `c08bad8`, `10e6198`). `cp/1c-admin-approval` is code-complete (13 commits, pushed) and is being opened as a PR now. `main`'s branch protection: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14) still not created — optional, carried.
 
 ## §2 Step map (cycle 02 r3)
 0. Merge PR #1 and close cycle 01 — [done] `646ce06`.
-1. Sub-cycle 1a `cp/1a-onboarding-core` — [done] merged `c08bad8`.
-2. Sub-cycle 1b `cp/1b-onboarding-complete` — [done] merged `10e6198` (two owner-authorised fix-loop rounds, R26/R27).
-3. Sub-cycle 1c `cp/1c-admin-approval` — [in progress] — next.
+1. Sub-cycle 1a `cp/1a-onboarding-core` — [done] `c08bad8`.
+2. Sub-cycle 1b `cp/1b-onboarding-complete` — [done] `10e6198`.
+3. Sub-cycle 1c `cp/1c-admin-approval` — [in progress] — code complete, PR opening, then CI and the fresh-subagent review (closes CP1 boxes 4, 6, 8, 9; CP1 is then complete except box 7's admin-payout clause, CP5).
 4. Sub-cycle 2a `cp/2a-learners-slots` — [not started]
 5. Sub-cycle 2b `cp/2b-search-profile` — [not started]
 6. Sub-cycle 2c `cp/2c-match-pages-content` — [not started] (closes CP2)
 7. Programme end — [not started] — this cycle's planned halt (24-hour owner review).
 
 ## §3 What changed this run
-- **R27 implemented, tested (133/410), pushed, description corrected, third fresh-subagent review dispatched**: 13 PASS (1 Low note, out of scope), no Medium/High. Merged PR #3 under R21's self-applied merge rule.
-- **Post-merge**: `main` fast-forwarded `01d4738..10e6198`. Smoke: `composer.bat test` → 133/133 tests, 410 assertions, Pint/PHPStan/RTL all green. `curl` (R20, no browser): `/` → 200, `/login` → 200, `/admin/login` → 200, `/dashboard` (unauth) → 302, `/tutor/onboarding` (unauth) → 302 — all as expected.
-- **Sub-cycle 1b closed overall**: onboarding wizard complete end to end (personal → permit → documents → bank → subjects → rate → profile → availability → agreement → complete). Two owner-authorised fix-loop rounds were needed — R26 (rate-band union→intersection) and R27 (stale-rate-on-subjects-change + missing-band silently dropped) — both real bugs a fresh-subagent review caught that this session's own design consults had missed. Full detail in CYCLE-LOG.md (01:25–14:46).
-- Full detail in CYCLE-LOG.md (01:25–14:46).
+- **Sub-cycle 1c built** in 13 commits, each verified green before the next: `audit_logs` + `RecordAuditLog`; site/mail/features settings (layout title, mail sender read at `envelope()` time); admin document viewer (own signed route, policy admits owner or admin); six CP1 emails via events → queued listeners; `changes_requested` re-entry; Filament resources — DocumentType, TutorProfile approval queue (document viewer, per-document accept/reject, approve/request-changes/reject/suspend), admin users (create/disable, role forced server-side), PriceBands (non-blocking overlap warning), and a Settings page (4 tabs); permit-expiry job (30d/7d/expired, idempotent, scheduled daily).
+- **Pre-PR ADVISOR (17:24)** caught: admin actions had no status preconditions (a draft could be approved and become bookable — now a transition table enforced in the Actions); the browser title came from a build-time `VITE_APP_NAME` so box 8's "without a deploy" was false for the title users see (now reads the shared `name` prop); delete removed from document types/price bands; audit added to both. Tests found two more real defects on the way: `TutorDocumentPolicy::viewAny` blocked Filament's relation manager after first render, and the Money cast handed Money objects to the price-band edit form.
+- Suite 205 tests / 686 assertions (was 133/410); `npm run build` and `vue-tsc` clean. Detail in CYCLE-LOG.md (15:05–17:28).
 
 ## §4 Decisions
-- Carried and now final for sub-cycle 1b: `level_tier` explicit field (20:46); `pages`/`page_versions` built in full (20:47); `TutorProfile.status` out of `$fillable` (20:57); post-submission steps refused outright (20:58); weekday `0 = Sunday` (20:59); `LevelTier::rank()` in-step (21:00); single-file `Onboarding.vue` (20:49); R26's intersection rule (00:20); R27's stale-rate invalidation + missing-band-as-conflict (01:25).
+- `changes_requested` re-entry reuses the wizard (locked statuses = pending_review/approved/rejected/suspended). CYCLE-LOG 15:06.
+- `users.status`/`suspended_reason` added in-step; `canAccessPanel()` requires an active account. CYCLE-LOG 15:07.
+- Tutor-status transition table enforced in the Actions. CYCLE-LOG 17:20.
+- `head_scripts` raw by design (DATA_MODEL line 169). CYCLE-LOG 17:21.
+- Auto-hide is `bookable()`, not the job; the job is idempotent via `audit_logs`. CYCLE-LOG 17:22.
+- Mail sender read at send time; branding uploads on the public disk; new admins email-verified. CYCLE-LOG 17:23.
 
 ## §5 Why stopping
-Not stopping — sub-cycle 1b is fully merged and verified; continuing into sub-cycle 1c (`cp/1c-admin-approval`) in this same run per the no-stop rule (R21).
+Not stopping — opening the PR for `cp/1c-admin-approval` next, then waiting on CI (asynchronous). Resumes automatically per the no-stop rule (R21).
 
 ## §6 Mismatches
 - **`main` branch protection still not set** (owner action, carried from cycle 01). Per R23 this does not block the programme.
-- **CP1 box 7's admin half remains deferred to CP5** (carried, unchanged).
-- Carried, now resolved: both design-consult gaps from earlier in sub-cycle 1b (band-aggregation, downstream invalidation on step re-entry) are fixed via R26/R27 and verified by the final review. No new mismatch this run.
+- **CP1 box 7's admin-payout clause remains deferred to CP5** (R25, disclosed since 1a) — so "CP1 done" in §8 is qualified.
+- **R25 differences from DATA_MODEL**: `audit_logs.actor_user_id` is nullable (null = system-originated; DATA_MODEL is silent) and its migration was edited on-branch before merge; `settings.value` made nullable via a new migration.
+- **Own process slip, repeated**: pushed `cp/1c-admin-approval` before rewriting STATUS.md (HOW-WE-WORK §5) — the same slip as 1b's. Rewritten now, before the PR opens.
+- **Diff-scope exceptions disclosed** (CYCLE-LOG 17:27): `config/settings.php`, `AppServiceProvider.php` (one gate), `HandleInertiaRequests.php`, `app/Support/Mail/`, `app/Exceptions/`.
+- Non-blocking, left and listed in CYCLE-LOG 17:26: `review_note` not cleared on resubmit; double queue hop (listener + mailable); logo/favicon uploads untested and not yet rendered; N+1 on the queue's Docs column; admin password rule; duplicate-band 500.
 
 ## §7 Next step and owner actions
-No owner action required to proceed — the programme is authorised and running. Automatic continuations used under R21's cap: **2/8** (unchanged this run — merging an owner-authorised fix is not itself a counted continuation; the counter next advances at sub-cycle 1c's CI wait). Next: sub-cycle 1c design ADVISOR consult, then branch `cp/1c-admin-approval`. Carried, optional: Owner action A (R7 branch protection, exact GitHub UI steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002).
+No owner action required to proceed — the programme is authorised and running. Automatic continuations used under R21's cap: **3/8** (this wakeup is the third; the session halts automatically after 8, or at any stop condition). Next: open the PR (checklist = CP1 boxes 4, 6, 8, 9), wait for CI, dispatch the fresh-subagent review; a Medium or High halts the programme (R21). Carried, optional: Owner action A (R7 branch protection, exact GitHub UI steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002).
 
 ## §8 Programme board (R21)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge hash |
 |---|---|---|---|---|---|
 | 1a onboarding-core | **merged** | `cp/1a-onboarding-core` | [#2](https://github.com/rizwanoor80/eLearning-Platform/pull/2) | 9 PASS, 2 Low notes, no Medium/High | `c08bad8` |
-| 1b onboarding-complete | **merged** | `cp/1b-onboarding-complete` | [#3](https://github.com/rizwanoor80/eLearning-Platform/pull/3) | 3 rounds: 10 PASS+1 Med (R26 fix); 10 PASS+1 Med+1 Low (R27 fix); 13 PASS, no Med/High | `10e6198` |
-| 1c admin-approval | in progress | `cp/1c-admin-approval` | — | — | — |
+| 1b onboarding-complete | **merged** | `cp/1b-onboarding-complete` | [#3](https://github.com/rizwanoor80/eLearning-Platform/pull/3) | 3 rounds; final 13 PASS, no Med/High | `10e6198` |
+| 1c admin-approval | code complete, opening PR | `cp/1c-admin-approval` | — | — | — |
 | 2a learners-slots | not started | `cp/2a-learners-slots` | — | — | — |
 | 2b search-profile | not started | `cp/2b-search-profile` | — | — | — |
 | 2c match-pages-content | not started | `cp/2c-match-pages-content` | — | — | — |
