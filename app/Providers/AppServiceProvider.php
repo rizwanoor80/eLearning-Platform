@@ -38,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::define('access-parent-area', fn (User $user): bool => $user->role === Role::AccountOwner);
         Gate::define('access-tutor-area', fn (User $user): bool => $user->role === Role::Tutor);
+        Gate::define('access-admin-area', fn (User $user): bool => $user->role === Role::Admin);
     }
 
     /**

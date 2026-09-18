@@ -59,6 +59,8 @@ class TutorOnboardingController extends Controller
         return Inertia::render('tutor/Onboarding', [
             'step' => $step['name'],
             'currentDocumentType' => $step['documentType'] ?? null,
+            'status' => $profile->status->value,
+            'reviewNote' => $profile->status === TutorProfileStatus::ChangesRequested ? $profile->review_note : null,
             'personal' => [
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,
@@ -383,7 +385,18 @@ class TutorOnboardingController extends Controller
      */
     private function currentStep(User $user, TutorProfile $profile): array
     {
-        if ($profile->status !== TutorProfileStatus::Draft) {
+        // Locked states: nothing left to edit. `draft` and
+        // `changes_requested` both fall through to normal derivation below —
+        // a changes_requested profile already has every field filled from
+        // its original submission, so it naturally resolves to `complete`,
+        // showing the tutor their existing data plus the admin's review
+        // note, editable exactly as during `draft` (cycle 02 r3, sub-cycle 1c).
+        if (in_array($profile->status, [
+            TutorProfileStatus::PendingReview,
+            TutorProfileStatus::Approved,
+            TutorProfileStatus::Rejected,
+            TutorProfileStatus::Suspended,
+        ], true)) {
             return ['name' => 'submitted'];
         }
 

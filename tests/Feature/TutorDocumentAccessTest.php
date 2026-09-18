@@ -72,3 +72,22 @@ it('does not serve the file through the framework\'s own local-disk route', func
 
     $response->assertNotFound();
 });
+
+it('lets an admin download any tutor\'s document via a fresh signed admin URL', function () {
+    $document = createOwnedTutorDocument();
+    $admin = User::factory()->admin()->create();
+    $url = URL::temporarySignedRoute('admin.documents.show', now()->addMinutes(15), ['document' => $document]);
+
+    $response = $this->actingAs($admin)->get($url);
+
+    $response->assertOk();
+});
+
+it('refuses a non-admin on the admin document route even with a valid signature', function () {
+    $document = createOwnedTutorDocument();
+    $url = URL::temporarySignedRoute('admin.documents.show', now()->addMinutes(15), ['document' => $document]);
+
+    $response = $this->actingAs($document->tutorProfile->user)->get($url);
+
+    $response->assertForbidden();
+});

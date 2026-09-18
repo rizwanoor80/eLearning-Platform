@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\Role;
 use App\Models\TutorDocument;
 use App\Models\User;
 
@@ -16,12 +17,12 @@ class TutorDocumentPolicy
     }
 
     /**
-     * Determine whether the user can view the model. Only the owning tutor
-     * — admin review access is a separate policy check added in sub-cycle 1c.
+     * Determine whether the user can view the model: the owning tutor, or
+     * an admin reviewing it in the approval queue (sub-cycle 1c).
      */
     public function view(User $user, TutorDocument $tutorDocument): bool
     {
-        return $tutorDocument->tutorProfile->user_id === $user->id;
+        return $tutorDocument->tutorProfile->user_id === $user->id || $user->role === Role::Admin;
     }
 
     /**

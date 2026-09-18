@@ -69,6 +69,8 @@ const props = defineProps<{
         | 'agreement'
         | 'complete'
         | 'submitted';
+    status: string;
+    reviewNote: string | null;
     currentDocumentType: DocumentTypeProp | null;
     personal: { phone: string | null; timezone: string };
     profile: {
@@ -263,6 +265,11 @@ const submitComplete = () => {
             <Badge v-if="step === 'document'" variant="secondary">
                 {{ documentsUploadedCount() }} of {{ documentTypes.length }} documents uploaded
             </Badge>
+        </div>
+
+        <div v-if="reviewNote" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
+            <p class="font-medium">An admin asked for some changes:</p>
+            <p class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
         </div>
 
         <form v-if="step === 'personal'" @submit.prevent="submitPersonal" class="grid max-w-md gap-4">

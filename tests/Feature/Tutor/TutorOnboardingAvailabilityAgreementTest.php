@@ -3,6 +3,7 @@
 use App\Enums\CurriculumCode;
 use App\Enums\LevelTier;
 use App\Enums\TutorProfileStatus;
+use App\Mail\Tutor\TutorSubmittedForReviewMail;
 use App\Models\Curriculum;
 use App\Models\DocumentType;
 use App\Models\Page;
@@ -10,6 +11,7 @@ use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\User;
+use Illuminate\Support\Facades\Mail;
 
 function agreementReadyTutor(): User
 {
@@ -152,6 +154,68 @@ it('shows submitted once the profile has left draft status', function () {
     $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
 
     $response->assertInertia(fn ($page) => $page->where('step', 'submitted'));
+});
+
+it('sends the submitted-for-review email on completion', function () {
+    Mail::fake();
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    Mail::assertQueued(TutorSubmittedForReviewMail::class, fn ($mail) => $mail->hasTo($tutor->email));
+});
+
+it('re-enters at complete and shows the admin review note when changes are requested', function () {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    $profile->forceFill([
+        'status' => TutorProfileStatus::ChangesRequested,
+        'review_note' => 'Please upload a clearer permit scan.',
+    ])->save();
+
+    $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
+
+    $response->assertInertia(fn ($page) => $page
+        ->where('step', 'complete')
+        ->where('reviewNote', 'Please upload a clearer permit scan.'));
+});
+
+it('lets a changes_requested tutor edit an earlier step again', function () {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    $profile->forceFill([
+        'status' => TutorProfileStatus::ChangesRequested,
+        'review_note' => 'Update your bio.',
+    ])->save();
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.profile'), [
+        'headline' => 'Updated headline',
+        'bio' => 'Updated bio text here.',
+    ]);
+
+    $response->assertRedirect(route('tutor.onboarding'));
+    expect($profile->fresh()->headline)->toBe('Updated headline');
+});
+
+it('resubmits a changes_requested profile for review on completion', function () {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    $profile->forceFill(['status' => TutorProfileStatus::ChangesRequested, 'review_note' => 'Fix your rate.'])->save();
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $response->assertRedirect(route('tutor.onboarding'));
+    expect($profile->fresh()->status)->toBe(TutorProfileStatus::PendingReview);
 });
 
 it('refuses completion when an admin narrows the price band after the rate step but before completion', function () {
