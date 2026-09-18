@@ -28,6 +28,7 @@ use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -223,6 +224,15 @@ class TutorOnboardingController extends Controller
 
         $band = $this->rateBandFor($profile);
         abort_if($band === null, 409);
+
+        if ($band['conflicting'] !== []) {
+            throw ValidationException::withMessages([
+                'hourly_rate' => sprintf(
+                    'No single rate satisfies every curriculum you teach at this level — %s have non-overlapping bands. Adjust your subjects or contact support.',
+                    implode(' and ', $band['conflicting']),
+                ),
+            ]);
+        }
 
         $rate = Money::fromDecimalString((string) $request->validated('hourly_rate'));
 
@@ -430,20 +440,19 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * The band for the highest level tier the tutor teaches, read from the
-     * current `price_bands` row (latest `effective_from` not in the future)
-     * per curriculum at that tier — never hard-coded, so an admin edit to
-     * the bands takes effect immediately. Null until the tutor has at least
-     * one subject.
+     * The current `price_bands` row (latest `effective_from` not in the
+     * future) per curriculum the tutor teaches at their highest level tier
+     * — never hard-coded, so an admin edit to the bands takes effect
+     * immediately. Empty until the tutor has at least one subject.
      *
-     * @return array{min: int, max: int}|null
+     * @return Collection<int, PriceBand>
      */
-    private function rateBandFor(TutorProfile $profile): ?array
+    private function currentBandsFor(TutorProfile $profile): Collection
     {
         $tutorSubjects = $profile->tutorSubjects()->get(['curriculum_id', 'level_tier']);
 
         if ($tutorSubjects->isEmpty()) {
-            return null;
+            return collect();
         }
 
         $highestTier = $tutorSubjects->pluck('level_tier')
@@ -452,22 +461,49 @@ class TutorOnboardingController extends Controller
 
         $curriculumIds = $tutorSubjects->where('level_tier', $highestTier)->pluck('curriculum_id')->unique();
 
-        $currentBands = $curriculumIds
+        /** @var Collection<int, PriceBand> $bands */
+        $bands = $curriculumIds
             ->map(fn (int $curriculumId) => PriceBand::query()
+                ->with('curriculum')
                 ->where('curriculum_id', $curriculumId)
                 ->where('level_tier', $highestTier)
                 ->where('effective_from', '<=', now()->toDateString())
                 ->orderByDesc('effective_from')
                 ->first())
-            ->filter();
+            ->filter()
+            ->values();
 
-        if ($currentBands->isEmpty()) {
+        return $bands;
+    }
+
+    /**
+     * R26: a tutor's single `hourly_rate` must satisfy every curriculum they
+     * teach at their highest tier — the intersection of each curriculum's
+     * band, never the union (a union would accept a rate outside one
+     * curriculum's real band). `conflicting` lists the curricula by name
+     * when their bands don't overlap at all (`min` ends up above `max`), so
+     * nothing is silently picked. Null until the tutor has at least one
+     * subject or none of their curricula has a current band.
+     *
+     * @return array{min: int, max: int, conflicting: array<int, string>}|null
+     */
+    private function rateBandFor(TutorProfile $profile): ?array
+    {
+        $bands = $this->currentBandsFor($profile);
+
+        if ($bands->isEmpty()) {
             return null;
         }
 
+        $min = $bands->max(fn (PriceBand $band) => $band->min_rate->toFils());
+        $max = $bands->min(fn (PriceBand $band) => $band->max_rate->toFils());
+
         return [
-            'min' => $currentBands->min(fn (PriceBand $band) => $band->min_rate->toFils()),
-            'max' => $currentBands->max(fn (PriceBand $band) => $band->max_rate->toFils()),
+            'min' => $min,
+            'max' => $max,
+            'conflicting' => $min > $max
+                ? $bands->map(fn (PriceBand $band) => $band->curriculum->name)->all()
+                : [],
         ];
     }
 }

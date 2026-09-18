@@ -88,7 +88,7 @@ const props = defineProps<{
     curricula: CurriculumProp[];
     subjects: SubjectProp[];
     tutorSubjects: TutorSubjectProp[];
-    rateBand: { min: number; max: number } | null;
+    rateBand: { min: number; max: number; conflicting: string[] } | null;
     trialDiscountPct: number;
     availabilityRules: AvailabilityRuleProp[];
     availabilityExceptions: AvailabilityExceptionProp[];
@@ -420,7 +420,10 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="step === 'rate'" @submit.prevent="submitRate" class="grid max-w-md gap-4">
-            <p v-if="rateBand" class="text-muted-foreground text-sm">
+            <p v-if="rateBand && rateBand.conflicting.length > 0" class="text-destructive text-sm">
+                No single rate satisfies every curriculum you teach at this level — {{ rateBand.conflicting.join(' and ') }} have non-overlapping bands.
+            </p>
+            <p v-else-if="rateBand" class="text-muted-foreground text-sm">
                 Your rate for the highest level you teach must be between {{ formatFils(rateBand.min) }} and {{ formatFils(rateBand.max) }} AED/hour.
             </p>
 

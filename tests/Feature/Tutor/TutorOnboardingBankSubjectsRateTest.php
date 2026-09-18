@@ -188,3 +188,81 @@ it('refuses the rate step before any subject has been added', function () {
 
     $response->assertStatus(409);
 });
+
+/**
+ * R26: the rate step validates the intersection of every curriculum's band
+ * at the tutor's highest tier taught, never the union.
+ */
+function twoCurriculumSubjectsTutor(int $bandAMin, int $bandAMax, int $bandBMin, int $bandBMax): array
+{
+    $tutor = bankReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
+        'bank_name' => 'Emirates NBD',
+        'bank_account_name' => 'Test Tutor',
+        'bank_iban' => 'AE070331234567890123456',
+    ]);
+
+    $curriculumA = Curriculum::factory()->create(['code' => CurriculumCode::Gcse]);
+    $curriculumB = Curriculum::factory()->create(['code' => CurriculumCode::IbMyp]);
+    $subjectA = Subject::factory()->create();
+    $subjectB = Subject::factory()->create();
+
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculumA->id, 'level_tier' => LevelTier::Exam1,
+        'min_rate' => $bandAMin, 'max_rate' => $bandAMax, 'effective_from' => now()->subYear()->toDateString(),
+    ]);
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculumB->id, 'level_tier' => LevelTier::Exam1,
+        'min_rate' => $bandBMin, 'max_rate' => $bandBMax, 'effective_from' => now()->subYear()->toDateString(),
+    ]);
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [
+            ['curriculum_id' => $curriculumA->id, 'subject_id' => $subjectA->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
+            ['curriculum_id' => $curriculumB->id, 'subject_id' => $subjectB->id, 'level_min' => 'MYP4', 'level_max' => 'MYP5', 'level_tier' => 'exam_1'],
+        ],
+    ]);
+
+    return [$tutor, $curriculumA, $curriculumB];
+}
+
+it('accepts an hourly rate when two curricula share an identical band, exactly as with one curriculum', function () {
+    [$tutor] = twoCurriculumSubjectsTutor(10000, 20000, 10000, 20000);
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
+
+    $response->assertRedirect(route('tutor.onboarding'));
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->hourly_rate->toFils())->toBe(15000);
+});
+
+it('validates the intersection of two overlapping-but-different bands, not the union', function () {
+    // Curriculum A: 100–200 AED/hr. Curriculum B: 150–300 AED/hr. Intersection: 150–200.
+    [$tutor, $curriculumA] = twoCurriculumSubjectsTutor(10000, 20000, 15000, 30000);
+
+    $insideBoth = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '175.00']);
+    $insideBoth->assertRedirect(route('tutor.onboarding'));
+    expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate->toFils())->toBe(17500);
+
+    // 250 is inside B's band [150,300] but outside A's [100,200] — a union
+    // would wrongly accept it; the intersection [150,200] must reject it.
+    $tutor->fresh();
+    $onlyInB = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '250.00']);
+    $onlyInB->assertSessionHasErrors('hourly_rate');
+    expect(session('errors')->first('hourly_rate'))
+        ->toContain('150.00')
+        ->toContain('200.00');
+});
+
+it('rejects every rate when two curricula have non-overlapping bands, naming both', function () {
+    // Curriculum A: 100–200 AED/hr. Curriculum B: 250–300 AED/hr. No overlap.
+    [$tutor, $curriculumA, $curriculumB] = twoCurriculumSubjectsTutor(10000, 20000, 25000, 30000);
+
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
+
+    $response->assertSessionHasErrors('hourly_rate');
+    expect(session('errors')->first('hourly_rate'))
+        ->toContain($curriculumA->name)
+        ->toContain($curriculumB->name);
+    expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate)->toBeNull();
+});
