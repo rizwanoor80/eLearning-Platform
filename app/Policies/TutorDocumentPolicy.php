@@ -9,11 +9,13 @@ use App\Models\User;
 class TutorDocumentPolicy
 {
     /**
-     * Determine whether the user can view any models.
+     * Determine whether the user can view any models. Admins only — Filament's
+     * relation manager on the approval queue authorises through this on every
+     * request after the first render (sub-cycle 1c).
      */
     public function viewAny(User $user): bool
     {
-        return false;
+        return $user->role === Role::Admin;
     }
 
     /**
