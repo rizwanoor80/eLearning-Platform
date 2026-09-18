@@ -5,6 +5,7 @@ use App\Enums\LevelTier;
 use App\Filament\Resources\PriceBands\Pages\CreatePriceBand;
 use App\Filament\Resources\PriceBands\Pages\EditPriceBand;
 use App\Filament\Resources\PriceBands\Pages\ListPriceBands;
+use App\Models\AuditLog;
 use App\Models\Curriculum;
 use App\Models\PriceBand;
 use App\Models\User;
@@ -113,4 +114,37 @@ it('judges overlap on each curriculum\'s current band, not superseded or future 
     bandFor($this->myp, 25000, 30000, now()->toDateString());   // now current, and disjoint from GCSE
 
     expect($check->conflictingCurricula(LevelTier::Exam1))->toContain('GCSE')->toContain('IB MYP');
+});
+
+it('audits creating and changing a price band, in whole fils', function () {
+    Livewire::actingAs($this->admin)
+        ->test(CreatePriceBand::class)
+        ->fillForm([
+            'curriculum_id' => $this->gcse->id,
+            'level_tier' => LevelTier::Exam1->value,
+            'min_rate' => 10000,
+            'max_rate' => 20000,
+            'effective_from' => '2025-01-01',
+        ])
+        ->call('create');
+    $band = PriceBand::query()->firstOrFail();
+
+    Livewire::actingAs($this->admin)
+        ->test(EditPriceBand::class, ['record' => $band->getRouteKey()])
+        ->fillForm(['max_rate' => 22000])
+        ->call('save');
+
+    $created = AuditLog::query()->where('action', 'price_band.created')->firstOrFail();
+    $updated = AuditLog::query()->where('action', 'price_band.updated')->firstOrFail();
+    expect($created->after['max_rate'])->toBe(20000)
+        ->and($updated->before)->toBe(['max_rate' => 20000])
+        ->and($updated->after)->toBe(['max_rate' => 22000]);
+});
+
+it('offers no delete on a price band', function () {
+    $band = bandFor($this->gcse, 10000, 20000);
+
+    Livewire::actingAs($this->admin)
+        ->test(EditPriceBand::class, ['record' => $band->getRouteKey()])
+        ->assertActionDoesNotExist('delete');
 });

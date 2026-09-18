@@ -12,6 +12,7 @@ use App\Events\Tutor\TutorApproved;
 use App\Events\Tutor\TutorChangesRequested;
 use App\Events\Tutor\TutorRejected;
 use App\Exceptions\TutorApprovalBlockedException;
+use App\Exceptions\TutorStatusTransitionException;
 use App\Models\AuditLog;
 use App\Models\DocumentType;
 use App\Models\TutorDocument;
@@ -123,4 +124,56 @@ it('rejects a tutor document', function () {
     (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Rejected);
 
     expect($document->fresh()->status)->toBe(TutorDocumentStatus::Rejected);
+});
+
+it('refuses to approve a profile that is not pending review', function (TutorProfileStatus $status) {
+    $admin = User::factory()->admin()->create();
+    $profile = TutorProfile::factory()->create(['status' => $status]);
+
+    expect(fn () => (new ApproveTutor(app(RecordAuditLog::class)))($admin, $profile))
+        ->toThrow(TutorStatusTransitionException::class);
+
+    expect($profile->fresh()->status)->toBe($status)
+        ->and(AuditLog::query()->count())->toBe(0);
+})->with([
+    'draft (never submitted)' => TutorProfileStatus::Draft,
+    'changes requested (not resubmitted)' => TutorProfileStatus::ChangesRequested,
+    'already approved' => TutorProfileStatus::Approved,
+    'rejected' => TutorProfileStatus::Rejected,
+    'suspended' => TutorProfileStatus::Suspended,
+]);
+
+it('refuses to reject or request changes on a profile that was never submitted', function () {
+    $admin = User::factory()->admin()->create();
+    $draft = TutorProfile::factory()->create(['status' => TutorProfileStatus::Draft]);
+    $approved = TutorProfile::factory()->approved()->create();
+
+    expect(fn () => (new RejectTutor(app(RecordAuditLog::class)))($admin, $draft, 'x'))
+        ->toThrow(TutorStatusTransitionException::class)
+        ->and(fn () => (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $approved, 'x'))
+        ->toThrow(TutorStatusTransitionException::class);
+});
+
+it('refuses to suspend a tutor who is not approved', function () {
+    $admin = User::factory()->admin()->create();
+    $pending = TutorProfile::factory()->create(['status' => TutorProfileStatus::PendingReview]);
+
+    expect(fn () => (new SuspendTutor(app(RecordAuditLog::class)))($admin, $pending, 'x'))
+        ->toThrow(TutorStatusTransitionException::class);
+    expect($pending->fresh()->status)->toBe(TutorProfileStatus::PendingReview);
+});
+
+it('never makes a draft tutor bookable through the approval action', function () {
+    $admin = User::factory()->admin()->create();
+    $draft = TutorProfile::factory()->create([
+        'status' => TutorProfileStatus::Draft,
+        'permit_expires_at' => now()->addYear()->toDateString(),
+    ]);
+
+    try {
+        (new ApproveTutor(app(RecordAuditLog::class)))($admin, $draft);
+    } catch (TutorStatusTransitionException) {
+    }
+
+    expect(TutorProfile::bookable()->whereKey($draft->id)->exists())->toBeFalse();
 });

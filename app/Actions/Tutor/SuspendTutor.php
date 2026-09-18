@@ -4,6 +4,7 @@ namespace App\Actions\Tutor;
 
 use App\Actions\RecordAuditLog;
 use App\Enums\TutorProfileStatus;
+use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorProfile;
 use App\Models\User;
 
@@ -20,6 +21,10 @@ class SuspendTutor
      */
     public function __invoke(User $admin, TutorProfile $profile, string $note): void
     {
+        if ($profile->status !== TutorProfileStatus::Approved) {
+            throw new TutorStatusTransitionException('Only an approved tutor can be suspended.');
+        }
+
         $before = ['status' => $profile->status->value];
 
         $profile->forceFill([

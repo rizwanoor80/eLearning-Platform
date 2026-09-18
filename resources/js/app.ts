@@ -10,10 +10,17 @@ configureEcho({
     broadcaster: 'reverb',
 });
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+// The site name comes from the server (the `site_name` setting, shared as the
+// Inertia `name` prop) so an admin's change shows in the browser title without
+// a rebuild; VITE_APP_NAME is only the fallback if the prop is ever absent.
+const fallbackAppName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 void createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
+    title: (title, page) => {
+        const appName = (page.props.name as string | undefined) || fallbackAppName;
+
+        return title ? `${title} - ${appName}` : appName;
+    },
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
