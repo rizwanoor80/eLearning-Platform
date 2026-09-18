@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tutor;
 
 use App\Actions\Tutor\CompleteTutorOnboarding;
 use App\Enums\LevelTier;
+use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tutor\Onboarding\AgreementStepRequest;
@@ -59,6 +60,12 @@ class TutorOnboardingController extends Controller
         return Inertia::render('tutor/Onboarding', [
             'step' => $step['name'],
             'currentDocumentType' => $step['documentType'] ?? null,
+            'status' => $profile->status->value,
+            // The admin's note is shown for changes_requested (what to fix) and
+            // suspended (why) — SuspendTutor promises the tutor sees it (R31).
+            'reviewNote' => in_array($profile->status, [TutorProfileStatus::ChangesRequested, TutorProfileStatus::Suspended], true)
+                ? $profile->review_note
+                : null,
             'personal' => [
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,
@@ -383,7 +390,18 @@ class TutorOnboardingController extends Controller
      */
     private function currentStep(User $user, TutorProfile $profile): array
     {
-        if ($profile->status !== TutorProfileStatus::Draft) {
+        // Locked states: nothing left to edit. `draft` and
+        // `changes_requested` both fall through to normal derivation below —
+        // a changes_requested profile already has every field filled from
+        // its original submission, so it naturally resolves to `complete`,
+        // showing the tutor their existing data plus the admin's review
+        // note, editable exactly as during `draft` (cycle 02 r3, sub-cycle 1c).
+        if (in_array($profile->status, [
+            TutorProfileStatus::PendingReview,
+            TutorProfileStatus::Approved,
+            TutorProfileStatus::Rejected,
+            TutorProfileStatus::Suspended,
+        ], true)) {
             return ['name' => 'submitted'];
         }
 
@@ -395,7 +413,12 @@ class TutorOnboardingController extends Controller
             return ['name' => 'permit'];
         }
 
-        $uploadedTypeIds = $profile->tutorDocuments()->pluck('document_type_id');
+        // A rejected document does not count as uploaded (R28): it returns a
+        // changes_requested tutor to that type's step, where storeDocument()
+        // soft-deletes the rejected row and creates a fresh pending one.
+        $uploadedTypeIds = $profile->tutorDocuments()
+            ->where('status', '!=', TutorDocumentStatus::Rejected)
+            ->pluck('document_type_id');
 
         $nextType = DocumentType::query()->active()->orderBy('sort')
             ->whereNotIn('id', $uploadedTypeIds)

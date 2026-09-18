@@ -38,8 +38,11 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         <x-inertia::head>
-            <title>{{ config('app.name', 'Laravel') }}</title>
+            <title>{{ \App\Support\Facades\Settings::get('site_name', config('app.name', 'Laravel')) }}</title>
         </x-inertia::head>
+
+        {{-- Admin-trusted analytics snippets (CP1 site settings: head_scripts), rendered raw by design. --}}
+        {!! \App\Support\Facades\Settings::get('head_scripts') !!}
     </head>
     <body class="font-sans antialiased">
         <x-inertia::app />

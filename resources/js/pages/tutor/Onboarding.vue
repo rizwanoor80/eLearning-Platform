@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,8 @@ const props = defineProps<{
         | 'agreement'
         | 'complete'
         | 'submitted';
+    status: string;
+    reviewNote: string | null;
     currentDocumentType: DocumentTypeProp | null;
     personal: { phone: string | null; timezone: string };
     profile: {
@@ -109,13 +112,61 @@ defineOptions({
 
 const formatFils = (fils: number) => (fils / 100).toFixed(2);
 
+// A changes_requested tutor already has every field filled, so the server-derived
+// step is 'complete'. This picker lets them open the existing forms to fix what the
+// admin flagged; every submit redirects to /tutor/onboarding, which re-derives the
+// step and lands back on 'complete' (R31). The derived step itself is never chosen
+// from here — `viewing` only decides which already-saved form to show.
+type PickableStep = 'personal' | 'permit' | 'bank' | 'subjects' | 'rate' | 'profile' | 'availability';
+
+const pickableSteps: Array<{ key: PickableStep; label: string }> = [
+    { key: 'personal', label: 'Contact details' },
+    { key: 'permit', label: 'Permit' },
+    { key: 'bank', label: 'Bank details' },
+    { key: 'subjects', label: 'Subjects' },
+    { key: 'rate', label: 'Hourly rate' },
+    { key: 'profile', label: 'Bio and headline' },
+    { key: 'availability', label: 'Availability' },
+];
+
+const viewing = ref<PickableStep | null>(null);
+const canPickStep = computed(() => props.status === 'changes_requested' && props.step === 'complete');
+const shown = computed(() => (canPickStep.value && viewing.value !== null ? viewing.value : props.step));
+const afterSubmit = { onSuccess: () => (viewing.value = null) };
+
+const lockedTitle = computed(() => {
+    switch (props.status) {
+        case 'approved':
+            return "You're approved.";
+        case 'rejected':
+            return 'Your application was not approved.';
+        case 'suspended':
+            return 'Your profile is suspended.';
+        default:
+            return 'Your profile is under review.';
+    }
+});
+
+const lockedText = computed(() => {
+    switch (props.status) {
+        case 'approved':
+            return 'Your profile is live. Contact support if something needs to change.';
+        case 'rejected':
+            return 'Contact support if you would like to know more.';
+        case 'suspended':
+            return 'Contact support to discuss reinstating your profile.';
+        default:
+            return "We'll email you once an admin has checked your documents.";
+    }
+});
+
 const personalForm = useForm({
     phone: props.personal.phone ?? '',
     timezone: props.personal.timezone,
 });
 
 const submitPersonal = () => {
-    personalForm.post('/tutor/onboarding/personal');
+    personalForm.post('/tutor/onboarding/personal', afterSubmit);
 };
 
 const permitForm = useForm({
@@ -124,7 +175,7 @@ const permitForm = useForm({
 });
 
 const submitPermit = () => {
-    permitForm.post('/tutor/onboarding/permit');
+    permitForm.post('/tutor/onboarding/permit', afterSubmit);
 };
 
 const documentForm = useForm<{ file: File | null }>({
@@ -153,7 +204,7 @@ const bankForm = useForm({
 });
 
 const submitBank = () => {
-    bankForm.post('/tutor/onboarding/bank');
+    bankForm.post('/tutor/onboarding/bank', afterSubmit);
 };
 
 const subjectsForm = useForm<{
@@ -180,7 +231,7 @@ const removeSubjectRow = (index: number) => {
 };
 
 const submitSubjects = () => {
-    subjectsForm.post('/tutor/onboarding/subjects');
+    subjectsForm.post('/tutor/onboarding/subjects', afterSubmit);
 };
 
 const rateForm = useForm({
@@ -188,7 +239,7 @@ const rateForm = useForm({
 });
 
 const submitRate = () => {
-    rateForm.post('/tutor/onboarding/rate');
+    rateForm.post('/tutor/onboarding/rate', afterSubmit);
 };
 
 // Display-only preview mirroring Money::percentage's half-up integer-fils
@@ -213,7 +264,7 @@ const profileForm = useForm({
 });
 
 const submitProfile = () => {
-    profileForm.post('/tutor/onboarding/profile');
+    profileForm.post('/tutor/onboarding/profile', afterSubmit);
 };
 
 const availabilityForm = useForm<{
@@ -236,7 +287,7 @@ const removeAvailabilityRow = (index: number) => {
 };
 
 const submitAvailability = () => {
-    availabilityForm.post('/tutor/onboarding/availability');
+    availabilityForm.post('/tutor/onboarding/availability', afterSubmit);
 };
 
 const agreementForm = useForm<{ accepted: boolean }>({
@@ -265,7 +316,32 @@ const submitComplete = () => {
             </Badge>
         </div>
 
-        <form v-if="step === 'personal'" @submit.prevent="submitPersonal" class="grid max-w-md gap-4">
+        <div v-if="reviewNote" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
+            <p class="font-medium">{{ status === 'suspended' ? 'Reason given by an admin:' : 'An admin asked for some changes:' }}</p>
+            <p class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
+        </div>
+
+        <div v-if="canPickStep" class="grid max-w-md gap-3">
+            <p class="text-muted-foreground text-sm">
+                Pick a section to update, then submit for review again. A document that is pending or accepted can only be replaced
+                after the admin rejects it and requests changes — you'll then be taken to its upload step automatically.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    v-for="section in pickableSteps"
+                    :key="section.key"
+                    type="button"
+                    size="sm"
+                    :variant="viewing === section.key ? 'default' : 'outline'"
+                    @click="viewing = section.key"
+                >
+                    {{ section.label }}
+                </Button>
+                <Button v-if="viewing !== null" type="button" size="sm" variant="ghost" @click="viewing = null">Back</Button>
+            </div>
+        </div>
+
+        <form v-if="shown === 'personal'" @submit.prevent="submitPersonal" class="grid max-w-md gap-4">
             <p class="text-muted-foreground text-sm">First, a couple of contact details.</p>
 
             <div class="grid gap-2">
@@ -286,7 +362,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'permit'" @submit.prevent="submitPermit" class="grid max-w-md gap-4">
+        <form v-else-if="shown === 'permit'" @submit.prevent="submitPermit" class="grid max-w-md gap-4">
             <p class="text-muted-foreground text-sm">Your tutoring permit keeps you bookable — we'll remind you before it expires.</p>
 
             <div class="grid gap-2">
@@ -308,7 +384,7 @@ const submitComplete = () => {
         </form>
 
         <form
-            v-else-if="step === 'document' && currentDocumentType"
+            v-else-if="shown === 'document' && currentDocumentType"
             @submit.prevent="submitDocument"
             class="grid max-w-md gap-4"
         >
@@ -336,7 +412,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'bank'" @submit.prevent="submitBank" class="grid max-w-md gap-4">
+        <form v-else-if="shown === 'bank'" @submit.prevent="submitBank" class="grid max-w-md gap-4">
             <p class="text-muted-foreground text-sm">Payout details — your IBAN is encrypted and only ever shown to you masked.</p>
 
             <div class="grid gap-2">
@@ -369,7 +445,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'subjects'" @submit.prevent="submitSubjects" class="grid max-w-2xl gap-4">
+        <form v-else-if="shown === 'subjects'" @submit.prevent="submitSubjects" class="grid max-w-2xl gap-4">
             <p class="text-muted-foreground text-sm">Which curricula, subjects and levels do you teach?</p>
 
             <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-5 items-end gap-2 border-b pb-4">
@@ -419,7 +495,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'rate'" @submit.prevent="submitRate" class="grid max-w-md gap-4">
+        <form v-else-if="shown === 'rate'" @submit.prevent="submitRate" class="grid max-w-md gap-4">
             <p v-if="rateBand && rateBand.conflicting.length > 0" class="text-destructive text-sm">
                 No single rate satisfies every curriculum you teach at this level — {{ rateBand.conflicting.join(' and ') }} have non-overlapping bands.
             </p>
@@ -441,7 +517,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'profile'" @submit.prevent="submitProfile" class="grid max-w-md gap-4">
+        <form v-else-if="shown === 'profile'" @submit.prevent="submitProfile" class="grid max-w-md gap-4">
             <div class="grid gap-2">
                 <Label for="headline">Headline</Label>
                 <Input id="headline" v-model="profileForm.headline" type="text" required autofocus />
@@ -466,7 +542,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'availability'" @submit.prevent="submitAvailability" class="grid max-w-2xl gap-4">
+        <form v-else-if="shown === 'availability'" @submit.prevent="submitAvailability" class="grid max-w-2xl gap-4">
             <p class="text-muted-foreground text-sm">Your weekly availability, in your own timezone.</p>
 
             <div v-for="(rule, index) in availabilityForm.rules" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">
@@ -504,7 +580,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <form v-else-if="step === 'agreement'" @submit.prevent="submitAgreement" class="grid max-w-md gap-4">
+        <form v-else-if="shown === 'agreement'" @submit.prevent="submitAgreement" class="grid max-w-md gap-4">
             <p class="font-medium">{{ agreement.title }}</p>
             <p class="text-muted-foreground text-sm whitespace-pre-line">{{ agreement.body }}</p>
 
@@ -520,7 +596,7 @@ const submitComplete = () => {
             </Button>
         </form>
 
-        <div v-else-if="step === 'complete'" class="grid max-w-md gap-4">
+        <div v-else-if="shown === 'complete'" class="grid max-w-md gap-4">
             <p class="font-medium">You're all set.</p>
             <p class="text-muted-foreground text-sm">Submit your profile for review — an admin will check your documents and approve you.</p>
 
@@ -531,8 +607,8 @@ const submitComplete = () => {
         </div>
 
         <div v-else class="max-w-md">
-            <p class="font-medium">Your profile is under review.</p>
-            <p class="text-muted-foreground text-sm">We'll email you once an admin has checked your documents.</p>
+            <p class="font-medium">{{ lockedTitle }}</p>
+            <p class="text-muted-foreground text-sm">{{ lockedText }}</p>
         </div>
     </div>
 </template>

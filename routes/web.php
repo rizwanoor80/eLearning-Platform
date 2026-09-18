@@ -37,4 +37,9 @@ Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function
         ->name('tutor.documents.show');
 });
 
+Route::middleware(['auth', 'verified', 'can:access-admin-area', 'signed'])->group(function () {
+    Route::get('admin/documents/{document}', [TutorDocumentController::class, 'show'])
+        ->name('admin.documents.show');
+});
+
 require __DIR__.'/settings.php';
