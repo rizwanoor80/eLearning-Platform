@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\Role;
+use App\Enums\UserStatus;
 use App\Models\TutorDocument;
 use App\Models\User;
 
@@ -15,16 +16,22 @@ class TutorDocumentPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->role === Role::Admin;
+        return $this->isActiveAdmin($user);
     }
 
     /**
      * Determine whether the user can view the model: the owning tutor, or
-     * an admin reviewing it in the approval queue (sub-cycle 1c).
+     * an ACTIVE admin reviewing it in the approval queue — a disabled admin
+     * loses document access along with panel access (R28).
      */
     public function view(User $user, TutorDocument $tutorDocument): bool
     {
-        return $tutorDocument->tutorProfile->user_id === $user->id || $user->role === Role::Admin;
+        return $tutorDocument->tutorProfile->user_id === $user->id || $this->isActiveAdmin($user);
+    }
+
+    private function isActiveAdmin(User $user): bool
+    {
+        return $user->role === Role::Admin && $user->status === UserStatus::Active;
     }
 
     /**

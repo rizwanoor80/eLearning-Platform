@@ -1,17 +1,26 @@
 <?php
 
+use App\Actions\RecordAuditLog;
+use App\Actions\Tutor\ApproveTutor;
+use App\Actions\Tutor\ReviewTutorDocument;
 use App\Enums\CurriculumCode;
 use App\Enums\LevelTier;
+use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Exceptions\TutorApprovalBlockedException;
 use App\Mail\Tutor\TutorSubmittedForReviewMail;
 use App\Models\Curriculum;
 use App\Models\DocumentType;
 use App\Models\Page;
 use App\Models\PriceBand;
 use App\Models\Subject;
+use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 function agreementReadyTutor(): User
 {
@@ -252,4 +261,71 @@ it('refuses every step handler once the profile has been submitted for review', 
     test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
         'bank_name' => 'Other Bank', 'bank_account_name' => 'Someone Else', 'bank_iban' => 'AE999999999999999999999',
     ])->assertStatus(409);
+});
+
+/**
+ * R28: a rejected document does not count as uploaded, so a changes_requested
+ * tutor returns to that type's step and can replace it.
+ */
+function changesRequestedTutorWithDocument(TutorDocumentStatus $documentStatus): array
+{
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    $type = DocumentType::factory()->create(['required' => true, 'active' => true, 'sort' => 0]);
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')
+        ->create(['status' => $documentStatus]);
+    $profile->forceFill(['status' => TutorProfileStatus::ChangesRequested, 'review_note' => 'Re-upload it.'])->save();
+
+    return [$tutor, $profile, $type, $document];
+}
+
+it('returns a changes_requested tutor to the document step when their document was rejected', function () {
+    [$tutor, , $type] = changesRequestedTutorWithDocument(TutorDocumentStatus::Rejected);
+
+    test()->actingAs($tutor)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType.id', $type->id));
+});
+
+it('still counts a pending or accepted document as uploaded', function (TutorDocumentStatus $status) {
+    [$tutor] = changesRequestedTutorWithDocument($status);
+
+    test()->actingAs($tutor)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('step', 'complete'));
+})->with([TutorDocumentStatus::Pending, TutorDocumentStatus::Accepted]);
+
+it('replaces a rejected document, then resubmits and is approved only once the replacement is accepted', function () {
+    Event::fake();
+    Storage::fake('local');
+    [$tutor, $profile, $type, $rejected] = changesRequestedTutorWithDocument(TutorDocumentStatus::Rejected);
+    $admin = User::factory()->admin()->create();
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.documents'), [
+        'file' => UploadedFile::fake()->create('permit-clear.pdf', 100, 'application/pdf'),
+    ])->assertRedirect(route('tutor.onboarding'));
+
+    // Old row soft-deleted, a fresh pending one created (1a's partial unique index allows it).
+    expect(TutorDocument::withTrashed()->find($rejected->id)->trashed())->toBeTrue();
+    $replacement = TutorDocument::query()->where('tutor_profile_id', $profile->id)->where('document_type_id', $type->id)->firstOrFail();
+    expect($replacement->status)->toBe(TutorDocumentStatus::Pending);
+
+    test()->actingAs($tutor)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('step', 'complete'));
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'))->assertRedirect(route('tutor.onboarding'));
+    expect($profile->fresh()->status)->toBe(TutorProfileStatus::PendingReview);
+
+    // Approval stays blocked until the replacement is accepted, then goes through.
+    $approve = new ApproveTutor(app(RecordAuditLog::class));
+    expect(fn () => $approve($admin, $profile->fresh()))->toThrow(TutorApprovalBlockedException::class);
+    (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $replacement, TutorDocumentStatus::Accepted);
+    $approve($admin, $profile->fresh());
+    expect($profile->fresh()->status)->toBe(TutorProfileStatus::Approved);
+});
+
+it('keeps completion blocked until a rejected document is replaced', function () {
+    [$tutor] = changesRequestedTutorWithDocument(TutorDocumentStatus::Rejected);
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'))->assertStatus(409);
 });

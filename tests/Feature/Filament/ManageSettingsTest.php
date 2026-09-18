@@ -4,10 +4,12 @@ use App\Enums\SettingGroup;
 use App\Filament\Pages\ManageSettings;
 use App\Mail\Tutor\TutorApprovedMail;
 use App\Models\AuditLog;
+use App\Models\Setting;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Support\Facades\Settings;
 use Database\Seeders\SettingsSeeder;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -112,4 +114,25 @@ it('puts the email footer from settings at the bottom of an email', function () 
     $html = (new TutorApprovedMail(TutorProfile::factory()->create()))->render();
 
     expect($html)->toContain('You receive this because you applied to teach.');
+});
+
+it('never lets a re-seed overwrite a value an admin changed (R29)', function () {
+    Livewire::actingAs($this->admin)
+        ->test(ManageSettings::class)
+        ->fillForm(['site_name' => 'Admin Chosen Name', 'commission_pct' => 33])
+        ->call('save');
+
+    $this->seed(SettingsSeeder::class);
+
+    expect(Settings::get('site_name'))->toBe('Admin Chosen Name')
+        ->and(Settings::get('commission_pct'))->toBe(33);
+});
+
+it('still inserts a key that is missing on re-seed (R29)', function () {
+    Setting::query()->where('key', 'reviews')->delete();
+    Cache::forget('settings.reviews');
+
+    $this->seed(SettingsSeeder::class);
+
+    expect(Setting::query()->where('key', 'reviews')->exists())->toBeTrue();
 });

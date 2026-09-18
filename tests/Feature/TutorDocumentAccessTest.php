@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\UserStatus;
 use App\Models\DocumentType;
 use App\Models\TutorDocument;
 use App\Models\TutorProfile;
@@ -90,4 +91,16 @@ it('refuses a non-admin on the admin document route even with a valid signature'
     $response = $this->actingAs($document->tutorProfile->user)->get($url);
 
     $response->assertForbidden();
+});
+
+it('refuses a disabled admin the admin document route and the policy, even with a valid signature (R28)', function () {
+    $document = createOwnedTutorDocument();
+    $disabled = User::factory()->admin()->create();
+    $disabled->forceFill(['status' => UserStatus::Suspended])->save();
+    $url = URL::temporarySignedRoute('admin.documents.show', now()->addMinutes(15), ['document' => $document]);
+
+    $this->actingAs($disabled)->get($url)->assertForbidden();
+
+    expect($disabled->fresh()->can('view', $document))->toBeFalse()
+        ->and($disabled->fresh()->can('viewAny', TutorDocument::class))->toBeFalse();
 });

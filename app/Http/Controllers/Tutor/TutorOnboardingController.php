@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tutor;
 
 use App\Actions\Tutor\CompleteTutorOnboarding;
 use App\Enums\LevelTier;
+use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tutor\Onboarding\AgreementStepRequest;
@@ -408,7 +409,12 @@ class TutorOnboardingController extends Controller
             return ['name' => 'permit'];
         }
 
-        $uploadedTypeIds = $profile->tutorDocuments()->pluck('document_type_id');
+        // A rejected document does not count as uploaded (R28): it returns a
+        // changes_requested tutor to that type's step, where storeDocument()
+        // soft-deletes the rejected row and creates a fresh pending one.
+        $uploadedTypeIds = $profile->tutorDocuments()
+            ->where('status', '!=', TutorDocumentStatus::Rejected)
+            ->pluck('document_type_id');
 
         $nextType = DocumentType::query()->active()->orderBy('sort')
             ->whereNotIn('id', $uploadedTypeIds)
