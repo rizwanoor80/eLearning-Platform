@@ -4,6 +4,7 @@ namespace App\Filament\Resources\TutorProfiles\RelationManagers;
 
 use App\Actions\Tutor\ReviewTutorDocument;
 use App\Enums\TutorDocumentStatus;
+use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorDocument;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -15,7 +16,8 @@ use Illuminate\Support\Facades\URL;
 /**
  * Documents come only through the tutor's own onboarding upload — no
  * create/associate/delete here, only view (via a fresh signed URL) and the
- * admin accept/reject decision (CP1: per-document accept/reject).
+ * admin accept/reject decision (CP1: per-document accept/reject), which is
+ * available only while the profile is under review (R31).
  */
 class TutorDocumentsRelationManager extends RelationManager
 {
@@ -48,19 +50,29 @@ class TutorDocumentsRelationManager extends RelationManager
                 Action::make('accept')
                     ->label('Accept')
                     ->color('success')
-                    ->visible(fn (TutorDocument $record) => $record->status !== TutorDocumentStatus::Accepted)
-                    ->action(function (TutorDocument $record) {
-                        app(ReviewTutorDocument::class)(auth()->user(), $record, TutorDocumentStatus::Accepted);
-                        Notification::make()->title('Document accepted')->success()->send();
-                    }),
+                    ->visible(fn (TutorDocument $record) => ReviewTutorDocument::canReview($record)
+                        && $record->status !== TutorDocumentStatus::Accepted)
+                    ->action(fn (TutorDocument $record) => $this->review($record, TutorDocumentStatus::Accepted)),
                 Action::make('reject')
                     ->label('Reject')
                     ->color('danger')
-                    ->visible(fn (TutorDocument $record) => $record->status !== TutorDocumentStatus::Rejected)
-                    ->action(function (TutorDocument $record) {
-                        app(ReviewTutorDocument::class)(auth()->user(), $record, TutorDocumentStatus::Rejected);
-                        Notification::make()->title('Document rejected')->danger()->send();
-                    }),
+                    ->visible(fn (TutorDocument $record) => ReviewTutorDocument::canReview($record)
+                        && $record->status !== TutorDocumentStatus::Rejected)
+                    ->action(fn (TutorDocument $record) => $this->review($record, TutorDocumentStatus::Rejected)),
             ]);
+    }
+
+    private function review(TutorDocument $record, TutorDocumentStatus $status): void
+    {
+        try {
+            app(ReviewTutorDocument::class)(auth()->user(), $record, $status);
+        } catch (TutorStatusTransitionException $e) {
+            Notification::make()->title('Not allowed')->body($e->getMessage())->danger()->send();
+
+            return;
+        }
+
+        $notification = Notification::make()->title($status === TutorDocumentStatus::Accepted ? 'Document accepted' : 'Document rejected');
+        ($status === TutorDocumentStatus::Accepted ? $notification->success() : $notification->danger())->send();
     }
 }

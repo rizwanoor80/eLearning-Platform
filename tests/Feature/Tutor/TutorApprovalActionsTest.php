@@ -177,3 +177,48 @@ it('never makes a draft tutor bookable through the approval action', function ()
 
     expect(TutorProfile::bookable()->whereKey($draft->id)->exists())->toBeFalse();
 });
+
+it('refuses to review a document once the profile is approved, rejected or suspended (R31)', function (TutorProfileStatus $status) {
+    $admin = User::factory()->admin()->create();
+    $profile = TutorProfile::factory()->create(['status' => $status]);
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->accepted()->create();
+
+    expect(fn () => (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Rejected))
+        ->toThrow(TutorStatusTransitionException::class);
+
+    expect($document->fresh()->status)->toBe(TutorDocumentStatus::Accepted)
+        ->and(AuditLog::query()->count())->toBe(0);
+})->with([
+    'approved' => TutorProfileStatus::Approved,
+    'rejected' => TutorProfileStatus::Rejected,
+    'suspended' => TutorProfileStatus::Suspended,
+]);
+
+it('still reviews documents while the profile is draft, pending review or changes requested (R31)', function (TutorProfileStatus $status) {
+    $admin = User::factory()->admin()->create();
+    $profile = TutorProfile::factory()->create(['status' => $status]);
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->create();
+
+    (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Accepted);
+
+    expect($document->fresh()->status)->toBe(TutorDocumentStatus::Accepted);
+})->with([
+    'draft' => TutorProfileStatus::Draft,
+    'pending review' => TutorProfileStatus::PendingReview,
+    'changes requested' => TutorProfileStatus::ChangesRequested,
+]);
+
+it('leaves an approved tutor bookable and their documents untouched when an admin tries to reject one (R31)', function () {
+    $admin = User::factory()->admin()->create();
+    $type = DocumentType::factory()->create(['required' => true, 'active' => true]);
+    $profile = TutorProfile::factory()->approved()->create(['permit_expires_at' => now()->addYear()->toDateString()]);
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')->accepted()->create();
+
+    try {
+        (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Rejected);
+    } catch (TutorStatusTransitionException) {
+    }
+
+    expect($profile->fresh()->hasAllRequiredDocumentsAccepted())->toBeTrue()
+        ->and(TutorProfile::bookable()->whereKey($profile->id)->exists())->toBeTrue();
+});

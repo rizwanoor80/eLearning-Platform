@@ -61,7 +61,11 @@ class TutorOnboardingController extends Controller
             'step' => $step['name'],
             'currentDocumentType' => $step['documentType'] ?? null,
             'status' => $profile->status->value,
-            'reviewNote' => $profile->status === TutorProfileStatus::ChangesRequested ? $profile->review_note : null,
+            // The admin's note is shown for changes_requested (what to fix) and
+            // suspended (why) — SuspendTutor promises the tutor sees it (R31).
+            'reviewNote' => in_array($profile->status, [TutorProfileStatus::ChangesRequested, TutorProfileStatus::Suspended], true)
+                ? $profile->review_note
+                : null,
             'personal' => [
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,

@@ -1,11 +1,16 @@
 <?php
 
+use App\Enums\SettingGroup;
+use App\Enums\UserStatus;
 use App\Events\Tutor\TutorPermitExpired;
 use App\Events\Tutor\TutorPermitExpiring;
+use App\Mail\Admin\AdminPermitNoticeMail;
 use App\Mail\Tutor\TutorPermitExpiredMail;
 use App\Mail\Tutor\TutorPermitExpiringMail;
 use App\Models\AuditLog;
 use App\Models\TutorProfile;
+use App\Models\User;
+use App\Support\Facades\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
@@ -102,4 +107,28 @@ it('is registered on the daily schedule', function () {
     $commands = collect(app(Schedule::class)->events())->map(fn ($event) => $event->command);
 
     expect($commands->contains(fn ($command) => str_contains((string) $command, 'tutors:check-permits')))->toBeTrue();
+});
+
+it('also notifies the admin side, at support_address when set (PRD 8, R31)', function () {
+    Mail::fake();
+    Settings::set('support_address', 'support@example.test', SettingGroup::Mail);
+    $expiring = approvedTutorExpiringInDays(5);
+    $expired = approvedTutorExpiringInDays(0);
+
+    $this->artisan('tutors:check-permits');
+
+    Mail::assertQueued(AdminPermitNoticeMail::class, fn ($m) => $m->hasTo('support@example.test') && $m->profile->is($expiring) && $m->daysRemaining === 5);
+    Mail::assertQueued(AdminPermitNoticeMail::class, fn ($m) => $m->hasTo('support@example.test') && $m->profile->is($expired) && $m->daysRemaining === null);
+});
+
+it('falls back to every active admin, and skips a disabled one, when support_address is unset (R31)', function () {
+    Mail::fake();
+    $active = User::factory()->admin()->create();
+    $disabled = User::factory()->admin()->create();
+    $disabled->forceFill(['status' => UserStatus::Suspended])->save();
+    approvedTutorExpiringInDays(5);
+
+    $this->artisan('tutors:check-permits');
+
+    Mail::assertQueued(AdminPermitNoticeMail::class, fn ($m) => $m->hasTo($active->email) && ! $m->hasTo($disabled->email));
 });

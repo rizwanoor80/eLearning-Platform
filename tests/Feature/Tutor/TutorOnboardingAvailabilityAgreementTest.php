@@ -329,3 +329,36 @@ it('keeps completion blocked until a rejected document is replaced', function ()
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'))->assertStatus(409);
 });
+
+it('passes the status and, for changes_requested and suspended only, the admin note to the page (R31)', function (TutorProfileStatus $status, bool $noteShown) {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+    TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()
+        ->forceFill(['status' => $status, 'review_note' => 'Because reasons.'])->save();
+
+    test()->actingAs($tutor)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page
+            ->where('status', $status->value)
+            ->where('reviewNote', $noteShown ? 'Because reasons.' : null));
+})->with([
+    'changes requested' => [TutorProfileStatus::ChangesRequested, true],
+    'suspended' => [TutorProfileStatus::Suspended, true],
+    'approved' => [TutorProfileStatus::Approved, false],
+    'rejected' => [TutorProfileStatus::Rejected, false],
+    'pending review' => [TutorProfileStatus::PendingReview, false],
+]);
+
+it('lets a changes_requested tutor edit an earlier step and lands back on complete (R31)', function () {
+    $tutor = agreementReadyTutor();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
+    TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()
+        ->forceFill(['status' => TutorProfileStatus::ChangesRequested, 'review_note' => 'Tidy your bio.'])->save();
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.profile'), ['headline' => 'Better headline', 'bio' => 'A clearer bio.'])
+        ->assertRedirect(route('tutor.onboarding'));
+
+    test()->actingAs($tutor)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('step', 'complete')->where('profile.headline', 'Better headline'));
+});
