@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
+use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use Illuminate\Support\Facades\Route;
@@ -9,6 +10,8 @@ Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+
+    Route::resource('learners', LearnerController::class)->except('show');
 });
 
 Route::middleware('guest')->group(function () {

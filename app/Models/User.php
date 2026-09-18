@@ -11,6 +11,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -67,6 +68,14 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail, Pas
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->role === Role::Admin && $this->status === UserStatus::Active;
+    }
+
+    /**
+     * @return HasMany<Learner, $this>
+     */
+    public function learners(): HasMany
+    {
+        return $this->hasMany(Learner::class, 'account_user_id');
     }
 
     /**
