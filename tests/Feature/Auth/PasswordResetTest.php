@@ -3,7 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
+use App\Notifications\Auth\ResetPasswordNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Fortify\Features;
@@ -35,7 +35,7 @@ class PasswordResetTest extends TestCase
 
         $this->post(route('password.email'), ['email' => $user->email]);
 
-        Notification::assertSentTo($user, ResetPassword::class);
+        Notification::assertSentTo($user, ResetPasswordNotification::class);
     }
 
     public function test_reset_password_screen_can_be_rendered()
@@ -46,7 +46,7 @@ class PasswordResetTest extends TestCase
 
         $this->post(route('password.email'), ['email' => $user->email]);
 
-        Notification::assertSentTo($user, ResetPassword::class, function ($notification) {
+        Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) {
             $response = $this->get(route('password.reset', $notification->token));
 
             $response->assertOk();
@@ -63,7 +63,7 @@ class PasswordResetTest extends TestCase
 
         $this->post(route('password.email'), ['email' => $user->email]);
 
-        Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+        Notification::assertSentTo($user, ResetPasswordNotification::class, function ($notification) use ($user) {
             $response = $this->post(route('password.update'), [
                 'token' => $notification->token,
                 'email' => $user->email,

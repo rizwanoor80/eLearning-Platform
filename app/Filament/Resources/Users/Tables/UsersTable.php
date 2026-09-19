@@ -34,6 +34,9 @@ class UsersTable
             ->recordActions([
                 Action::make('disable')
                     ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('Disable this admin?')
+                    ->modalDescription('They lose access to the admin panel at once. You can enable them again later.')
                     ->schema([
                         Textarea::make('reason')->required(),
                     ])

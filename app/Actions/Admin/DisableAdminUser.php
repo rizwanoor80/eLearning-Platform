@@ -6,6 +6,7 @@ use App\Actions\RecordAuditLog;
 use App\Enums\Role;
 use App\Enums\UserStatus;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class DisableAdminUser
@@ -27,26 +28,32 @@ class DisableAdminUser
             throw new RuntimeException('You cannot disable your own account.');
         }
 
-        $otherActiveAdmins = User::query()
-            ->where('role', Role::Admin)
-            ->where('status', UserStatus::Active)
-            ->whereKeyNot($target->getKey())
-            ->count();
+        // The count and the write are one unit: the active admin rows are locked
+        // first, so two admins disabling each other at the same moment queue up and
+        // the second sees the first's change (Postgres re-checks the status filter on
+        // rows it had to wait for) instead of both passing the check.
+        DB::transaction(function () use ($actor, $target, $reason): void {
+            $activeAdminIds = User::query()
+                ->where('role', Role::Admin)
+                ->where('status', UserStatus::Active)
+                ->lockForUpdate()
+                ->pluck('id');
 
-        if ($otherActiveAdmins === 0) {
-            throw new RuntimeException('You cannot disable the last active admin.');
-        }
+            if ($activeAdminIds->reject(fn ($id) => $id === $target->getKey())->isEmpty()) {
+                throw new RuntimeException('You cannot disable the last active admin.');
+            }
 
-        $before = ['status' => $target->status->value];
+            $before = ['status' => $target->status->value];
 
-        $target->forceFill([
-            'status' => UserStatus::Suspended,
-            'suspended_reason' => $reason,
-        ])->save();
+            $target->forceFill([
+                'status' => UserStatus::Suspended,
+                'suspended_reason' => $reason,
+            ])->save();
 
-        ($this->recordAuditLog)($actor, 'admin_user.disabled', $target, $before, [
-            'status' => UserStatus::Suspended->value,
-            'suspended_reason' => $reason,
-        ]);
+            ($this->recordAuditLog)($actor, 'admin_user.disabled', $target, $before, [
+                'status' => UserStatus::Suspended->value,
+                'suspended_reason' => $reason,
+            ]);
+        });
     }
 }

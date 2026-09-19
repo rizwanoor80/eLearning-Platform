@@ -13,8 +13,18 @@ class DocumentTypeForm
     {
         return $schema
             ->components([
+                // Fixed once created: the permit type is found by its code (R36 g), and a code
+                // is what seeders and code refer to.
                 TextInput::make('code')
-                    ->required(),
+                    ->required()
+                    ->maxLength(64)
+                    ->regex('/^[a-z][a-z0-9_]*$/')
+                    ->unique(ignoreRecord: true)
+                    ->validationMessages([
+                        'regex' => 'Use lower-case letters, digits and underscores, starting with a letter.',
+                        'unique' => 'A document type with this code already exists.',
+                    ])
+                    ->disabledOn('edit'),
                 TextInput::make('name')
                     ->required(),
                 Textarea::make('description')
@@ -27,6 +37,9 @@ class DocumentTypeForm
                 TextInput::make('sort')
                     ->required()
                     ->numeric()
+                    ->integer()
+                    ->minValue(0)
+                    ->maxValue(32767)
                     ->default(0),
             ]);
     }
