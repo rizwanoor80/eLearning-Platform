@@ -22,51 +22,6 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
-function agreementReadyTutor(): User
-{
-    DocumentType::query()->delete();
-
-    $tutor = User::factory()->tutor()->create();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
-        'permit_number' => 'PMT-1',
-        'permit_expires_at' => now()->addYear()->toDateString(),
-    ]);
-    test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
-        'bank_name' => 'Emirates NBD',
-        'bank_account_name' => 'Test Tutor',
-        'bank_iban' => 'AE070331234567890123456',
-    ]);
-
-    $curriculum = Curriculum::factory()->create(['code' => CurriculumCode::Gcse]);
-    $subject = Subject::factory()->create();
-    PriceBand::factory()->create([
-        'curriculum_id' => $curriculum->id,
-        'level_tier' => LevelTier::Exam1,
-        'min_rate' => 10000,
-        'max_rate' => 20000,
-        'effective_from' => now()->subYear()->toDateString(),
-    ]);
-    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 10',
-            'level_max' => 'Year 11',
-            'level_tier' => 'exam_1',
-        ]],
-    ]);
-    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
-    test()->actingAs($tutor)->post(route('tutor.onboarding.profile'), [
-        'headline' => 'Experienced GCSE Maths tutor',
-        'bio' => 'I have taught GCSE maths for ten years.',
-    ]);
-    test()->actingAs($tutor)->post(route('tutor.onboarding.availability'), [
-        'rules' => [['weekday' => 1, 'start_time' => '16:00', 'end_time' => '18:00']],
-    ]);
-
-    return $tutor;
-}
-
 beforeEach(function () {
     Page::factory()->create(['slug' => 'tutor_agreement', 'version' => 1]);
 });
@@ -117,7 +72,7 @@ it('records the current page version when the agreement is accepted', function (
     $tutor = agreementReadyTutor();
     Page::query()->where('slug', 'tutor_agreement')->update(['version' => 2]);
 
-    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    $response = test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 2]);
 
     $response->assertRedirect(route('tutor.onboarding'));
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -127,7 +82,7 @@ it('records the current page version when the agreement is accepted', function (
 
 it('reaches the complete step once the agreement is accepted', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
 
     $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
 
@@ -136,7 +91,7 @@ it('reaches the complete step once the agreement is accepted', function () {
 
 it('sets the profile to pending_review on completion', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
@@ -157,7 +112,7 @@ it('blocks completion without an accepted agreement', function () {
 
 it('shows submitted once the profile has left draft status', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
@@ -168,7 +123,7 @@ it('shows submitted once the profile has left draft status', function () {
 it('sends the submitted-for-review email on completion', function () {
     Mail::fake();
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
@@ -177,7 +132,7 @@ it('sends the submitted-for-review email on completion', function () {
 
 it('re-enters at complete and shows the admin review note when changes are requested', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -195,7 +150,7 @@ it('re-enters at complete and shows the admin review note when changes are reque
 
 it('lets a changes_requested tutor edit an earlier step again', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -215,7 +170,7 @@ it('lets a changes_requested tutor edit an earlier step again', function () {
 
 it('resubmits a changes_requested profile for review on completion', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -233,7 +188,7 @@ it('refuses completion when an admin narrows the price band after the rate step 
     // exercises complete()'s own re-check directly rather than the
     // subjects-change path already covered in the rate test file.
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
 
     $curriculum = Curriculum::query()->where('code', CurriculumCode::Gcse)->firstOrFail();
     PriceBand::factory()->create([
@@ -253,7 +208,7 @@ it('refuses completion when an admin narrows the price band after the rate step 
 
 it('refuses every step handler once the profile has been submitted for review', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00'])
@@ -270,7 +225,7 @@ it('refuses every step handler once the profile has been submitted for review', 
 function changesRequestedTutorWithDocument(TutorDocumentStatus $documentStatus): array
 {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -332,7 +287,7 @@ it('keeps completion blocked until a rejected document is replaced', function ()
 
 it('passes the status and, for changes_requested and suspended only, the admin note to the page (R31)', function (TutorProfileStatus $status, bool $noteShown) {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
     TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()
         ->forceFill(['status' => $status, 'review_note' => 'Because reasons.'])->save();
@@ -351,7 +306,7 @@ it('passes the status and, for changes_requested and suspended only, the admin n
 
 it('lets a changes_requested tutor edit an earlier step and lands back on complete (R31)', function () {
     $tutor = agreementReadyTutor();
-    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
     TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()
         ->forceFill(['status' => TutorProfileStatus::ChangesRequested, 'review_note' => 'Tidy your bio.'])->save();

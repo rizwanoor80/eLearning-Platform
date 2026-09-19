@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -290,9 +290,21 @@ const submitAvailability = () => {
     availabilityForm.post('/tutor/onboarding/availability', afterSubmit);
 };
 
-const agreementForm = useForm<{ accepted: boolean }>({
+const agreementForm = useForm<{ accepted: boolean; version: number | null }>({
     accepted: false,
+    version: props.agreement.current_version,
 });
+
+// If the admin publishes a new version while the tutor is reading, the server
+// refuses the stale acceptance and re-sends the page: pick up the version now
+// shown and make them tick the box again.
+watch(
+    () => props.agreement.current_version,
+    (version) => {
+        agreementForm.version = version;
+        agreementForm.accepted = false;
+    },
+);
 
 const submitAgreement = () => {
     agreementForm.post('/tutor/onboarding/agreement');

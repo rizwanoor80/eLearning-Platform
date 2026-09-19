@@ -3,13 +3,19 @@
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Match\MatchRequestController;
+use App\Http\Controllers\PageController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
+use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
+
+foreach (PublicPages::all() as $path => $page) {
+    Route::get($path, PageController::class)->defaults('slug', $page['slug'])->name('pages.'.$page['slug']);
+}
 
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->whereNumber('tutor')->name('tutors.show');

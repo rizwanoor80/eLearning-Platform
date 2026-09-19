@@ -20,6 +20,7 @@ declare module '@inertiajs/core' {
             auth: Auth;
             sidebarOpen: boolean;
             features: { match_requests: boolean; reviews: boolean; messaging: boolean };
+            footerPages: Array<{ title: string; href: string }>;
             [key: string]: unknown;
         };
     }

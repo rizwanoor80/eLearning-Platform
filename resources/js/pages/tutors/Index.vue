@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { reactive } from 'vue';
+import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -193,4 +194,6 @@ function search(page = 1) {
             <Button variant="outline" size="sm" :disabled="page >= lastPage" @click="search(page + 1)">Next</Button>
         </div>
     </main>
+
+    <PublicFooter />
 </template>

@@ -326,11 +326,11 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'agreement');
 
-        $page = Page::query()->where('slug', 'tutor_agreement')->firstOrFail();
-
+        // The version the tutor was shown (validated against the current one by
+        // the request), not a fresh read that a publish could have moved.
         $profile->update([
             'agreement_accepted_at' => now(),
-            'agreement_version' => $page->version,
+            'agreement_version' => $request->integer('version'),
         ]);
 
         return redirect()->route('tutor.onboarding');

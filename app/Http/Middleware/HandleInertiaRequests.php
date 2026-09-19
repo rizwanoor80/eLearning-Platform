@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\Facades\Settings;
+use App\Support\PublicPages;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -46,6 +47,9 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Read from the pages table when a page renders, so a new page or a
+            // renamed one shows in the footer at once.
+            'footerPages' => fn (): array => PublicPages::footerLinks(),
             'features' => [
                 'match_requests' => EnsureFeatureEnabled::enabled('match_requests'),
                 'reviews' => EnsureFeatureEnabled::enabled('reviews'),
