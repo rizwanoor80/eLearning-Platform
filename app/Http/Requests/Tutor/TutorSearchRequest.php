@@ -38,7 +38,7 @@ class TutorSearchRequest extends FormRequest
             'learner' => ['nullable', 'integer'],
             'curriculum_id' => ['nullable', 'integer', 'exists:curricula,id'],
             'subject_id' => ['nullable', 'integer', 'exists:subjects,id'],
-            'year_group' => ['nullable', 'string', 'max:50'],
+            'year_group_id' => ['nullable', 'integer', 'exists:year_groups,id'],
             'min_price' => $price,
             'max_price' => $price,
             'day' => ['nullable', 'integer', 'between:0,6'],
@@ -73,11 +73,15 @@ class TutorSearchRequest extends FormRequest
     public function criteria(): TutorSearchCriteria
     {
         $learner = $this->ownLearner();
+        $curriculumId = $this->filled('curriculum_id') ? $this->integer('curriculum_id') : $learner?->curriculum_id;
+
+        // The learner's year group is used only when it belongs to the curriculum being searched.
+        $learnerYearGroup = $learner !== null && $curriculumId !== null && $learner->curriculum_id === $curriculumId ? $learner->year_group_id : null;
 
         return new TutorSearchCriteria(
-            curriculumId: $this->filled('curriculum_id') ? $this->integer('curriculum_id') : $learner?->curriculum_id,
+            curriculumId: $curriculumId,
             subjectId: $this->filled('subject_id') ? $this->integer('subject_id') : null,
-            yearGroup: $this->filled('year_group') ? $this->string('year_group')->toString() : $learner?->year_group,
+            yearGroupId: $this->filled('year_group_id') ? $this->integer('year_group_id') : $learnerYearGroup,
             minRate: $this->filled('min_price') ? Money::fromDecimalString($this->string('min_price')->toString()) : null,
             maxRate: $this->filled('max_price') ? Money::fromDecimalString($this->string('max_price')->toString()) : null,
             day: $this->filled('day') ? $this->integer('day') : null,

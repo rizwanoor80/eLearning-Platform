@@ -13,7 +13,7 @@ use App\Models\User;
 class CreateLearner
 {
     /**
-     * @param  array{display_name: string, year_group: string, curriculum_id: int, school?: string|null, notes?: string|null}  $data
+     * @param  array{display_name: string, year_group_id: int, curriculum_id: int, school?: string|null, notes?: string|null}  $data
      */
     public function __invoke(User $owner, array $data): Learner
     {

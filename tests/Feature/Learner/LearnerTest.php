@@ -8,15 +8,18 @@ use App\Exceptions\LearnerDeletionException;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\User;
+use App\Models\YearGroup;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 
 function lnPayload(array $overrides = []): array
 {
+    $curriculum = Curriculum::factory()->create();
+
     return array_merge([
         'display_name' => 'Amina',
-        'year_group' => 'Year 8',
-        'curriculum_id' => Curriculum::factory()->create()->id,
+        'year_group_id' => YearGroup::factory()->create(['curriculum_id' => $curriculum->id])->id,
+        'curriculum_id' => $curriculum->id,
         'school' => 'Springfield',
         'notes' => 'Needs help with fractions.',
     ], $overrides);
@@ -77,7 +80,7 @@ it('requires a curriculum and year group for a parent-added learner', function (
     $owner = User::factory()->create();
 
     test()->actingAs($owner)->post(route('learners.store'), ['display_name' => 'Amina'])
-        ->assertSessionHasErrors(['year_group', 'curriculum_id']);
+        ->assertSessionHasErrors(['year_group_id', 'curriculum_id']);
 });
 
 it('creates an adult student self-learner at registration, named after the account', function () {
@@ -139,15 +142,16 @@ it('lets an adult student complete their self-learner but not rename it', functi
     $user = User::factory()->create(['name' => 'Sara Adult']);
     $self = (new CreateSelfLearner)($user);
     $curriculum = Curriculum::factory()->create();
+    $yearGroup = YearGroup::factory()->create(['curriculum_id' => $curriculum->id]);
 
     test()->actingAs($user)->put(route('learners.update', $self), [
-        'display_name' => 'Somebody Else', 'curriculum_id' => $curriculum->id, 'year_group' => 'Undergraduate',
+        'display_name' => 'Somebody Else', 'curriculum_id' => $curriculum->id, 'year_group_id' => $yearGroup->id,
     ])->assertRedirect(route('learners.index'));
 
     $self->refresh();
     expect($self->display_name)->toBe('Sara Adult')
         ->and($self->curriculum_id)->toBe($curriculum->id)
-        ->and($self->year_group)->toBe('Undergraduate')
+        ->and($self->year_group_id)->toBe($yearGroup->id)
         ->and($self->is_minor)->toBeFalse();
 });
 
@@ -162,7 +166,7 @@ it('still lets an adult student save their self-learner with no curriculum yet',
 it('keeps the self-learner display name in step when the user renames themselves', function () {
     $user = User::factory()->create(['name' => 'Sara Adult']);
     $self = (new CreateSelfLearner)($user);
-    $child = (new CreateLearner)($user, ['display_name' => 'Kid', 'year_group' => 'Year 3', 'curriculum_id' => Curriculum::factory()->create()->id]);
+    $child = (new CreateLearner)($user, lnChild());
 
     test()->actingAs($user)->patch(route('profile.update'), ['name' => 'Sara Renamed', 'email' => $user->email])->assertSessionHasNoErrors();
 
@@ -184,3 +188,15 @@ it('does not expose learner notes to anyone but the owner (no learner login exis
         ->and(Schema::hasColumn('learners', 'password'))->toBeFalse()
         ->and(Schema::hasColumn('learners', 'email'))->toBeFalse();
 });
+
+/**
+ * The attributes of a parent-added learner, with a year group of its own curriculum.
+ *
+ * @return array{display_name: string, year_group_id: int, curriculum_id: int}
+ */
+function lnChild(): array
+{
+    $curriculum = Curriculum::factory()->create();
+
+    return ['display_name' => 'Kid', 'year_group_id' => YearGroup::factory()->create(['curriculum_id' => $curriculum->id])->id, 'curriculum_id' => $curriculum->id];
+}

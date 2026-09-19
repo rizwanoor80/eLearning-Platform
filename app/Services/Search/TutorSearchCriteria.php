@@ -22,7 +22,7 @@ final readonly class TutorSearchCriteria
     public function __construct(
         public ?int $curriculumId = null,
         public ?int $subjectId = null,
-        public ?string $yearGroup = null,
+        public ?int $yearGroupId = null,
         public ?Money $minRate = null,
         public ?Money $maxRate = null,
         public ?int $day = null,

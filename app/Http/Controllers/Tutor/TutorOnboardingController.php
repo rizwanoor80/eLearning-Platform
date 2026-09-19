@@ -24,8 +24,11 @@ use App\Models\Subject;
 use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Models\YearGroup;
 use App\Support\Facades\Settings;
 use App\Support\Money;
+use App\Support\YearGroups\YearGroupOptions;
+use App\Support\YearGroups\YearGroupTiers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -89,7 +92,8 @@ class TutorOnboardingController extends Controller
             'curricula' => Curriculum::query()->orderBy('sort')->get(['id', 'code', 'name']),
             'subjects' => Subject::query()->orderBy('sort')->get(['id', 'name']),
             'tutorSubjects' => $profile->tutorSubjects()
-                ->get(['id', 'curriculum_id', 'subject_id', 'level_min', 'level_max', 'level_tier']),
+                ->get(['id', 'curriculum_id', 'subject_id', 'level_min_id', 'level_max_id', 'level_min_legacy', 'level_max_legacy', 'level_tier']),
+            'yearGroups' => YearGroupOptions::all(),
             'rateBand' => $this->rateBandFor($profile),
             'trialDiscountPct' => Settings::get('trial_discount_pct'),
             'availabilityRules' => $profile->availabilityRules()
@@ -177,24 +181,44 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'subjects');
 
-        /** @var array<int, array{curriculum_id: int, subject_id: int, level_min: string, level_max: string, level_tier: string}> $subjectsInput */
+        /** @var array<int, array{curriculum_id: int, subject_id: int, level_min_id: int, level_max_id: int}> $subjectsInput */
         $subjectsInput = $request->validated('subjects');
         $rows = collect($subjectsInput);
 
         $curricula = Curriculum::query()->whereIn('id', $rows->pluck('curriculum_id')->unique())->get()->keyBy('id');
+        $groups = YearGroup::query()->whereIn('id', $rows->pluck('level_min_id')->merge($rows->pluck('level_max_id'))->unique())->get()->keyBy('id');
 
         $seen = [];
-        foreach ($rows as $row) {
+        $tiers = [];
+        foreach ($rows as $index => $row) {
             /** @var Curriculum|null $curriculum */
             $curriculum = $curricula->get($row['curriculum_id']);
             abort_if($curriculum === null, 422);
 
-            $tier = LevelTier::from($row['level_tier']);
-            if (! in_array($tier, $curriculum->code->tiers(), true)) {
+            $min = $groups->get($row['level_min_id']);
+            $max = $groups->get($row['level_max_id']);
+
+            // Both year groups must belong to this row's curriculum and run low to high.
+            if ($min?->curriculum_id !== $curriculum->id || $max?->curriculum_id !== $curriculum->id) {
                 throw ValidationException::withMessages([
-                    'subjects' => "The level {$tier->value} does not exist for {$curriculum->code->value}.",
+                    'subjects' => "Choose year groups that belong to {$curriculum->name}.",
                 ]);
             }
+
+            if ($min->sort > $max->sort) {
+                throw ValidationException::withMessages([
+                    'subjects' => "The lowest year group must not come after the highest for {$curriculum->name}.",
+                ]);
+            }
+
+            // The tier is derived from the year groups, never typed (R33).
+            $tier = YearGroupTiers::derive($min, $max);
+            if ($tier === null || ! in_array($tier, $curriculum->code->tiers(), true)) {
+                throw ValidationException::withMessages([
+                    'subjects' => "The level range does not exist for {$curriculum->code->value}.",
+                ]);
+            }
+            $tiers[$index] = $tier;
 
             $key = $row['curriculum_id'].':'.$row['subject_id'];
             if (isset($seen[$key])) {
@@ -205,16 +229,16 @@ class TutorOnboardingController extends Controller
             $seen[$key] = true;
         }
 
-        DB::transaction(function () use ($profile, $rows): void {
+        DB::transaction(function () use ($profile, $rows, $tiers): void {
             $profile->tutorSubjects()->delete();
 
-            foreach ($rows as $row) {
+            foreach ($rows as $index => $row) {
                 $profile->tutorSubjects()->create([
                     'curriculum_id' => $row['curriculum_id'],
                     'subject_id' => $row['subject_id'],
-                    'level_min' => $row['level_min'],
-                    'level_max' => $row['level_max'],
-                    'level_tier' => $row['level_tier'],
+                    'level_min_id' => $row['level_min_id'],
+                    'level_max_id' => $row['level_max_id'],
+                    'level_tier' => $tiers[$index],
                 ]);
             }
         });
@@ -432,7 +456,12 @@ class TutorOnboardingController extends Controller
             return ['name' => 'bank'];
         }
 
-        if ($profile->tutorSubjects()->doesntExist()) {
+        // Every subject row needs both ends of its year-group range. A row left
+        // unmapped by the R33 data migration (its old free text matched no year
+        // group) sends a draft or changes_requested tutor back here to choose.
+        if ($profile->tutorSubjects()->doesntExist() || $profile->tutorSubjects()->where(
+            fn ($row) => $row->whereNull('level_min_id')->orWhereNull('level_max_id'),
+        )->exists()) {
             return ['name' => 'subjects'];
         }
 

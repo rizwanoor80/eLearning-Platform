@@ -11,7 +11,7 @@ use App\Models\Learner;
 class UpdateLearner
 {
     /**
-     * @param  array{display_name?: string, year_group?: string|null, curriculum_id?: int|null, school?: string|null, notes?: string|null}  $data
+     * @param  array{display_name?: string, year_group_id?: int|null, curriculum_id?: int|null, school?: string|null, notes?: string|null}  $data
      */
     public function __invoke(Learner $learner, array $data): Learner
     {
@@ -19,7 +19,15 @@ class UpdateLearner
             unset($data['display_name']);
         }
 
-        $learner->fill($data)->save();
+        $learner->fill($data);
+
+        // Choosing a year group settles a legacy row: the original free text
+        // (kept only for the R33 report) is no longer needed.
+        if ($learner->year_group_id !== null) {
+            $learner->year_group_legacy = null;
+        }
+
+        $learner->save();
 
         return $learner;
     }

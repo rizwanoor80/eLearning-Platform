@@ -24,7 +24,7 @@ class TutorProfileController extends Controller
     {
         $profile = TutorProfile::query()
             ->bookable()
-            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name'])
+            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name', 'tutorSubjects.levelMin:id,label', 'tutorSubjects.levelMax:id,label'])
             ->findOrFail($tutor);
 
         $user = $request->user();

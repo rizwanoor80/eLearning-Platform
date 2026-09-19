@@ -3,6 +3,7 @@
 use App\Actions\Match\CloseMatchRequest;
 use App\Actions\Match\SuggestTutors;
 use App\Enums\BudgetTier;
+use App\Enums\LevelTier;
 use App\Enums\MatchRequestStatus;
 use App\Enums\SettingGroup;
 use App\Enums\TutorProfileStatus;
@@ -21,6 +22,7 @@ use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
+use App\Models\YearGroup;
 use App\Support\Facades\Settings;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
@@ -48,7 +50,7 @@ function mrPayload(Learner $learner, Curriculum $curriculum, array $overrides = 
         'learner_id' => $learner->id,
         'curriculum_id' => $curriculum->id,
         'subject_id' => Subject::factory()->create()->id,
-        'year_group' => 'Year 8',
+        'year_group_id' => YearGroup::query()->firstOrCreate(['curriculum_id' => $curriculum->id, 'code' => 'y8'], ['label' => 'Year 8', 'sort' => 8, 'level_tier' => LevelTier::LowerSecondary])->id,
         'goals' => 'Fractions and confidence.',
         'preferred_times' => 'Weekday evenings',
         'budget_tier' => 'mid',
@@ -75,11 +77,13 @@ it('lets a parent submit a request for their own learner as an open request', fu
 it('keeps the request’s own snapshot when the learner is edited later (R30 #1)', function () {
     $parent = User::factory()->create();
     $curriculum = Curriculum::factory()->create();
-    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'year_group' => 'Year 8']);
-    test()->actingAs($parent)->post(route('match-requests.store'), mrPayload($learner, $curriculum, ['year_group' => 'Year 8']));
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+    $payload = mrPayload($learner, $curriculum);
+    test()->actingAs($parent)->post(route('match-requests.store'), $payload);
 
     $other = Curriculum::factory()->create();
-    $learner->fill(['year_group' => 'Year 11', 'curriculum_id' => $other->id, 'display_name' => 'Renamed'])->save();
+    $learner->fill(['year_group_id' => YearGroup::factory()->create(['curriculum_id' => $other->id])->id, 'curriculum_id' => $other->id, 'display_name' => 'Renamed'])->save();
+    YearGroup::query()->findOrFail($payload['year_group_id'])->update(['label' => 'Renamed year']);  // R33: a relabel must not reach the snapshot
 
     $request = MatchRequest::query()->sole();
     expect($request->year_group)->toBe('Year 8')->and($request->curriculum_id)->toBe($curriculum->id);
@@ -127,7 +131,7 @@ it('validates the form fields', function () {
     $parent = User::factory()->create();
 
     test()->actingAs($parent)->post(route('match-requests.store'), ['budget_tier' => 'gold'])
-        ->assertSessionHasErrors(['learner_id', 'curriculum_id', 'subject_id', 'year_group', 'goals', 'budget_tier']);
+        ->assertSessionHasErrors(['learner_id', 'curriculum_id', 'subject_id', 'year_group_id', 'goals', 'budget_tier']);
 });
 
 it('never lets the client set status or the owning account (R30 #8)', function () {

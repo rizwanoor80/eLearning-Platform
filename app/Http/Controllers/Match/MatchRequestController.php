@@ -10,8 +10,10 @@ use App\Models\Learner;
 use App\Models\MatchRequest;
 use App\Models\Subject;
 use App\Models\TutorProfile;
+use App\Models\YearGroup;
 use App\Services\Search\TutorPresenter;
 use App\Support\BudgetTierLabels;
+use App\Support\YearGroups\YearGroupOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -39,7 +41,7 @@ class MatchRequestController extends Controller
         $tutors = TutorProfile::query()
             ->bookable()
             ->whereIn('id', $tutorIds)
-            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name'])
+            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name', 'tutorSubjects.levelMin:id,label', 'tutorSubjects.levelMax:id,label'])
             ->get()
             ->keyBy('id');
 
@@ -75,8 +77,9 @@ class MatchRequestController extends Controller
                 'id' => $l->id,
                 'display_name' => $l->display_name,
                 'curriculum_id' => $l->curriculum_id,
-                'year_group' => $l->year_group,
+                'year_group_id' => $l->year_group_id,
             ])->values()->all(),
+            'yearGroups' => YearGroupOptions::all(),
             'selectedLearner' => $chosen?->id,
             'curricula' => Curriculum::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
             'subjects' => Subject::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
@@ -88,8 +91,12 @@ class MatchRequestController extends Controller
     {
         $learner = Learner::query()->findOrFail($request->integer('learner_id'));
 
+        // The request keeps the year group's LABEL as its own snapshot (like its
+        // curriculum): renaming a year group later must not rewrite what was asked.
+        $label = YearGroup::query()->findOrFail($request->integer('year_group_id'))->label;
+
         /** @var array{curriculum_id: int, subject_id: int, year_group: string, goals: string, preferred_times?: string|null, budget_tier: string} $data */
-        $data = $request->safe()->except('learner_id');
+        $data = [...$request->safe()->except(['learner_id', 'year_group_id']), 'year_group' => $label];
         $create($request->user(), $learner, $data);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Request sent. We will email you suggestions.')]);
