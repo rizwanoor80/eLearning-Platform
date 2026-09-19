@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrusTutor lockup markup</title>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@600&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; padding:40px; background:#FBF8F7; font-family:'Schibsted Grotesk',Helvetica,sans-serif; }
+
+  /* ---- LOCKUP C (desktop): wordmark | rule | tagline ---- */
+  .tt-lockup { display:flex; align-items:center; gap:16px; }
+  .tt-lockup img { height:32px; width:auto; display:block; }      /* H = 32px */
+  .tt-lockup .rule { width:1px; height:27px; background:#E7D6D8; flex:none; }
+  .tt-lockup .tagline {
+    font-family:'Quicksand',sans-serif; font-weight:600;
+    font-size:11px;            /* 0.34 x H */
+    line-height:1.25; color:#64011D; white-space:nowrap;
+  }
+
+  /* ---- MOBILE (<768px): tagline BELOW the wordmark, no rule ---- */
+  @media (max-width: 767px) {
+    .tt-lockup { flex-direction:column; align-items:flex-start; gap:10px; } /* 0.30 x H */
+    .tt-lockup .rule { display:none; }
+    .tt-lockup img { height:28px; }
+    .tt-lockup .tagline { font-size:10px; }
+  }
+  /* ---- <480px: wordmark alone ---- */
+  @media (max-width: 479px) {
+    .tt-lockup .tagline { display:none; }
+  }
+
+  /* dark ground: swap the file, tagline goes white */
+  .tt-lockup--dark { background:#240A12; padding:20px; }
+  .tt-lockup--dark .tagline { color:#FFFFFF; }
+  .tt-lockup--dark .rule { background:rgba(255,255,255,0.28); }
+</style>
+</head>
+<body>
+
+<div class="tt-lockup">
+  <img src="wordmark/trustutor-wordmark-colour-600.png" alt="TrusTutor">
+  <span class="rule"></span>
+  <span class="tagline">Tutoring, Electrified.</span>
+</div>
+
+<div class="tt-lockup tt-lockup--dark" style="margin-top:32px;">
+  <img src="wordmark/trustutor-wordmark-white-1200.png" alt="TrusTutor">
+  <span class="rule"></span>
+  <span class="tagline">Tutoring, Electrified.</span>
+</div>
+
+</body>
+</html>

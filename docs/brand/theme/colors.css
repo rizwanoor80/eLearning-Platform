@@ -1,0 +1,63 @@
+/* TrusTutor colour system — front end + admin panel
+   Drop this in once, use the variables everywhere. */
+
+:root {
+  /* Brand */
+  --tt-maroon-900: #240A12;  /* footers, dark sections, admin sidebar */
+  --tt-maroon-800: #3E0715;
+  --tt-maroon-700: #64011D;  /* PRIMARY — buttons, headings, logo maroon */
+  --tt-maroon-600: #8A0A2A;  /* hover, links, eyebrow labels */
+  --tt-coral-500:  #FD4C53;  /* ACCENT — underlines, active bars, highlights */
+  --tt-coral-400:  #FF7A7E;
+  --tt-blush-100:  #FFF1F0;  /* tinted section background */
+  --tt-bone-50:    #FBF8F7;  /* page background */
+
+  /* Neutrals */
+  --tt-ink:        #241016;  /* headings */
+  --tt-body:       #4A3A3E;  /* body copy */
+  --tt-muted:      #5A5257;  /* secondary, captions */
+  --tt-border:     #E7DEDE;
+  --tt-hairline:   #F4EBEB;
+  --tt-surface:    #FFFFFF;
+
+  /* Semantic */
+  --tt-success:    #0F7A5A;  --tt-success-bg: #E8F5F0;
+  --tt-warning:    #B26A00;  --tt-warning-bg: #FFF4E2;
+  --tt-danger:     #C0261C;  --tt-danger-bg:  #FDECEA;
+  --tt-info:       #1D5FB0;  --tt-info-bg:    #EAF1FB;
+
+  /* Admin panel — neutral led, brand used sparingly */
+  --adm-sidebar:   #240A12;
+  --adm-sidebar-active: rgba(253,76,83,0.14);
+  --adm-canvas:    #F6F5F6;
+  --adm-surface:   #FFFFFF;
+  --adm-border:    #E4E0E2;
+  --adm-ink:       #1E1A1C;
+  --adm-muted:     #6B6468;
+  --adm-primary:   #64011D;
+
+  /* Data visualisation, in this order */
+  --viz-1: #64011D; --viz-2: #FD4C53; --viz-3: #0F7A5A;
+  --viz-4: #B26A00; --viz-5: #4B4A8F; --viz-6: #7C7A85;
+
+  /* Type */
+  --tt-font-ui: 'Schibsted Grotesk', Helvetica, Arial, sans-serif;
+  --tt-font-tagline: 'Quicksand', sans-serif;  /* tagline only */
+  --tt-font-mono: 'IBM Plex Mono', monospace;
+
+  /* Radius + elevation */
+  --tt-radius-btn: 10px;  --tt-radius-card: 16px;   /* front end */
+  --adm-radius-btn: 8px;  --adm-radius-card: 12px;  /* admin, tighter */
+  --tt-shadow-card: 0 1px 2px rgba(36,16,22,0.04), 0 8px 24px rgba(36,16,22,0.06);
+}
+
+a { color: var(--tt-maroon-600); }
+a:hover { color: var(--tt-coral-500); }
+
+/* Contrast notes
+   #64011D on white ........ 13.4:1  any size
+   #8A0A2A on white ......... 8.9:1  any size
+   #FD4C53 on white ......... 3.4:1  NOT for body text — 24px+ or UI accents only
+   #FFFFFF on #64011D ...... 13.4:1  any size
+   #FFFFFF on #FD4C53 ....... 3.4:1  large text only; prefer maroon buttons
+*/
