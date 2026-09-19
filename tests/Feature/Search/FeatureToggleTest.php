@@ -46,7 +46,7 @@ it('drops the reviews block from the profile when the toggle is off (R30 #9)', f
     test()->get(route('tutors.show', $tutor->id))->assertInertia(fn ($page) => $page->missing('tutor.reviews'));
 });
 
-it('computes the trial price in one place from the frozen-at-read discount', function () {
+it('computes the trial price in one place, derived on every read', function () {
     $tutor = TutorProfile::factory()->make(['hourly_rate' => 10000]);
     expect($tutor->trialPrice()->toFils())->toBe(5000);
 

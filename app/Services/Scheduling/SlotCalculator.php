@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Date;
  * - A weekly rule is expanded per local calendar date in the rule's own
  *   timezone (so DST is right); hourly slots step from the rule's start time.
  * - An exception has no timezone column, so it is read in `$exceptionTimezone`
- *   (the tutor's current user timezone; `forTutor()` passes it).
+ *   (the tutor's current user timezone; `forTutors()` passes it).
  * - A slot is offered when `starts_at >= now + lead` and `starts_at <= now + max_days`.
  * - Blocking is interval overlap: a lesson at 10:30 removes both 10:00 and 11:00.
  * - An active recurring slot blocks its weekday/time on every date from
