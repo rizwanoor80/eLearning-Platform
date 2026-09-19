@@ -35,7 +35,7 @@ it('refuses a non-admin access to the tutor approvals resource', function () {
 
 it('approves a tutor with all required documents accepted', function () {
     $requiredType = DocumentType::factory()->create(['required' => true, 'active' => true]);
-    $profile = TutorProfile::factory()->create(['status' => TutorProfileStatus::PendingReview]);
+    $profile = TutorProfile::factory()->approvable()->create(['status' => TutorProfileStatus::PendingReview]);
     TutorDocument::factory()->for($profile, 'tutorProfile')->for($requiredType, 'documentType')->accepted()->create();
 
     Livewire::actingAs($this->admin)
@@ -111,8 +111,8 @@ it('lets an admin accept a document from the relation manager', function () {
         ->and(AuditLog::query()->where('action', 'tutor_document.accepted')->exists())->toBeTrue();
 });
 
-it('hides accept and reject on documents of an approved tutor (R31)', function () {
-    $profile = TutorProfile::factory()->approved()->create();
+it('hides accept and reject on documents of a suspended tutor (R31)', function () {
+    $profile = TutorProfile::factory()->create(['status' => TutorProfileStatus::Suspended]);
     $document = TutorDocument::factory()->for($profile, 'tutorProfile')->create();
 
     Livewire::actingAs($this->admin)
@@ -123,6 +123,19 @@ it('hides accept and reject on documents of an approved tutor (R31)', function (
         ->assertTableActionHidden('accept', $document)
         ->assertTableActionHidden('reject', $document)
         ->assertTableActionVisible('view', $document);
+});
+
+it('shows accept and reject on documents of an approved tutor, for re-vetting (R36 b)', function () {
+    $profile = TutorProfile::factory()->approved()->create();
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->create();
+
+    Livewire::actingAs($this->admin)
+        ->test(TutorDocumentsRelationManager::class, [
+            'ownerRecord' => $profile,
+            'pageClass' => ViewTutorProfile::class,
+        ])
+        ->assertTableActionVisible('accept', $document)
+        ->assertTableActionVisible('reject', $document);
 });
 
 it('shows accept and reject on documents of a pending-review tutor (R31)', function () {

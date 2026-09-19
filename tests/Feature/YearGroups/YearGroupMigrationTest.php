@@ -73,7 +73,10 @@ it('maps legacy free text through the real migration: rollback, seed legacy rows
     $structured = DB::table('learners')->insertGetId(['account_user_id' => $parent->id, 'display_name' => 'Structured', 'is_minor' => true, 'curriculum_id' => $gcse->id,
         'year_group_id' => YearGroup::query()->where('curriculum_id', $gcse->id)->where('code', 'y9')->value('id'), 'created_at' => now(), 'updated_at' => now()]);
 
-    Artisan::call('migrate:rollback', ['--path' => YG_MIGRATION, '--step' => 1, '--force' => true]);
+    // `--step` counts the newest migrations of ALL paths before the path filter applies, so it must
+    // cover every migration added after this one (later steps add their own).
+    $newer = DB::table('migrations')->where('migration', '>=', '2026_09_20_100000_create_year_groups_and_convert_columns')->count();
+    Artisan::call('migrate:rollback', ['--path' => YG_MIGRATION, '--step' => $newer, '--force' => true]);
 
     expect(Schema::hasTable('year_groups'))->toBeFalse()
         ->and(Schema::hasColumn('learners', 'year_group'))->toBeTrue()

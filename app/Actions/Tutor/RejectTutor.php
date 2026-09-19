@@ -5,9 +5,9 @@ namespace App\Actions\Tutor;
 use App\Actions\RecordAuditLog;
 use App\Enums\TutorProfileStatus;
 use App\Events\Tutor\TutorRejected;
-use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Tutors\TutorStatusTransitions;
 
 class RejectTutor
 {
@@ -15,21 +15,24 @@ class RejectTutor
 
     public function __invoke(User $admin, TutorProfile $profile, string $note): void
     {
-        if (! in_array($profile->status, [TutorProfileStatus::PendingReview, TutorProfileStatus::ChangesRequested], true)) {
-            throw new TutorStatusTransitionException('Only a submitted profile can be rejected.');
-        }
+        TutorStatusTransitions::transition(
+            $profile,
+            TutorProfileStatus::Rejected,
+            'Only a submitted profile can be rejected.',
+            function (TutorProfile $profile) use ($admin, $note) {
+                $before = ['status' => $profile->status->value];
 
-        $before = ['status' => $profile->status->value];
+                $profile->forceFill([
+                    'status' => TutorProfileStatus::Rejected,
+                    'review_note' => $note,
+                ])->save();
 
-        $profile->forceFill([
-            'status' => TutorProfileStatus::Rejected,
-            'review_note' => $note,
-        ])->save();
-
-        ($this->recordAuditLog)($admin, 'tutor.rejected', $profile, $before, [
-            'status' => TutorProfileStatus::Rejected->value,
-            'review_note' => $note,
-        ]);
+                ($this->recordAuditLog)($admin, 'tutor.rejected', $profile, $before, [
+                    'status' => TutorProfileStatus::Rejected->value,
+                    'review_note' => $note,
+                ]);
+            },
+        );
 
         TutorRejected::dispatch($profile);
     }

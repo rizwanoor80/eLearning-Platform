@@ -27,12 +27,12 @@ class TutorProfilesTable
                     ->label('Docs')
                     ->boolean()
                     ->getStateUsing(fn ($record) => $record->hasAllRequiredDocumentsAccepted()),
-                TextColumn::make('created_at')
+                TextColumn::make('submitted_at')
                     ->label('Submitted')
                     ->dateTime()
                     ->sortable(),
             ])
-            ->defaultSort('created_at')
+            ->defaultSort('submitted_at')
             ->filters([
                 SelectFilter::make('status')
                     ->options(TutorProfileStatus::class)

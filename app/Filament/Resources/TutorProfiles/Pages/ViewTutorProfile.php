@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TutorProfiles\Pages;
 
 use App\Actions\Tutor\ApproveTutor;
+use App\Actions\Tutor\ReinstateTutor;
 use App\Actions\Tutor\RejectTutor;
 use App\Actions\Tutor\RequestTutorChanges;
 use App\Actions\Tutor\SuspendTutor;
@@ -44,7 +45,7 @@ class ViewTutorProfile extends ViewRecord
                 ->schema([
                     Textarea::make('note')->required()->label('What needs to change?'),
                 ])
-                ->visible(fn (TutorProfile $record) => in_array($record->status, $submitted, true))
+                ->visible(fn (TutorProfile $record) => in_array($record->status, RequestTutorChanges::FROM, true))
                 ->action($this->guarded(function (TutorProfile $record, array $data) {
                     app(RequestTutorChanges::class)(auth()->user(), $record, $data['note']);
                     Notification::make()->title('Changes requested')->success()->send();
@@ -70,6 +71,20 @@ class ViewTutorProfile extends ViewRecord
                 ->action($this->guarded(function (TutorProfile $record, array $data) {
                     app(SuspendTutor::class)(auth()->user(), $record, $data['note']);
                     Notification::make()->title('Tutor suspended')->success()->send();
+                })),
+
+            Action::make('reinstate')
+                ->color('success')
+                ->requiresConfirmation()
+                ->modalDescription('The tutor is approved again if the permit is valid, every required document is accepted and the rate is inside the current price band. Otherwise they are sent back with changes requested.')
+                ->visible(fn (TutorProfile $record) => $record->status === TutorProfileStatus::Suspended)
+                ->action($this->guarded(function (TutorProfile $record) {
+                    $outcome = app(ReinstateTutor::class)(auth()->user(), $record);
+
+                    $outcome === TutorProfileStatus::Approved
+                        ? Notification::make()->title('Tutor reinstated')->success()->send()
+                        : Notification::make()->title('Not ready to be reinstated')
+                            ->body('Changes requested: '.$record->fresh()->review_note)->warning()->send();
                 })),
         ];
     }

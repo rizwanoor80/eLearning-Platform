@@ -4,9 +4,9 @@ namespace App\Actions\Tutor;
 
 use App\Actions\RecordAuditLog;
 use App\Enums\TutorProfileStatus;
-use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Tutors\TutorStatusTransitions;
 
 class SuspendTutor
 {
@@ -18,23 +18,27 @@ class SuspendTutor
      * tutor from search/booking with no separate flag to maintain. No email
      * is sent (not one of CP1's named triggers); suspension is expected to
      * carry a note explaining why, shown to the tutor on next login.
+     * ReinstateTutor is the way back.
      */
     public function __invoke(User $admin, TutorProfile $profile, string $note): void
     {
-        if ($profile->status !== TutorProfileStatus::Approved) {
-            throw new TutorStatusTransitionException('Only an approved tutor can be suspended.');
-        }
+        TutorStatusTransitions::transition(
+            $profile,
+            TutorProfileStatus::Suspended,
+            'Only an approved tutor can be suspended.',
+            function (TutorProfile $profile) use ($admin, $note) {
+                $before = ['status' => $profile->status->value];
 
-        $before = ['status' => $profile->status->value];
+                $profile->forceFill([
+                    'status' => TutorProfileStatus::Suspended,
+                    'review_note' => $note,
+                ])->save();
 
-        $profile->forceFill([
-            'status' => TutorProfileStatus::Suspended,
-            'review_note' => $note,
-        ])->save();
-
-        ($this->recordAuditLog)($admin, 'tutor.suspended', $profile, $before, [
-            'status' => TutorProfileStatus::Suspended->value,
-            'review_note' => $note,
-        ]);
+                ($this->recordAuditLog)($admin, 'tutor.suspended', $profile, $before, [
+                    'status' => TutorProfileStatus::Suspended->value,
+                    'review_note' => $note,
+                ]);
+            },
+        );
     }
 }

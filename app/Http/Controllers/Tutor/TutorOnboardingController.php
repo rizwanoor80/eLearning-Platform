@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Tutor;
 
 use App\Actions\Tutor\CompleteTutorOnboarding;
-use App\Enums\LevelTier;
+use App\Actions\Tutor\ResetPermitScanOnPermitChange;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
@@ -19,12 +19,12 @@ use App\Http\Requests\Tutor\Onboarding\SubjectsStepRequest;
 use App\Models\Curriculum;
 use App\Models\DocumentType;
 use App\Models\Page;
-use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\YearGroup;
+use App\Services\Tutors\TutorRateBands;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
@@ -32,11 +32,12 @@ use App\Support\YearGroups\YearGroupTiers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class TutorOnboardingController extends Controller
 {
@@ -129,7 +130,17 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'permit');
 
-        $profile->update($request->validated());
+        $profile->fill($request->validated());
+        $permitChanged = $profile->isDirty(['permit_number', 'permit_expires_at']);
+
+        DB::transaction(function () use ($profile, $permitChanged): void {
+            $profile->save();
+
+            // R36 (g): an accepted scan vouches for the old number and date.
+            if ($permitChanged) {
+                app(ResetPermitScanOnPermitChange::class)($profile);
+            }
+        });
 
         return redirect()->route('tutor.onboarding');
     }
@@ -147,17 +158,25 @@ class TutorOnboardingController extends Controller
         /** @var UploadedFile $file */
         $file = $request->file('file');
         $path = $file->store('tutor-documents/'.$profile->id, 'local');
+        abort_if($path === false, 500, 'The document could not be stored.');
 
-        DB::transaction(function () use ($profile, $documentType, $file, $path): void {
-            $profile->tutorDocuments()->where('document_type_id', $documentType->id)->delete();
+        try {
+            DB::transaction(function () use ($profile, $documentType, $file, $path): void {
+                $profile->tutorDocuments()->where('document_type_id', $documentType->id)->delete();
 
-            TutorDocument::query()->create([
-                'tutor_profile_id' => $profile->id,
-                'document_type_id' => $documentType->id,
-                'disk_path' => $path,
-                'original_name' => $file->getClientOriginalName(),
-            ]);
-        });
+                TutorDocument::query()->create([
+                    'tutor_profile_id' => $profile->id,
+                    'document_type_id' => $documentType->id,
+                    'disk_path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+            });
+        } catch (Throwable $e) {
+            // The file was written before the transaction; no row points at it now (R36 d).
+            Storage::disk('local')->delete($path);
+
+            throw $e;
+        }
 
         return redirect()->route('tutor.onboarding');
     }
@@ -508,82 +527,11 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * Each curriculum the tutor teaches at their highest level tier, mapped
-     * to its current `price_bands` row (latest `effective_from` not in the
-     * future) or `null` if that curriculum has none — never hard-coded, so
-     * an admin edit to the bands takes effect immediately, and a missing
-     * band is surfaced rather than silently skipped (R27). Empty until the
-     * tutor has at least one subject.
-     *
-     * @return Collection<int, array{curriculum: Curriculum, band: PriceBand|null}>
-     */
-    private function currentBandsFor(TutorProfile $profile): Collection
-    {
-        $tutorSubjects = $profile->tutorSubjects()->get(['curriculum_id', 'level_tier']);
-
-        if ($tutorSubjects->isEmpty()) {
-            return collect();
-        }
-
-        $highestTier = $tutorSubjects->pluck('level_tier')
-            ->sortByDesc(fn (LevelTier $tier) => $tier->rank())
-            ->first();
-
-        $curriculumIds = $tutorSubjects->where('level_tier', $highestTier)->pluck('curriculum_id')->unique();
-
-        /** @var Collection<int, array{curriculum: Curriculum, band: PriceBand|null}> $entries */
-        $entries = Curriculum::query()->whereIn('id', $curriculumIds)->get()
-            ->map(fn (Curriculum $curriculum) => [
-                'curriculum' => $curriculum,
-                'band' => PriceBand::query()
-                    ->where('curriculum_id', $curriculum->id)
-                    ->where('level_tier', $highestTier)
-                    ->where('effective_from', '<=', now()->toDateString())
-                    ->orderByDesc('effective_from')
-                    ->first(),
-            ])
-            ->values();
-
-        return $entries;
-    }
-
-    /**
-     * R26/R27: a tutor's single `hourly_rate` must satisfy every curriculum
-     * they teach at their highest tier — the intersection of each
-     * curriculum's band, never the union (a union would accept a rate
-     * outside one curriculum's real band). `conflicting` lists curricula by
-     * name, never silently picking one, when: their bands don't overlap at
-     * all (`min` ends up above `max`), or a curriculum has no current band
-     * at all (R27 — previously silently dropped from the calculation).
-     * Null only when the tutor has no subjects yet.
-     *
      * @return array{min: int, max: int, conflicting: array<int, string>}|null
      */
     private function rateBandFor(TutorProfile $profile): ?array
     {
-        $entries = $this->currentBandsFor($profile);
-
-        if ($entries->isEmpty()) {
-            return null;
-        }
-
-        $missing = $entries->filter(fn (array $entry) => $entry['band'] === null)
-            ->map(fn (array $entry) => $entry['curriculum']->name);
-
-        if ($missing->isNotEmpty()) {
-            return ['min' => 0, 'max' => 0, 'conflicting' => $missing->values()->all()];
-        }
-
-        $min = $entries->max(fn (array $entry) => $entry['band']->min_rate->toFils());
-        $max = $entries->min(fn (array $entry) => $entry['band']->max_rate->toFils());
-
-        return [
-            'min' => $min,
-            'max' => $max,
-            'conflicting' => $min > $max
-                ? $entries->map(fn (array $entry) => $entry['curriculum']->name)->all()
-                : [],
-        ];
+        return app(TutorRateBands::class)->bandFor($profile);
     }
 
     /**

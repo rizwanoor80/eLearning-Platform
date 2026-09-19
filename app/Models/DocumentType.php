@@ -25,6 +25,13 @@ class DocumentType extends Model
     /** @use HasFactory<DocumentTypeFactory> */
     use HasFactory;
 
+    /**
+     * The type that holds a tutor's permit scan; the permit number and date are
+     * fields on the profile. Code, not id, so a re-seeded database still finds it;
+     * the code is immutable in the admin form so this cannot silently break.
+     */
+    public const PERMIT_CODE = 'permit';
+
     protected $fillable = ['code', 'name', 'description', 'required', 'active', 'sort'];
 
     /**

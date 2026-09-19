@@ -9,6 +9,7 @@ use App\Filament\Resources\DocumentTypes\Pages\EditDocumentType;
 use App\Models\DocumentType;
 use App\Models\TutorProfile;
 use App\Models\User;
+use Database\Factories\TutorProfileFactory;
 use Livewire\Livewire;
 
 /**
@@ -66,6 +67,7 @@ it('adds and removes a wizard step and the approval block purely through the Fil
     test()->actingAs($tutor)->get(route('tutor.onboarding'))
         ->assertInertia(fn ($page) => $page->where('step', 'bank'));
     $profile->forceFill(['status' => TutorProfileStatus::PendingReview])->save();
+    TutorProfileFactory::makeApprovable($profile);
     (new ApproveTutor(app(RecordAuditLog::class)))($admin, $profile->fresh());
     expect($profile->fresh()->status)->toBe(TutorProfileStatus::Approved);
 });
