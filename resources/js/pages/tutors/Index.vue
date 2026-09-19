@@ -78,6 +78,10 @@ function search(page = 1) {
 
     <main class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4">
         <h1 class="text-xl font-semibold">Find a tutor</h1>
+        <p v-if="$page.props.features.match_requests" class="text-sm">
+            Not sure who to pick?
+            <Link href="/match-requests/create" class="underline underline-offset-4">Ask us to suggest tutors</Link>
+        </p>
 
         <form class="grid gap-4 rounded-xl border p-4 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="search()">
             <div v-if="learners.length" class="grid gap-2">

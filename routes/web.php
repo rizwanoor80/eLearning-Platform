@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
 use App\Http\Controllers\Learner\LearnerController;
+use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
@@ -17,6 +18,12 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
 
     Route::resource('learners', LearnerController::class)->except('show');
+
+    Route::middleware('feature:match_requests')->group(function () {
+        Route::get('match-requests', [MatchRequestController::class, 'index'])->name('match-requests.index');
+        Route::get('match-requests/create', [MatchRequestController::class, 'create'])->name('match-requests.create');
+        Route::post('match-requests', [MatchRequestController::class, 'store'])->name('match-requests.store');
+    });
 });
 
 Route::middleware('guest')->group(function () {
