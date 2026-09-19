@@ -4,9 +4,14 @@ use App\Http\Controllers\Auth\TutorRegisteredUserController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
+use App\Http\Controllers\Tutor\TutorProfileController;
+use App\Http\Controllers\Tutor\TutorSearchController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
+
+Route::get('tutors', TutorSearchController::class)->name('tutors.index');
+Route::get('tutors/{tutor}', TutorProfileController::class)->whereNumber('tutor')->name('tutors.show');
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
