@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             SettingsSeeder::class,
             DocumentTypeSeeder::class,
             PageSeeder::class,
+            ContentBlockSeeder::class,
             AdminUserSeeder::class,
         ]);
     }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
@@ -11,7 +12,7 @@ use App\Http\Controllers\Tutor\TutorSearchController;
 use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'Welcome')->name('home');
+Route::get('/', HomeController::class)->name('home');
 
 foreach (PublicPages::all() as $path => $page) {
     Route::get($path, PageController::class)->defaults('slug', $page['slug'])->name('pages.'.$page['slug']);

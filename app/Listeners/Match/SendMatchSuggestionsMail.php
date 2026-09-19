@@ -45,7 +45,11 @@ class SendMatchSuggestionsMail implements ShouldQueue
             return;
         }
 
-        $cards = $tutors->map(fn (TutorProfile $tutor): array => $this->presenter->card($tutor, []))->values()->all();
+        $cards = [];
+
+        foreach ($tutors as $tutor) {
+            $cards[] = $this->presenter->card($tutor, []);
+        }
 
         Mail::to($request->account)->send(new MatchSuggestionsMail($request, $cards));
     }
