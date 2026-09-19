@@ -601,6 +601,7 @@ const submitComplete = () => {
                 I accept the tutor agreement (version {{ agreement.current_version }})
             </label>
             <InputError :message="agreementForm.errors.accepted" />
+            <InputError :message="agreementForm.errors.version" />
 
             <Button type="submit" :disabled="agreementForm.processing" class="w-fit">
                 <Spinner v-if="agreementForm.processing" />

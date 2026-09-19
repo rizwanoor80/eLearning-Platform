@@ -18,6 +18,16 @@ class TutorSearchRequest extends FormRequest
     }
 
     /**
+     * A failed GET validation goes back to the search page itself. The default
+     * `back()` falls to `/` when there is no referer (a pasted or bookmarked
+     * URL), which would flash the errors onto the homepage.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return route('tutors.index');
+    }
+
+    /**
      * @return array<string, array<int, ValidationRule|string>>
      */
     public function rules(): array

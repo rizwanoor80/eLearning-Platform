@@ -19,7 +19,7 @@ foreach (PublicPages::all() as $path => $page) {
 }
 
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
-Route::get('tutors/{tutor}', TutorProfileController::class)->whereNumber('tutor')->name('tutors.show');
+Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
