@@ -29,6 +29,12 @@ it('derives the public name from the first word of the account name', function (
     'hyphenated first name' => ['Anne-Marie Dupont', 'Anne-Marie'],
     'empty falls back' => ['', 'Tutor'],
     'only whitespace falls back' => ["  \u{00A0} ", 'Tutor'],
+    'leading zero-width space' => ["\u{200B}Layla Hassan", 'Layla'],
+    'leading byte-order mark' => ["\u{FEFF}Layla Hassan", 'Layla'],
+    'leading right-to-left mark' => ["\u{200F}Layla Hassan", 'Layla'],
+    'zero-width run then whitespace' => ["\u{200B}\u{200C} \u{00A0}Layla Hassan", 'Layla'],
+    'internal zero-width non-joiner is kept' => ["می\u{200C}خواهم علی", "می\u{200C}خواهم"],
+    'only zero-width characters fall back' => ["\u{200B}\u{FEFF}", 'Tutor'],
 ]);
 
 it('is derived on every read, so a rename shows at once', function () {
