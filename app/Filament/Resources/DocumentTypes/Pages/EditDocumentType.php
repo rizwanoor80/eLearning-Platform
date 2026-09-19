@@ -2,8 +2,11 @@
 
 namespace App\Filament\Resources\DocumentTypes\Pages;
 
+use App\Actions\Tutor\RequireDocumentTypeFromApprovedTutors;
 use App\Filament\Concerns\AuditsResourceChanges;
 use App\Filament\Resources\DocumentTypes\DocumentTypeResource;
+use App\Models\DocumentType;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
 /**
@@ -19,5 +22,17 @@ class EditDocumentType extends EditRecord
     protected function afterSave(): void
     {
         $this->auditUpdated('document_type.updated');
+
+        // R36 (b): switching a type to required-and-active sends approved tutors who lack it back.
+        // Turning `required` off, or renaming, moves nobody (and moves nobody back).
+        $record = $this->getRecord();
+
+        if ($record instanceof DocumentType && $record->wasChanged(['required', 'active'])) {
+            $moved = app(RequireDocumentTypeFromApprovedTutors::class)(auth()->user(), $record);
+
+            if ($moved > 0) {
+                Notification::make()->title("$moved approved tutor(s) moved to changes requested")->warning()->send();
+            }
+        }
     }
 }

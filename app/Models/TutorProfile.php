@@ -40,6 +40,7 @@ use Illuminate\Support\Facades\Date;
  * @property string|null $review_note
  * @property int|null $approved_by
  * @property Carbon|null $approved_at
+ * @property Carbon|null $submitted_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -71,6 +72,7 @@ class TutorProfile extends Model
             'bank_swift' => 'encrypted',
             'bank_verified_at' => 'datetime',
             'approved_at' => 'datetime',
+            'submitted_at' => 'datetime',
         ];
     }
 
@@ -178,6 +180,17 @@ class TutorProfile extends Model
     public function availabilityExceptions(): HasMany
     {
         return $this->hasMany(AvailabilityException::class);
+    }
+
+    /**
+     * Whether the permit is still valid today — the PHP twin of the permit
+     * half of `scopeBookable()` (expiry strictly after today, by date), so
+     * approval, reinstatement and search can never disagree about one tutor.
+     */
+    public function permitIsValid(): bool
+    {
+        return $this->permit_expires_at !== null
+            && $this->permit_expires_at->toDateString() > Date::today()->toDateString();
     }
 
     /**
