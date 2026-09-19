@@ -5,8 +5,10 @@ namespace App\Actions\Tutor;
 use App\Actions\RecordAuditLog;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Events\Tutor\TutorChangesRequested;
 use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorDocument;
+use App\Models\TutorProfile;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -37,35 +39,55 @@ class ReviewTutorDocument
     }
 
     /**
+     * One transaction on the profile row locked for update, so the status this
+     * decides on is the current one: an admin cannot reject a required document
+     * on a tutor another admin has just approved and leave them bookable, and the
+     * document, its audit row and the tutor's move to `changes_requested` commit
+     * together or not at all. Events go out after the commit.
+     *
      * @throws TutorStatusTransitionException when the tutor's profile is no longer under review.
      */
     public function __invoke(User $admin, TutorDocument $document, TutorDocumentStatus $status): void
     {
-        if (! self::canReview($document)) {
-            throw new TutorStatusTransitionException('Documents can only be reviewed while the profile is under review or approved.');
-        }
+        $profile = DB::transaction(function () use ($admin, $document, $status): ?TutorProfile {
+            $profile = TutorProfile::query()->whereKey($document->tutor_profile_id)->lockForUpdate()->firstOrFail();
+            $document->setRelation('tutorProfile', $profile);
 
-        $before = ['status' => $document->status->value];
+            if (! self::canReview($document)) {
+                throw new TutorStatusTransitionException('Documents can only be reviewed while the profile is under review or approved.');
+            }
 
-        $document->forceFill([
-            'status' => $status,
-            'reviewed_by' => $admin->id,
-            'reviewed_at' => now(),
-        ])->save();
+            $before = ['status' => $document->status->value];
 
-        ($this->recordAuditLog)($admin, 'tutor_document.'.$status->value, $document, $before, [
-            'status' => $status->value,
-        ]);
+            $document->forceFill([
+                'status' => $status,
+                'reviewed_by' => $admin->id,
+                'reviewed_at' => now(),
+            ])->save();
 
-        if ($status === TutorDocumentStatus::Accepted) {
-            $this->deleteReplacedFiles($document);
-        }
+            ($this->recordAuditLog)($admin, 'tutor_document.'.$status->value, $document, $before, [
+                'status' => $status->value,
+            ]);
 
-        if ($status === TutorDocumentStatus::Rejected && $document->tutorProfile->status === TutorProfileStatus::Approved) {
-            app(RequestTutorChanges::class)($admin, $document->tutorProfile, sprintf(
-                'Your %s was rejected. Please upload a new one so it can be reviewed again.',
-                $document->documentType->name,
-            ));
+            if ($status === TutorDocumentStatus::Accepted) {
+                $this->deleteReplacedFiles($document);
+            }
+
+            if ($status === TutorDocumentStatus::Rejected && $profile->status === TutorProfileStatus::Approved) {
+                app(RequestTutorChanges::class)->apply($admin, $profile, sprintf(
+                    'Your %s was rejected. Please upload a new one so it can be reviewed again.',
+                    $document->documentType->name,
+                ));
+
+                return $profile;
+            }
+
+            return null;
+        });
+
+        // After commit, so a listener never sees a move that rolls back.
+        if ($profile !== null) {
+            TutorChangesRequested::dispatch($profile);
         }
     }
 

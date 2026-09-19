@@ -28,6 +28,17 @@ class RequestTutorChanges
 
     public function __invoke(User $admin, TutorProfile $profile, string $note): void
     {
+        $this->apply($admin, $profile, $note);
+
+        TutorChangesRequested::dispatch($profile);
+    }
+
+    /**
+     * The transition without the event, for a caller that owns a wider transaction
+     * and dispatches after its own commit (ReviewTutorDocument).
+     */
+    public function apply(User $admin, TutorProfile $profile, string $note): void
+    {
         TutorStatusTransitions::transition(
             $profile,
             TutorProfileStatus::ChangesRequested,
@@ -50,7 +61,5 @@ class RequestTutorChanges
                 ]);
             },
         );
-
-        TutorChangesRequested::dispatch($profile);
     }
 }

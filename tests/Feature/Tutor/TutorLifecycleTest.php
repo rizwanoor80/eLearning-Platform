@@ -6,6 +6,8 @@ use App\Actions\Tutor\CompleteTutorOnboarding;
 use App\Actions\Tutor\ReinstateTutor;
 use App\Actions\Tutor\RequestTutorChanges;
 use App\Actions\Tutor\RequireDocumentTypeFromApprovedTutors;
+use App\Actions\Tutor\ReviewTutorDocument;
+use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Events\Tutor\TutorChangesRequested;
 use App\Exceptions\TutorApprovalBlockedException;
@@ -282,4 +284,80 @@ it('backfills submitted_at from created_at for profiles already past draft', fun
 
     expect($submitted->fresh()->submitted_at->toDateTimeString())->toBe('2026-03-01 10:00:00')
         ->and($draft->fresh()->submitted_at)->toBeNull();
+});
+
+// ---- ReviewTutorDocument decides on the locked status, in one transaction ------------------
+
+it('moves a tutor another admin approved a moment ago back to changes requested when a document is rejected on a stale page', function () {
+    Event::fake();
+    $admin = User::factory()->admin()->create();
+    $type = DocumentType::factory()->create(['required' => true, 'active' => true, 'name' => 'Police clearance']);
+    $profile = TutorProfile::factory()->approvable()->create([
+        'status' => TutorProfileStatus::PendingReview,
+        'permit_expires_at' => now()->addYear()->toDateString(),
+    ]);
+    TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')->create();
+
+    // This admin's page loaded the document while the profile was pending review ...
+    $document = TutorDocument::query()->with('tutorProfile')->firstOrFail();
+    expect($document->tutorProfile->status)->toBe(TutorProfileStatus::PendingReview);
+    // ... and another admin approved the tutor before the reject click arrived.
+    TutorProfile::query()->whereKey($profile->id)->update(['status' => TutorProfileStatus::Approved]);
+
+    (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Rejected);
+
+    expect($profile->fresh()->status)->toBe(TutorProfileStatus::ChangesRequested)
+        ->and(TutorProfile::bookable()->whereKey($profile->id)->exists())->toBeFalse();
+    Event::assertDispatched(TutorChangesRequested::class);
+});
+
+it('refuses a review on a stale page when the tutor was suspended meanwhile, changing nothing', function () {
+    Event::fake();
+    $admin = User::factory()->admin()->create();
+    $profile = lcApproved();
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->accepted()->create();
+    $stale = TutorDocument::query()->with('tutorProfile')->findOrFail($document->id);
+    TutorProfile::query()->whereKey($profile->id)->update(['status' => TutorProfileStatus::Suspended]);
+
+    expect(fn () => (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $stale, TutorDocumentStatus::Rejected))
+        ->toThrow(TutorStatusTransitionException::class);
+
+    expect($document->fresh()->status)->toBe(TutorDocumentStatus::Accepted)
+        ->and(AuditLog::query()->where('action', 'tutor_document.rejected')->exists())->toBeFalse();
+});
+
+it('rolls the document decision back when the tutor cannot be moved, so the two never disagree', function () {
+    Event::fake();
+    $admin = User::factory()->admin()->create();
+    $profile = lcApproved();
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->accepted()->create();
+    app()->bind(RequestTutorChanges::class, fn () => new class(app(RecordAuditLog::class)) extends RequestTutorChanges
+    {
+        public function apply(User $admin, TutorProfile $profile, string $note): void
+        {
+            throw new TutorStatusTransitionException('moved concurrently');
+        }
+    });
+
+    expect(fn () => (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document->fresh(), TutorDocumentStatus::Rejected))
+        ->toThrow(TutorStatusTransitionException::class, 'moved concurrently');
+
+    expect($document->fresh()->status)->toBe(TutorDocumentStatus::Accepted)
+        ->and($profile->fresh()->status)->toBe(TutorProfileStatus::Approved)
+        ->and(AuditLog::query()->where('action', 'tutor_document.rejected')->exists())->toBeFalse();
+    Event::assertNotDispatched(TutorChangesRequested::class);
+});
+
+it('takes an approved tutor off the public profile page the moment a required document is rejected', function () {
+    Event::fake();
+    $admin = User::factory()->admin()->create();
+    $type = DocumentType::factory()->create(['required' => true, 'active' => true]);
+    $profile = lcApproved();
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')->accepted()->create();
+
+    $this->get(route('tutors.show', $profile->id))->assertOk();
+
+    (new ReviewTutorDocument(app(RecordAuditLog::class)))($admin, $document, TutorDocumentStatus::Rejected);
+
+    $this->get(route('tutors.show', $profile->id))->assertNotFound();
 });

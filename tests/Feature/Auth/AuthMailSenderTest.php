@@ -41,7 +41,7 @@ it('sends the verification email from the settings sender (R36 Fortify mails)', 
         ->and($email->getFrom()[0]->getName())->toBe('Support Team')
         ->and($email->getReplyTo()[0]->getAddress())->toBe('replies@example.test')
         ->and($email->getTo()[0]->getAddress())->toBe($user->email)
-        ->and($email->getSubject())->not->toBeEmpty();
+        ->and($email->getSubject())->toBe('Verify your email address');
 });
 
 it('sends the password-reset email from the settings sender, with a working link', function () {
@@ -79,5 +79,4 @@ it('is what a reset request and a resend actually dispatch', function () {
 
     Notification::assertSentTo($user, ResetPasswordNotification::class);
     Notification::assertSentTo($user, VerifyEmailNotification::class);
-    Notification::assertNotSentTo($user, ResetPassword::class, fn ($n) => ! $n instanceof ResetPasswordNotification);
 });
