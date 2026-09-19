@@ -30,6 +30,7 @@ class ContentBlockForm
                     ->visible(fn (Get $get): bool => $get('key') === ContentBlock::HERO_TITLE),
 
                 MarkdownEditor::make('markdown_value')
+                    ->disableToolbarButtons(['attachFiles'])
                     ->label('Text')
                     ->required()
                     ->columnSpanFull()

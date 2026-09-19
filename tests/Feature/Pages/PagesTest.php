@@ -107,7 +107,8 @@ it('publishes nothing when the content is unchanged (R30 #9)', function () {
     Livewire::actingAs($this->admin)
         ->test(EditSitePage::class, ['record' => $page->getRouteKey()])
         ->call('save')
-        ->assertNotified('No changes to publish');
+        ->assertNotified('No changes to publish')
+        ->assertNotNotified('Published');
 
     expect($page->fresh()->version)->toBe(1)->and(PageVersion::query()->where('page_id', $page->id)->count())->toBe(1);
 });

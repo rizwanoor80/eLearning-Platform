@@ -20,6 +20,8 @@ class EditSitePage extends EditRecord
 {
     protected static string $resource = SitePageResource::class;
 
+    private bool $published = false;
+
     protected function getSaveFormAction(): Action
     {
         return parent::getSaveFormAction()->label('Publish');
@@ -33,15 +35,21 @@ class EditSitePage extends EditRecord
         /** @var Page $record */
         $published = app(PublishPage::class)(auth()->user(), $record, (string) $data['title'], (string) $data['body']);
 
-        if ($published === null) {
+        $this->published = $published !== null;
+
+        if (! $this->published) {
             Notification::make()->title('No changes to publish')->warning()->send();
         }
 
         return $record;
     }
 
+    /**
+     * Only announce "Published" when a version was actually written, so an
+     * unchanged save shows the single "No changes" warning.
+     */
     protected function getSavedNotification(): ?Notification
     {
-        return Notification::make()->title('Published')->success();
+        return $this->published ? Notification::make()->title('Published')->success() : null;
     }
 }

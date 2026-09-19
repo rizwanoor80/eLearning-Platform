@@ -14,6 +14,8 @@ class SitePageForm
             ->components([
                 TextInput::make('title')->required()->maxLength(255),
                 MarkdownEditor::make('body')
+                    // Admin copy is text only: no file-attachment upload from the editor.
+                    ->disableToolbarButtons(['attachFiles'])
                     ->required()
                     ->helperText('Markdown. Raw HTML is removed. Publishing creates a new version and goes live immediately; use the editor Preview tab to check first.')
                     ->columnSpanFull(),
