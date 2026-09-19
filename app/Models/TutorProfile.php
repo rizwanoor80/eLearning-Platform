@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Support\Facades\Settings;
 use App\Support\Money;
 use Database\Factories\TutorProfileFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -86,6 +87,25 @@ class TutorProfile extends Model
         return $query
             ->where('status', TutorProfileStatus::Approved)
             ->whereDate('permit_expires_at', '>', Date::today());
+    }
+
+    /**
+     * The trial-lesson price: the hourly rate minus `trial_discount_pct` (PRD
+     * §2.4). The one place this is computed — the profile shows it and CP3's
+     * `BookLesson` freezes it from here, so what is displayed is what is charged.
+     *
+     * Rounding rule: price = rate − round_half_up(rate × pct / 100), so the
+     * half-fil goes to the parent's discount side. It is NOT
+     * `percentage(100 − pct)`, which rounds the other way (10001 @ 50% is
+     * 5000 here, 5001 there) — callers must use this method, never recompute.
+     */
+    public function trialPrice(): ?Money
+    {
+        if ($this->hourly_rate === null) {
+            return null;
+        }
+
+        return $this->hourly_rate->subtract($this->hourly_rate->percentage((int) Settings::get('trial_discount_pct')));
     }
 
     /**

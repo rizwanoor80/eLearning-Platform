@@ -46,6 +46,11 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'features' => [
+                'match_requests' => EnsureFeatureEnabled::enabled('match_requests'),
+                'reviews' => EnsureFeatureEnabled::enabled('reviews'),
+                'messaging' => EnsureFeatureEnabled::enabled('messaging'),
+            ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

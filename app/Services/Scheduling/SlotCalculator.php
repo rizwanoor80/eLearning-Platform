@@ -13,6 +13,7 @@ use App\Models\TutorProfile;
 use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Date;
 
 /**
@@ -28,7 +29,7 @@ use Illuminate\Support\Facades\Date;
  * - A weekly rule is expanded per local calendar date in the rule's own
  *   timezone (so DST is right); hourly slots step from the rule's start time.
  * - An exception has no timezone column, so it is read in `$exceptionTimezone`
- *   (the tutor's current user timezone; `forTutor()` passes it).
+ *   (the tutor's current user timezone; `forTutors()` passes it).
  * - A slot is offered when `starts_at >= now + lead` and `starts_at <= now + max_days`.
  * - Blocking is interval overlap: a lesson at 10:30 removes both 10:00 and 11:00.
  * - An active recurring slot blocks its weekday/time on every date from
@@ -143,33 +144,72 @@ class SlotCalculator
      *
      * @return list<Slot>
      */
-    public function forTutor(TutorProfile $tutor, string $timezone, ?CarbonInterface $now = null): array
+    public function forTutor(TutorProfile $tutor, string $timezone, ?CarbonInterface $now = null, ?int $withinDays = null): array
     {
+        return $this->forTutors([$tutor], $timezone, $now, $withinDays)[$tutor->id];
+    }
+
+    /**
+     * Batch loader for search: one query per input table however many tutors,
+     * each tutor calculated with their own exception timezone. `$withinDays`
+     * only ever narrows `booking_max_days`, never widens it.
+     *
+     * @param  iterable<TutorProfile>  $tutors
+     * @return array<int, list<Slot>> keyed by tutor profile id
+     */
+    public function forTutors(iterable $tutors, string $timezone, ?CarbonInterface $now = null, ?int $withinDays = null): array
+    {
+        $tutors = Collection::make($tutors)->loadMissing('user:id,timezone')->keyBy('id');
+
+        if ($tutors->isEmpty()) {
+            return [];
+        }
+
         $now = CarbonImmutable::instance($now ?? Date::now())->utc();
         $lead = (int) Settings::get('booking_min_lead_hours');
         $maxDays = (int) Settings::get('booking_max_days');
+
+        if ($withinDays !== null) {
+            $maxDays = min($maxDays, $withinDays);
+        }
+
         $from = $now->addHours($lead)->subDays(2);
         $to = $now->addDays($maxDays)->addDays(2);
+        $ids = $tutors->keys()->all();
 
-        return $this->calculate(
-            $tutor->availabilityRules()->get(),
-            $tutor->availabilityExceptions()->whereBetween('date', [$from->toDateString(), $to->toDateString()])->get(),
-            Lesson::query()
-                ->where('tutor_profile_id', $tutor->id)
-                ->whereNotIn('status', LessonStatus::freeingSlotValues())
-                ->where('starts_at', '<', $to)
-                ->where('ends_at', '>', $from)
-                ->get(),
-            RecurringSlot::query()
-                ->where('tutor_profile_id', $tutor->id)
-                ->where('status', RecurringSlotStatus::Active)
-                ->get(),
-            $now,
-            $lead,
-            $maxDays,
-            $tutor->user->timezone,
-            $timezone,
-        );
+        $rules = AvailabilityRule::query()->whereIn('tutor_profile_id', $ids)->get()->groupBy('tutor_profile_id');
+        $exceptions = AvailabilityException::query()
+            ->whereIn('tutor_profile_id', $ids)
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
+            ->get()->groupBy('tutor_profile_id');
+        $lessons = Lesson::query()
+            ->whereIn('tutor_profile_id', $ids)
+            ->whereNotIn('status', LessonStatus::freeingSlotValues())
+            ->where('starts_at', '<', $to)
+            ->where('ends_at', '>', $from)
+            ->get()->groupBy('tutor_profile_id');
+        $weekly = RecurringSlot::query()
+            ->whereIn('tutor_profile_id', $ids)
+            ->where('status', RecurringSlotStatus::Active)
+            ->get()->groupBy('tutor_profile_id');
+
+        $result = [];
+
+        foreach ($tutors as $id => $tutor) {
+            $result[$id] = $this->calculate(
+                $rules->get($id, []),
+                $exceptions->get($id, []),
+                $lessons->get($id, []),
+                $weekly->get($id, []),
+                $now,
+                $lead,
+                $maxDays,
+                $tutor->user->timezone,
+                $timezone,
+            );
+        }
+
+        return $result;
     }
 
     /**
