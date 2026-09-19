@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { reactive } from 'vue';
+import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,6 +79,10 @@ function search(page = 1) {
 
     <main class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4">
         <h1 class="text-xl font-semibold">Find a tutor</h1>
+        <p v-if="$page.props.features.match_requests" class="text-sm">
+            Not sure who to pick?
+            <Link href="/match-requests/create" class="underline underline-offset-4">Ask us to suggest tutors</Link>
+        </p>
 
         <form class="grid gap-4 rounded-xl border p-4 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="search()">
             <div v-if="learners.length" class="grid gap-2">
@@ -189,4 +194,6 @@ function search(page = 1) {
             <Button variant="outline" size="sm" :disabled="page >= lastPage" @click="search(page + 1)">Next</Button>
         </div>
     </main>
+
+    <PublicFooter />
 </template>

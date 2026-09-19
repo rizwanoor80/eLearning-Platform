@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 
 defineProps<{
@@ -76,4 +77,6 @@ defineProps<{
             <p class="text-muted-foreground text-sm">No reviews yet.</p>
         </section>
     </main>
+
+    <PublicFooter />
 </template>

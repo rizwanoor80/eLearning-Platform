@@ -28,6 +28,13 @@ defineOptions({
             <Link href="/tutors" class="text-sm underline underline-offset-4">
                 Find a tutor
             </Link>
+            <Link
+                v-if="$page.props.features.match_requests"
+                href="/match-requests"
+                class="text-sm underline underline-offset-4"
+            >
+                Request a match
+            </Link>
         </div>
         <div class="grid auto-rows-min gap-4 md:grid-cols-3">
             <div
