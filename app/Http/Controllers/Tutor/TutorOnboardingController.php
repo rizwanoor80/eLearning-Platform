@@ -158,6 +158,7 @@ class TutorOnboardingController extends Controller
         /** @var UploadedFile $file */
         $file = $request->file('file');
         $path = $file->store('tutor-documents/'.$profile->id, 'local');
+        abort_if($path === false, 500, 'The document could not be stored.');
 
         try {
             DB::transaction(function () use ($profile, $documentType, $file, $path): void {
