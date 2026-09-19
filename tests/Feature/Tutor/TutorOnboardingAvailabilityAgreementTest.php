@@ -51,7 +51,7 @@ it('rejects overlapping availability rules on the same weekday', function () {
         'min_rate' => 10000, 'max_rate' => 20000, 'effective_from' => now()->subYear()->toDateString(),
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1']],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
     test()->actingAs($tutor)->post(route('tutor.onboarding.profile'), [

@@ -2,6 +2,7 @@
 
 use App\Enums\AvailabilityExceptionType;
 use App\Enums\LessonStatus;
+use App\Enums\LevelTier;
 use App\Enums\TutorProfileStatus;
 use App\Models\AvailabilityException;
 use App\Models\AvailabilityRule;
@@ -12,6 +13,7 @@ use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
+use App\Models\YearGroup;
 use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 
@@ -198,34 +200,82 @@ it('shifts guest results with the default_timezone setting (R30 #13)', function 
     expect(srchIds(query: ['day' => 2]))->toBe([])->and(srchIds(query: ['day' => 1]))->toBe([$tutor->id]);
 });
 
-// ---- year group (R30 #11) -------------------------------------------------------------------
+// ---- year group (R33, R30 #6, #15) ----------------------------------------------------------
 
-it('filters by year group within the chosen curriculum, permissive when unparseable (R30 #11)', function () {
+/**
+ * Year 7 to Year 11 for a curriculum, keyed by year number (sorts 7–11).
+ *
+ * @return array<int, YearGroup>
+ */
+function srchYears(Curriculum $curriculum): array
+{
+    $years = [];
+
+    foreach (range(7, 11) as $n) {
+        $years[$n] = YearGroup::query()->firstOrCreate(
+            ['curriculum_id' => $curriculum->id, 'code' => 'y'.$n],
+            ['label' => 'Year '.$n, 'sort' => $n, 'level_tier' => $n <= 9 ? LevelTier::LowerSecondary : LevelTier::Exam1],
+        );
+    }
+
+    return $years;
+}
+
+it('filters by year group id within the chosen curriculum; an unmapped legacy row matches any (R30 #6)', function () {
     $curriculum = Curriculum::factory()->create();
     $other = Curriculum::factory()->create();
-    $inRange = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min' => 'Year 7', 'level_max' => 'Year 9']);
-    $outOfRange = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min' => 'Year 10', 'level_max' => 'Year 11']);
-    $unparseable = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min' => 'MYP One', 'level_max' => 'MYP Three']);
-    $wrongCurriculum = srchTutor(subject: ['curriculum_id' => $other->id, 'level_min' => 'Year 7', 'level_max' => 'Year 9']);
+    $y = srchYears($curriculum);
+    $yo = srchYears($other);
 
-    $ids = srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group' => 'Year 8']);
-    expect($ids)->toContain($inRange->id, $unparseable->id)->not->toContain($outOfRange->id, $wrongCurriculum->id);
+    $inRange = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min_id' => $y[7]->id, 'level_max_id' => $y[9]->id]);
+    $outOfRange = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min_id' => $y[10]->id, 'level_max_id' => $y[11]->id]);
+    $legacy = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min_id' => null, 'level_max_id' => null]);
+    $wrongCurriculum = srchTutor(subject: ['curriculum_id' => $other->id, 'level_min_id' => $yo[7]->id, 'level_max_id' => $yo[9]->id]);
 
-    expect(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group' => 'Year 10']))->toContain($outOfRange->id)->not->toContain($inRange->id)
-        ->and(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group' => 'Reception']))->toContain($inRange->id, $outOfRange->id) // no integer → permissive
-        ->and(srchIds(query: ['year_group' => 'Year 10']))->toContain($inRange->id); // no curriculum → year ignored
+    $ids = srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group_id' => $y[8]->id]);
+    expect($ids)->toContain($inRange->id, $legacy->id)->not->toContain($outOfRange->id, $wrongCurriculum->id);
+
+    // Both ends of the range are inclusive.
+    expect(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group_id' => $y[7]->id]))->toContain($inRange->id)
+        ->and(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group_id' => $y[9]->id]))->toContain($inRange->id)->not->toContain($outOfRange->id)
+        ->and(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group_id' => $y[10]->id]))->toContain($outOfRange->id)->not->toContain($inRange->id);
+
+    // No curriculum chosen: the year group is ignored.
+    expect(srchIds(query: ['year_group_id' => $y[10]->id]))->toContain($inRange->id);
+
+    // A year group of another curriculum than the one searched is ignored, not applied.
+    expect(srchIds(query: ['curriculum_id' => $curriculum->id, 'year_group_id' => $yo[8]->id]))->toContain($inRange->id, $outOfRange->id);
+});
+
+it('rejects a year group id that does not exist', function () {
+    test()->get(route('tutors.index', ['year_group_id' => 999999]))->assertSessionHasErrors('year_group_id');
 });
 
 // ---- learner prefill (R30 #7, #15) ----------------------------------------------------------
 
 it('prefills curriculum and year group from the owner’s own learner', function () {
     $curriculum = Curriculum::factory()->create();
-    $match = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min' => 'Year 7', 'level_max' => 'Year 9']);
-    $miss = srchTutor(subject: ['curriculum_id' => Curriculum::factory()->create()->id, 'level_min' => 'Year 7', 'level_max' => 'Year 9']);
+    $y = srchYears($curriculum);
+    $match = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min_id' => $y[7]->id, 'level_max_id' => $y[9]->id]);
+    $tooOld = srchTutor(subject: ['curriculum_id' => $curriculum->id, 'level_min_id' => $y[10]->id, 'level_max_id' => $y[11]->id]);
+    $miss = srchTutor(subject: ['curriculum_id' => Curriculum::factory()->create()->id]);
     $parent = User::factory()->create();
-    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $curriculum->id, 'year_group' => 'Year 8']);
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $curriculum->id, 'year_group_id' => $y[8]->id]);
 
-    expect(srchIds($parent, ['learner' => $learner->id]))->toBe([$match->id])->not->toContain($miss->id);
+    expect(srchIds($parent, ['learner' => $learner->id]))->toBe([$match->id])->not->toContain($miss->id, $tooOld->id);
+});
+
+it('ignores the learner’s year group when the curriculum searched is a different one (R30 #15)', function () {
+    $curriculum = Curriculum::factory()->create();
+    $other = Curriculum::factory()->create();
+    $y = srchYears($curriculum);
+    $yo = srchYears($other);
+    $otherTutor = srchTutor(subject: ['curriculum_id' => $other->id, 'level_min_id' => $yo[10]->id, 'level_max_id' => $yo[11]->id]);
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $curriculum->id, 'year_group_id' => $y[8]->id]);
+
+    // The learner is in Year 8 of `$curriculum`; searching `$other` must not apply that year group to it.
+    expect(srchIds($parent, ['learner' => $learner->id, 'curriculum_id' => $other->id]))->toBe([$otherTutor->id]);
 });
 
 it('ignores a learner with no curriculum, a foreign, a soft-deleted or any learner for a guest (R30 #7, #15)', function () {

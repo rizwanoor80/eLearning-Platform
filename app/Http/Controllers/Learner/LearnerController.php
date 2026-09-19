@@ -11,6 +11,7 @@ use App\Http\Requests\Learner\StoreLearnerRequest;
 use App\Http\Requests\Learner\UpdateLearnerRequest;
 use App\Models\Curriculum;
 use App\Models\Learner;
+use App\Support\YearGroups\YearGroupOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -26,7 +27,7 @@ class LearnerController extends Controller
         return Inertia::render('learners/Index', [
             'learners' => Learner::query()
                 ->where('account_user_id', $request->user()->id)
-                ->with('curriculum:id,name')
+                ->with(['curriculum:id,name', 'yearGroup:id,label'])
                 ->orderBy('is_minor')
                 ->orderBy('display_name')
                 ->get()
@@ -42,12 +43,13 @@ class LearnerController extends Controller
         return Inertia::render('learners/Form', [
             'learner' => null,
             'curricula' => $this->curricula(),
+            'yearGroups' => YearGroupOptions::all(),
         ]);
     }
 
     public function store(StoreLearnerRequest $request, CreateLearner $create): RedirectResponse
     {
-        /** @var array{display_name: string, year_group: string, curriculum_id: int, school?: string|null, notes?: string|null} $data */
+        /** @var array{display_name: string, year_group_id: int, curriculum_id: int, school?: string|null, notes?: string|null} $data */
         $data = $request->validated();
         $create($request->user(), $data);
 
@@ -63,6 +65,7 @@ class LearnerController extends Controller
         return Inertia::render('learners/Form', [
             'learner' => $this->present($learner),
             'curricula' => $this->curricula(),
+            'yearGroups' => YearGroupOptions::all(),
         ]);
     }
 
@@ -101,7 +104,9 @@ class LearnerController extends Controller
             'id' => $learner->id,
             'display_name' => $learner->display_name,
             'is_minor' => $learner->is_minor,
-            'year_group' => $learner->year_group,
+            'year_group_id' => $learner->year_group_id,
+            'year_group' => $learner->yearGroupLabel(),
+            'year_group_is_legacy' => $learner->year_group_id === null && $learner->year_group_legacy !== null,
             'curriculum_id' => $learner->curriculum_id,
             'curriculum' => $learner->curriculum?->name,
             'school' => $learner->school,

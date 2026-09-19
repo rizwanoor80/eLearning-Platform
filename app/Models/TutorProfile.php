@@ -98,7 +98,12 @@ class TutorProfile extends Model
      */
     public function displayName(): string
     {
-        $parts = preg_split('/\s+/u', (string) $this->user->name, -1, PREG_SPLIT_NO_EMPTY);
+        // Leading invisible format characters (zero-width space, BOM, direction
+        // marks) are dropped with the whitespace, so they cannot become the
+        // "first word". Only the LEADING run: an internal zero-width joiner or
+        // non-joiner is part of many Persian and Indic names and stays.
+        $name = preg_replace('/^[\p{Cf}\s]+/u', '', (string) $this->user->name) ?? '';
+        $parts = preg_split('/\s+/u', $name, -1, PREG_SPLIT_NO_EMPTY);
 
         return $parts[0] ?? 'Tutor';
     }

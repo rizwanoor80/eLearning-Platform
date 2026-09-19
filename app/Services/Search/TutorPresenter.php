@@ -75,8 +75,8 @@ class TutorPresenter
             $subjects[] = [
                 'curriculum' => $row->curriculum?->name,
                 'subject' => $row->subject?->name,
-                'level_min' => $row->level_min,
-                'level_max' => $row->level_max,
+                'level_min' => $row->levelMinLabel(),
+                'level_max' => $row->levelMaxLabel(),
             ];
         }
 

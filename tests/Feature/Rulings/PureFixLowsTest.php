@@ -8,7 +8,6 @@ use App\Events\Match\MatchSuggestionsReady;
 use App\Exceptions\MatchRequestException;
 use App\Filament\Pages\ManageSettings;
 use App\Listeners\Match\SendMatchSuggestionsMail;
-use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\MatchRequest;
@@ -122,7 +121,7 @@ it('discards the suggestions job when its request was deleted, and sends nothing
 it('syncs the self-learner name on any model save of the user, and only when the name changed (R30 #7)', function () {
     $user = User::factory()->create(['name' => 'Sara Adult']);
     $self = (new CreateSelfLearner)($user);
-    $child = (new CreateLearner)($user, ['display_name' => 'Kid', 'year_group' => 'Year 3', 'curriculum_id' => Curriculum::factory()->create()->id]);
+    $child = (new CreateLearner)($user, lnChild());
     $other = Learner::factory()->selfLearner()->create(); // someone else's
 
     $self->forceFill(['display_name' => 'Manually changed'])->save();

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 
 const props = defineProps<{
-    learners: Array<{ id: number; display_name: string; curriculum_id: number | null; year_group: string | null }>;
+    learners: Array<{ id: number; display_name: string; curriculum_id: number | null; year_group_id: number | null }>;
+    yearGroups: Array<{ id: number; curriculum_id: number; label: string }>;
     selectedLearner: number | null;
     curricula: Array<{ id: number; name: string }>;
     subjects: Array<{ id: number; name: string }>;
@@ -29,7 +31,7 @@ const form = useForm({
     learner_id: first?.id ?? '',
     curriculum_id: first?.curriculum_id ?? '',
     subject_id: '',
-    year_group: first?.year_group ?? '',
+    year_group_id: first?.year_group_id ?? '',
     goals: '',
     preferred_times: '',
     budget_tier: 'mid',
@@ -40,8 +42,21 @@ const form = useForm({
 function pickLearner() {
     const learner = props.learners.find((l) => l.id === Number(form.learner_id));
     form.curriculum_id = learner?.curriculum_id ?? '';
-    form.year_group = learner?.year_group ?? '';
+    form.year_group_id = learner?.year_group_id ?? '';
 }
+
+// Only the chosen curriculum's year groups are offered; one left over from
+// another curriculum is cleared.
+const groupsForCurriculum = computed(() => props.yearGroups.filter((group) => group.curriculum_id === Number(form.curriculum_id)));
+
+watch(
+    () => form.curriculum_id,
+    () => {
+        if (!groupsForCurriculum.value.some((group) => group.id === Number(form.year_group_id))) {
+            form.year_group_id = '';
+        }
+    },
+);
 
 function submit() {
     form.post('/match-requests');
@@ -84,9 +99,12 @@ function submit() {
                 <InputError :message="form.errors.subject_id" />
             </div>
             <div class="grid gap-2">
-                <Label for="year_group">Year group</Label>
-                <Input id="year_group" v-model="form.year_group" required placeholder="e.g. Year 8" />
-                <InputError :message="form.errors.year_group" />
+                <Label for="year_group_id">Year group</Label>
+                <select id="year_group_id" v-model="form.year_group_id" class="border-input rounded-md border p-2 text-sm" required :disabled="form.curriculum_id === ''">
+                    <option value="" disabled>{{ form.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
+                    <option v-for="group in groupsForCurriculum" :key="group.id" :value="group.id">{{ group.label }}</option>
+                </select>
+                <InputError :message="form.errors.year_group_id" />
             </div>
             <div class="grid gap-2">
                 <Label for="goals">What would you like help with?</Label>

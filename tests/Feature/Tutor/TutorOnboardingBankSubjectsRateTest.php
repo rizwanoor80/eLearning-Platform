@@ -70,13 +70,7 @@ it('saves a subjects row and derives no tier mismatch when the tier is valid for
     [$tutor, $curriculum, $subject] = subjectsReadyTutor();
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 10',
-            'level_max' => 'Year 11',
-            'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
 
     $response->assertRedirect(route('tutor.onboarding'));
@@ -85,18 +79,16 @@ it('saves a subjects row and derives no tier mismatch when the tier is valid for
         ->and($profile->tutorSubjects()->first()->level_tier)->toBe(LevelTier::Exam1);
 });
 
-it('rejects a level tier that does not exist for the chosen curriculum', function () {
+it('rejects year groups that belong to another curriculum', function () {
     [$tutor, $curriculum, $subject] = subjectsReadyTutor();
 
-    // GCSE only has lower_secondary and exam_1 (App\Enums\CurriculumCode::tiers()) — exam_2 is A-Level/IB DP only.
+    // R33: the year groups come from a controlled list per curriculum. GCSE's list has no
+    // Year 12/13 (exam_2 is A-Level/IB DP only), so a GCSE row pointing at A-Level's is refused.
+    $aLevel = Curriculum::factory()->create(['code' => CurriculumCode::ALevel]);
+    $row = [...ygRow($aLevel, $subject, 'y12', 'y13'), 'curriculum_id' => $curriculum->id];
+
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 12',
-            'level_max' => 'Year 13',
-            'level_tier' => 'exam_2',
-        ]],
+        'subjects' => [$row],
     ]);
 
     $response->assertSessionHasErrors('subjects');
@@ -109,8 +101,8 @@ it('rejects a duplicate subject listed twice for the same curriculum', function 
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
         'subjects' => [
-            ['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, 'level_min' => 'Y7', 'level_max' => 'Y9', 'level_tier' => 'lower_secondary'],
-            ['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
+            ygRow($curriculum, $subject, 'y7', 'y9'),
+            ygRow($curriculum, $subject, 'y10', 'y11'),
         ],
     ]);
 
@@ -127,13 +119,7 @@ it('rejects an hourly rate outside the price band for the highest tier taught, s
         'effective_from' => now()->subYear()->toDateString(),
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 10',
-            'level_max' => 'Year 11',
-            'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), [
@@ -156,13 +142,7 @@ it('accepts an hourly rate within the price band', function () {
         'effective_from' => now()->subYear()->toDateString(),
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 10',
-            'level_max' => 'Year 11',
-            'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), [
@@ -218,8 +198,8 @@ function twoCurriculumSubjectsTutor(int $bandAMin, int $bandAMax, int $bandBMin,
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
         'subjects' => [
-            ['curriculum_id' => $curriculumA->id, 'subject_id' => $subjectA->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
-            ['curriculum_id' => $curriculumB->id, 'subject_id' => $subjectB->id, 'level_min' => 'MYP4', 'level_max' => 'MYP5', 'level_tier' => 'exam_1'],
+            ygRow($curriculumA, $subjectA, 'y10', 'y11'),
+            ygRow($curriculumB, $subjectB, 'myp4', 'myp5'),
         ],
     ]);
 
@@ -280,10 +260,7 @@ it('clears a stale rate when a later subjects change no longer fits its band', f
         'min_rate' => 10000, 'max_rate' => 100000, 'effective_from' => now()->subYear()->toDateString(),
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
-            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '900.00']);
     expect(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->hourly_rate->toFils())->toBe(90000);
@@ -296,10 +273,7 @@ it('clears a stale rate when a later subjects change no longer fits its band', f
     ]);
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $narrowCurriculum->id, 'subject_id' => $narrowSubject->id,
-            'level_min' => 'MYP4', 'level_max' => 'MYP5', 'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($narrowCurriculum, $narrowSubject, 'myp4', 'myp5')],
     ]);
 
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
@@ -316,18 +290,15 @@ it('keeps the rate when a later subjects change still fits its band', function (
         'min_rate' => 10000, 'max_rate' => 20000, 'effective_from' => now()->subYear()->toDateString(),
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
-            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
 
     $secondSubject = Subject::factory()->create();
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
         'subjects' => [
-            ['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
-            ['curriculum_id' => $curriculum->id, 'subject_id' => $secondSubject->id, 'level_min' => 'Y10', 'level_max' => 'Y11', 'level_tier' => 'exam_1'],
+            ygRow($curriculum, $subject, 'y10', 'y11'),
+            ygRow($curriculum, $secondSubject, 'y10', 'y11'),
         ],
     ]);
 
@@ -339,10 +310,7 @@ it('names a curriculum with no current price band as a conflict, rather than sil
     [$tutor, $curriculum, $subject] = subjectsReadyTutor();
     // Deliberately no PriceBand row for this curriculum/tier at all.
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id,
-            'level_min' => 'Year 10', 'level_max' => 'Year 11', 'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);

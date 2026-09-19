@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,7 @@ const props = defineProps<{
         learner: number | null;
         curriculum_id: number | null;
         subject_id: number | null;
-        year_group: string | null;
+        year_group_id: number | null;
         min_price: string | null;
         max_price: string | null;
         day: number | null;
@@ -40,13 +40,14 @@ const props = defineProps<{
     curricula: Array<{ id: number; name: string }>;
     subjects: Array<{ id: number; name: string }>;
     learners: Array<{ id: number; display_name: string }>;
+    yearGroups: Array<{ id: number; curriculum_id: number; label: string }>;
 }>();
 
 const form = reactive({
     learner: props.filters.learner ?? '',
     curriculum_id: props.filters.curriculum_id ?? '',
     subject_id: props.filters.subject_id ?? '',
-    year_group: props.filters.year_group ?? '',
+    year_group_id: props.filters.year_group_id ?? '',
     min_price: props.filters.min_price ?? '',
     max_price: props.filters.max_price ?? '',
     day: props.filters.day ?? '',
@@ -54,6 +55,19 @@ const form = reactive({
     min_rating: props.filters.min_rating ?? '',
     sort: props.filters.sort,
 });
+
+// A year group only applies inside its own curriculum: with "Any" curriculum the
+// select is disabled, and one left over from another curriculum is cleared.
+const groupsForCurriculum = computed(() => props.yearGroups.filter((group) => group.curriculum_id === Number(form.curriculum_id)));
+
+watch(
+    () => form.curriculum_id,
+    () => {
+        if (!groupsForCurriculum.value.some((group) => group.id === Number(form.year_group_id))) {
+            form.year_group_id = '';
+        }
+    },
+);
 
 function query(page = 1) {
     const params: Record<string, string | number> = {};
@@ -110,8 +124,11 @@ function search(page = 1) {
                 </select>
             </div>
             <div class="grid gap-2">
-                <Label for="year_group">Year group</Label>
-                <Input id="year_group" v-model="form.year_group" placeholder="e.g. Year 8" />
+                <Label for="year_group_id">Year group</Label>
+                <select id="year_group_id" v-model="form.year_group_id" class="border-input rounded-md border p-2 text-sm" :disabled="form.curriculum_id === ''">
+                    <option value="">{{ form.curriculum_id === '' ? 'Choose a curriculum first' : 'Any' }}</option>
+                    <option v-for="group in groupsForCurriculum" :key="group.id" :value="group.id">{{ group.label }}</option>
+                </select>
             </div>
             <div class="grid gap-2">
                 <Label for="min_price">Min price / hour</Label>

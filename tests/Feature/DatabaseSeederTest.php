@@ -11,6 +11,7 @@ use App\Models\PageVersion;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\User;
+use App\Models\YearGroup;
 use App\Support\Money;
 use Database\Seeders\AdminUserSeeder;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,7 @@ it('seeds curricula, subjects, price bands, settings, document types, the six pu
         ->and(DB::table('settings')->count())->toBe(41)
         ->and(DocumentType::query()->count())->toBe(4)
         ->and(ContentBlock::query()->count())->toBe(7)
+        ->and(YearGroup::query()->count())->toBe(21)
         ->and(Page::query()->count())->toBe(6)
         ->and(PageVersion::query()->count())->toBe(6)
         ->and(User::query()->where('role', Role::Admin)->count())->toBe(1);
@@ -46,6 +48,7 @@ it('is idempotent — seeding twice does not change the row counts', function ()
         ->and(DB::table('settings')->count())->toBe(41)
         ->and(DocumentType::query()->count())->toBe(4)
         ->and(ContentBlock::query()->count())->toBe(7)
+        ->and(YearGroup::query()->count())->toBe(21)
         ->and(Page::query()->count())->toBe(6)
         ->and(PageVersion::query()->count())->toBe(6)
         ->and(User::query()->where('role', Role::Admin)->count())->toBe(1);

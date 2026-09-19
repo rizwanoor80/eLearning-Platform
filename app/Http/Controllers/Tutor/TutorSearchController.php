@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Search\TutorPresenter;
 use App\Services\Search\TutorSearch;
 use App\Support\Facades\Settings;
+use App\Support\YearGroups\YearGroupOptions;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,7 +46,7 @@ class TutorSearchController extends Controller
                 'learner' => $request->ownLearner()?->id,
                 'curriculum_id' => $criteria->curriculumId,
                 'subject_id' => $criteria->subjectId,
-                'year_group' => $criteria->yearGroup,
+                'year_group_id' => $criteria->yearGroupId,
                 'min_price' => $request->query('min_price'),
                 'max_price' => $request->query('max_price'),
                 'day' => $criteria->day,
@@ -53,6 +54,7 @@ class TutorSearchController extends Controller
                 'min_rating' => $criteria->minRating,
                 'sort' => $criteria->sort,
             ],
+            'yearGroups' => YearGroupOptions::all(),
             'curricula' => Curriculum::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
             'subjects' => Subject::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
             'learners' => $request->user() === null ? [] : Learner::query()

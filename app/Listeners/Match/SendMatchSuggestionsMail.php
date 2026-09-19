@@ -42,7 +42,7 @@ class SendMatchSuggestionsMail implements ShouldQueue
         $tutors = TutorProfile::query()
             ->bookable()
             ->whereIn('id', $ids)
-            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name'])
+            ->with(['user:id,name,timezone', 'tutorSubjects.curriculum:id,name', 'tutorSubjects.subject:id,name', 'tutorSubjects.levelMin:id,label', 'tutorSubjects.levelMax:id,label'])
             ->get()
             ->sortBy(fn (TutorProfile $tutor): int|false => array_search($tutor->id, $ids, true));
 

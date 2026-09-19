@@ -100,3 +100,18 @@ it('never calculates a horizon beyond 90 days, whatever the stored setting says 
     expect(end($starts))->toBe('2026-12-13')  // 2026-09-14 06:00 + 90 days
         ->and(SlotCalculator::MAX_HORIZON_DAYS)->toBe(90);
 });
+
+it('refuses a slot at exactly 00:00 UTC on the expiry day and offers 23:00 UTC the day before (step-1 review L2)', function () {
+    // 04:00 Dubai is 00:00 UTC: with a rule 04:00–05:00 every day, the slot at exactly the cutoff instant.
+    $tutor = TutorProfile::factory()->approved()->create(['permit_expires_at' => '2026-09-19']);
+    foreach (range(0, 6) as $weekday) {
+        AvailabilityRule::factory()->create(['tutor_profile_id' => $tutor->id, 'weekday' => $weekday, 'start_time' => '03:00:00', 'end_time' => '05:00:00', 'timezone' => 'Asia/Dubai']);
+    }
+
+    $starts = capStarts($tutor);
+
+    // Dubai 03:00 = 23:00 UTC the day before; Dubai 04:00 = 00:00 UTC. The cutoff is 2026-09-19 00:00 UTC (exclusive).
+    expect($starts)->toContain('2026-09-18 23:00')
+        ->and($starts)->not->toContain('2026-09-19 00:00')
+        ->and(end($starts))->toBe('2026-09-18 23:00');
+});

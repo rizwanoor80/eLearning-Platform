@@ -7,6 +7,8 @@ use App\Models\DocumentType;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\User;
+use App\Models\YearGroup;
+use App\Support\YearGroups\YearGroupDefaults;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -87,13 +89,7 @@ function agreementReadyTutor(): User
         'max_rate' => 20000,
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
-        'subjects' => [[
-            'curriculum_id' => $curriculum->id,
-            'subject_id' => $subject->id,
-            'level_min' => 'Year 10',
-            'level_max' => 'Year 11',
-            'level_tier' => 'exam_1',
-        ]],
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
     ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00']);
     test()->actingAs($tutor)->post(route('tutor.onboarding.profile'), [
@@ -105,4 +101,28 @@ function agreementReadyTutor(): User
     ]);
 
     return $tutor;
+}
+
+/**
+ * A tutor-subject row for the onboarding POST: the year groups are looked up by
+ * their default code (found or created, so it can be called repeatedly) — e.g.
+ * `ygRow($gcse, $subject, 'y10', 'y11')` is Year 10 to Year 11 (R33).
+ *
+ * @return array{curriculum_id: int, subject_id: int, level_min_id: int, level_max_id: int}
+ */
+function ygRow(Curriculum $curriculum, Subject $subject, string $from, string $to): array
+{
+    $defaults = collect(YearGroupDefaults::all()[$curriculum->code->value]);
+    $ids = [];
+
+    foreach (['level_min_id' => $from, 'level_max_id' => $to] as $key => $code) {
+        $definition = $defaults->firstWhere('code', $code);
+
+        $ids[$key] = YearGroup::query()->firstOrCreate(
+            ['curriculum_id' => $curriculum->id, 'code' => $code],
+            ['label' => $definition['label'], 'sort' => $definition['sort'], 'level_tier' => $definition['tier']],
+        )->id;
+    }
+
+    return ['curriculum_id' => $curriculum->id, 'subject_id' => $subject->id, ...$ids];
 }

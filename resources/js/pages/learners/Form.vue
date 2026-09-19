@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,12 +12,15 @@ const props = defineProps<{
         id: number;
         display_name: string;
         is_minor: boolean;
+        year_group_id: number | null;
         year_group: string | null;
+        year_group_is_legacy: boolean;
         curriculum_id: number | null;
         school: string | null;
         notes: string | null;
     } | null;
     curricula: Array<{ id: number; name: string }>;
+    yearGroups: Array<{ id: number; curriculum_id: number; label: string }>;
 }>();
 
 defineOptions({
@@ -32,11 +36,24 @@ const isSelf = props.learner !== null && !props.learner.is_minor;
 
 const form = useForm({
     display_name: props.learner?.display_name ?? '',
-    year_group: props.learner?.year_group ?? '',
+    year_group_id: props.learner?.year_group_id ?? '',
     curriculum_id: props.learner?.curriculum_id ?? '',
     school: props.learner?.school ?? '',
     notes: props.learner?.notes ?? '',
 });
+
+// Year groups belong to a curriculum: only the chosen curriculum's are offered,
+// and a year group left over from another curriculum is cleared.
+const groupsForCurriculum = computed(() => props.yearGroups.filter((group) => group.curriculum_id === Number(form.curriculum_id)));
+
+watch(
+    () => form.curriculum_id,
+    () => {
+        if (!groupsForCurriculum.value.some((group) => group.id === Number(form.year_group_id))) {
+            form.year_group_id = '';
+        }
+    },
+);
 
 function submit() {
     if (props.learner) {
@@ -70,9 +87,21 @@ function submit() {
         </div>
 
         <div class="grid gap-2">
-            <Label for="year_group">Year group</Label>
-            <Input id="year_group" v-model="form.year_group" placeholder="e.g. Year 8" :required="!isSelf" />
-            <InputError :message="form.errors.year_group" />
+            <Label for="year_group_id">Year group</Label>
+            <select
+                id="year_group_id"
+                v-model="form.year_group_id"
+                class="border-input rounded-md border p-2 text-sm"
+                :required="!isSelf"
+                :disabled="form.curriculum_id === ''"
+            >
+                <option value="" :disabled="!isSelf">{{ form.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
+                <option v-for="group in groupsForCurriculum" :key="group.id" :value="group.id">{{ group.label }}</option>
+            </select>
+            <p v-if="learner?.year_group_is_legacy" class="text-muted-foreground text-xs">
+                We could not match “{{ learner.year_group }}” to our list — please choose a year group.
+            </p>
+            <InputError :message="form.errors.year_group_id" />
         </div>
 
         <div class="grid gap-2">

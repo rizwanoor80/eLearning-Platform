@@ -37,9 +37,17 @@ interface TutorSubjectProp {
     id: number;
     curriculum_id: number;
     subject_id: number;
-    level_min: string;
-    level_max: string;
+    level_min_id: number | null;
+    level_max_id: number | null;
+    level_min_legacy: string | null;
+    level_max_legacy: string | null;
     level_tier: string;
+}
+
+interface YearGroupProp {
+    id: number;
+    curriculum_id: number;
+    label: string;
 }
 
 interface AvailabilityRuleProp {
@@ -91,6 +99,7 @@ const props = defineProps<{
     curricula: CurriculumProp[];
     subjects: SubjectProp[];
     tutorSubjects: TutorSubjectProp[];
+    yearGroups: YearGroupProp[];
     rateBand: { min: number; max: number; conflicting: string[] } | null;
     trialDiscountPct: number;
     availabilityRules: AvailabilityRuleProp[];
@@ -207,23 +216,42 @@ const submitBank = () => {
     bankForm.post('/tutor/onboarding/bank', afterSubmit);
 };
 
-const subjectsForm = useForm<{
-    subjects: Array<{ curriculum_id: number | string; subject_id: number | string; level_min: string; level_max: string; level_tier: string }>;
-}>({
+type SubjectRow = { curriculum_id: number | string; subject_id: number | string; level_min_id: number | string; level_max_id: number | string };
+
+const emptySubjectRow = (): SubjectRow => ({ curriculum_id: '', subject_id: '', level_min_id: '', level_max_id: '' });
+
+const subjectsForm = useForm<{ subjects: SubjectRow[] }>({
     subjects:
         props.tutorSubjects.length > 0
             ? props.tutorSubjects.map((s) => ({
                   curriculum_id: s.curriculum_id,
                   subject_id: s.subject_id,
-                  level_min: s.level_min,
-                  level_max: s.level_max,
-                  level_tier: s.level_tier,
+                  level_min_id: s.level_min_id ?? '',
+                  level_max_id: s.level_max_id ?? '',
               }))
-            : [{ curriculum_id: '', subject_id: '', level_min: '', level_max: '', level_tier: '' }],
+            : [emptySubjectRow()],
 });
 
+// A row's year groups come from its own curriculum; changing the curriculum
+// clears a year group that no longer belongs to it. The tier is worked out by
+// the server from the range, so there is nothing to choose here.
+const groupsFor = (curriculumId: number | string) => props.yearGroups.filter((group) => group.curriculum_id === Number(curriculumId));
+
+const clearForeignLevels = (row: SubjectRow) => {
+    const valid = groupsFor(row.curriculum_id).map((group) => group.id);
+    if (!valid.includes(Number(row.level_min_id))) row.level_min_id = '';
+    if (!valid.includes(Number(row.level_max_id))) row.level_max_id = '';
+};
+
+const legacyText = (rowIndex: number) => {
+    const original = props.tutorSubjects[rowIndex];
+    return original && (original.level_min_id === null || original.level_max_id === null)
+        ? [original.level_min_legacy, original.level_max_legacy].filter(Boolean).join(' – ')
+        : null;
+};
+
 const addSubjectRow = () => {
-    subjectsForm.subjects.push({ curriculum_id: '', subject_id: '', level_min: '', level_max: '', level_tier: '' });
+    subjectsForm.subjects.push(emptySubjectRow());
 };
 
 const removeSubjectRow = (index: number) => {
@@ -460,10 +488,10 @@ const submitComplete = () => {
         <form v-else-if="shown === 'subjects'" @submit.prevent="submitSubjects" class="grid max-w-2xl gap-4">
             <p class="text-muted-foreground text-sm">Which curricula, subjects and levels do you teach?</p>
 
-            <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-5 items-end gap-2 border-b pb-4">
+            <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">
                 <div class="grid gap-2">
                     <Label :for="`curriculum_${index}`">Curriculum</Label>
-                    <select :id="`curriculum_${index}`" v-model="row.curriculum_id" class="border-input rounded-md border p-2 text-sm">
+                    <select :id="`curriculum_${index}`" v-model="row.curriculum_id" class="border-input rounded-md border p-2 text-sm" @change="clearForeignLevels(row)">
                         <option value="" disabled>Select</option>
                         <option v-for="curriculum in curricula" :key="curriculum.id" :value="curriculum.id">{{ curriculum.name }}</option>
                     </select>
@@ -476,23 +504,23 @@ const submitComplete = () => {
                     </select>
                 </div>
                 <div class="grid gap-2">
-                    <Label :for="`level_min_${index}`">From level</Label>
-                    <Input :id="`level_min_${index}`" v-model="row.level_min" type="text" placeholder="Year 7" />
-                </div>
-                <div class="grid gap-2">
-                    <Label :for="`level_max_${index}`">To level</Label>
-                    <Input :id="`level_max_${index}`" v-model="row.level_max" type="text" placeholder="Year 9" />
-                </div>
-                <div class="grid gap-2">
-                    <Label :for="`level_tier_${index}`">Tier</Label>
-                    <select :id="`level_tier_${index}`" v-model="row.level_tier" class="border-input rounded-md border p-2 text-sm">
-                        <option value="" disabled>Select</option>
-                        <option value="lower_secondary">Lower secondary</option>
-                        <option value="exam_1">Exam years 1</option>
-                        <option value="exam_2">Exam years 2</option>
+                    <Label :for="`level_min_${index}`">From year group</Label>
+                    <select :id="`level_min_${index}`" v-model="row.level_min_id" class="border-input rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
+                        <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
+                        <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
                     </select>
                 </div>
-                <Button v-if="subjectsForm.subjects.length > 1" type="button" variant="ghost" class="col-span-5 w-fit" @click="removeSubjectRow(index)">
+                <div class="grid gap-2">
+                    <Label :for="`level_max_${index}`">To year group</Label>
+                    <select :id="`level_max_${index}`" v-model="row.level_max_id" class="border-input rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
+                        <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
+                        <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
+                    </select>
+                </div>
+                <p v-if="legacyText(index)" class="text-muted-foreground col-span-4 text-xs">
+                    We could not match “{{ legacyText(index) }}” to our list of year groups — please choose them.
+                </p>
+                <Button v-if="subjectsForm.subjects.length > 1" type="button" variant="ghost" class="col-span-4 w-fit" @click="removeSubjectRow(index)">
                     Remove
                 </Button>
             </div>
