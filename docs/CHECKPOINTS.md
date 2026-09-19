@@ -29,7 +29,7 @@ Acceptance
 
 ---
 
-## CP1 — Tutor onboarding and approval
+## CP1 — Tutor onboarding and approval — done (cycle 02 sub-cycles 1a–1c; hardened in cycle 03: the R36 status lifecycle, `ReinstateTutor`, re-vetting, `submitted_at`)
 **Goal:** a tutor can complete onboarding; admin can approve; only approved tutors with valid permits are "bookable".
 
 Tasks
@@ -43,19 +43,19 @@ Tasks
 - Emails: submitted for review, changes requested, approved, rejected, permit expiring/expired — sender name/address and footer from settings.
 
 Acceptance
-- [ ] Rate outside band is rejected on save with a clear message showing the band.
-- [ ] Tutor with `approved` status and expired permit is NOT returned by `bookable()`.
-- [ ] Document URLs are signed and expire; direct path access returns 403.
-- [ ] Admin approve action sets `approved_by/approved_at` and writes an audit log row.
-- [ ] Onboarding cannot complete without `agreement_accepted_at`, and `agreement_version` equals the page version published at acceptance.
-- [ ] Adding a required document type in Filament adds a wizard step and blocks approval until it is accepted; setting it inactive removes both — no code change.
-- [ ] `bank_iban` raw column value is not the plaintext; the tutor sees only the last four; the admin payout view sees the full value.
-- [ ] Changing `site_name` in settings changes the layout title and the next email's sender name without a deploy.
-- [ ] A non-admin cannot reach the admin-users resource; creating an admin writes an audit row.
+- [x] Rate outside band is rejected on save with a clear message showing the band.
+- [x] Tutor with `approved` status and expired permit is NOT returned by `bookable()`.
+- [x] Document URLs are signed and expire; direct path access returns 403.
+- [x] Admin approve action sets `approved_by/approved_at` and writes an audit log row.
+- [x] Onboarding cannot complete without `agreement_accepted_at`, and `agreement_version` equals the page version published at acceptance.
+- [x] Adding a required document type in Filament adds a wizard step and blocks approval until it is accepted; setting it inactive removes both — no code change.
+- [x] `bank_iban` raw column value is not the plaintext; the tutor sees only the last four; the admin payout view sees the full value. _(Tutor masking and encryption done; the admin payout view with the full value is deferred to CP5 — R25. CP1 is done except that clause.)_
+- [x] Changing `site_name` in settings changes the layout title and the next email's sender name without a deploy.
+- [x] A non-admin cannot reach the admin-users resource; creating an admin writes an audit row.
 
 ---
 
-## CP2 — Learners, search, tutor profile, match request
+## CP2 — Learners, search, tutor profile, match request — done (cycle 02 sub-cycles 2a–2c; cycle 03 added year groups as a controlled list — R33, ADR-004 — the permit cap on slots — R34 — and budget labels as content blocks — R35)
 **Goal:** a parent can add learners, find a tutor, and request a match.
 
 Tasks
@@ -69,12 +69,12 @@ Tasks
 - Feature toggles enforced: `reviews` and `messaging` gate their routes and UI (the features themselves arrive in CP7; the gates exist now so CP7 lands behind them).
 
 Acceptance
-- [ ] Search never returns a non-bookable tutor (test with suspended / expired-permit / no-availability fixtures).
-- [ ] `SlotCalculator` excludes blocked exceptions, includes extra exceptions, excludes booked lessons, excludes an active recurring slot's weekday/time even 10 weeks out, respects `booking_min_lead_hours` and `booking_max_days`.
-- [ ] Match request status flows open → suggested; email contains only bookable tutors; with `features.match_requests=false` the form route returns 404 and the entry points are absent.
-- [ ] Publishing a page writes a `page_versions` row and increments `pages.version`; the public route shows the new body immediately; the previous version remains readable in admin.
-- [ ] A tutor who accepted agreement version 1 keeps `agreement_version = 1` after version 2 is published.
-- [ ] Editing `home_hero_title` in admin changes the homepage without a deploy.
+- [x] Search never returns a non-bookable tutor (test with suspended / expired-permit / no-availability fixtures).
+- [x] `SlotCalculator` excludes blocked exceptions, includes extra exceptions, excludes booked lessons, excludes an active recurring slot's weekday/time even 10 weeks out, respects `booking_min_lead_hours` and `booking_max_days`.
+- [x] Match request status flows open → suggested; email contains only bookable tutors; with `features.match_requests=false` the form route returns 404 and the entry points are absent.
+- [x] Publishing a page writes a `page_versions` row and increments `pages.version`; the public route shows the new body immediately; the previous version remains readable in admin.
+- [x] A tutor who accepted agreement version 1 keeps `agreement_version = 1` after version 2 is published.
+- [x] Editing `home_hero_title` in admin changes the homepage without a deploy.
 
 ---
 
@@ -88,6 +88,7 @@ Tasks
 - `CancelLesson` / `SkipLesson` actions with 24h rule, tutor-cancel strike logic, `expired` sweep job for unpaid bookings.
 - Parent dashboard: upcoming lessons. Tutor dashboard: today/upcoming.
 - Emails: confirmed, cancelled, skipped, reminders (24h, 1h) via scheduled job.
+- **Carried in from cycles 02–03:** `BookLesson` re-checks `TutorProfile::bookable()` and the permit at booking time (not only at search); the trial price is frozen on the lesson from `TutorProfile::trialPrice()` — the one place it is computed — and the onboarding trial-price preview (which rounds `100 − pct`) is unified with it; learner delete-guards and the user-delete behaviour are decided; the overlapping-offer transactional check; `whereDate` in `bookable()` is reviewed against the new index; search pagination moves out of memory. The plan for CP3 opens with the R42 Lows pass (year-group `withTrashed()` 500 and `sort` bound first).
 
 Acceptance
 - [ ] Every transition in the state diagram has a passing feature test; every invalid transition throws.

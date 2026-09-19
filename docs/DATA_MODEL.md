@@ -1,7 +1,8 @@
-# DATA MODEL — v1.2
+# DATA MODEL — v1.3
 
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
+_v1.3 (cycle 03, rulings R32–R36, ADR-004; describes what shipped): adds `year_groups` — year group becomes a controlled list per curriculum (R33), so `learners` and `tutor_subjects` point at it and keep their old free text only in `*_legacy` columns; `tutor_profiles` gains `submitted_at` and the status lifecycle is one table of allowed edges (R36); `content_blocks` also carries the match-request budget labels (R35); `TutorProfile::displayName()` is the one public name (R32)._
 
 ## ERD
 
@@ -17,6 +18,9 @@ erDiagram
     curricula ||--o{ tutor_subjects : ""
     subjects ||--o{ tutor_subjects : ""
     curricula ||--o{ price_bands : ""
+    curricula ||--o{ year_groups : "lists"
+    year_groups ||--o{ learners : "is in"
+    year_groups ||--o{ tutor_subjects : "level min and max"
     learners ||--o{ recurring_slots : "has"
     tutor_profiles ||--o{ recurring_slots : "delivers"
     recurring_slots ||--o{ lessons : "generates"
@@ -46,7 +50,8 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 `id, role (enum: account_owner|tutor|admin), name, email (unique), phone, timezone (default Asia/Dubai), password, email_verified_at, status (active|suspended), suspended_reason, last_login_at, timestamps, deleted_at`
 
 ### learners
-`id, account_user_id (fk users), display_name, is_minor (bool), year_group (string), curriculum_id (fk), school (nullable), notes (text), timestamps, deleted_at`
+`id, account_user_id (fk users), display_name, is_minor (bool), year_group_id (fk year_groups, nullable, restrict on delete), year_group_legacy (string, nullable — the pre-v1.3 text, kept only for rows the migration could not map), curriculum_id (fk), school (nullable), notes (text), timestamps, deleted_at`
+- `year_group_id` must belong to `curriculum_id` (validated in the Form Requests; a change of curriculum needs a new year group). `year_group_legacy` is read only to show a parent or tutor what to re-pick; nothing filters on it.
 - An adult student has one learner row with `is_minor=false` and `display_name` = their own name.
 
 ### payment_methods
@@ -54,8 +59,10 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 - Never store PAN. Token only.
 
 ### tutor_profiles
-`id, user_id (fk, unique), headline, bio, intro_video_url, hourly_rate (fils), status (enum: draft|pending_review|changes_requested|approved|rejected|suspended), permit_number, permit_expires_at (date), agreement_accepted_at, agreement_version (int, nullable — the `pages.version` of `tutor_agreement` accepted), bank_name (encrypted), bank_account_name (encrypted), bank_iban (encrypted), bank_swift (encrypted, nullable), bank_verified_at, rating_avg (decimal), rating_count, lessons_completed, late_report_count_90d, strike_count_90d, review_note (admin → tutor), approved_by (fk users), approved_at, timestamps`
-- **Bookable** = `status = approved AND permit_expires_at > today`. Expose as a query scope `bookable()`; never re-implement the condition.
+`id, user_id (fk, unique), headline, bio, intro_video_url, hourly_rate (fils), status (enum: draft|pending_review|changes_requested|approved|rejected|suspended), submitted_at (nullable timestamp — set at every submit for review, backfilled from `created_at` for non-draft rows; the approval queue sorts on it), permit_number, permit_expires_at (date), agreement_accepted_at, agreement_version (int, nullable — the `pages.version` of `tutor_agreement` accepted), bank_name (encrypted), bank_account_name (encrypted), bank_iban (encrypted), bank_swift (encrypted, nullable), bank_verified_at, rating_avg (decimal), rating_count, lessons_completed, late_report_count_90d, strike_count_90d, review_note (admin → tutor), approved_by (fk users), approved_at, timestamps`
+- **Bookable** = `status = approved AND permit_expires_at > today`. Expose as a query scope `bookable()`; never re-implement the condition. `permitIsValid()` is its one PHP twin (same rule, by date), used by approval and reinstatement.
+- **Status edges (R36)** live in one table, `App\Services\Tutors\TutorStatusTransitions`, and every status change goes through its `transition()` (a transaction on a `lockForUpdate` row; events dispatched after commit): draft → pending_review; pending_review → approved | changes_requested | rejected; changes_requested → pending_review | changes_requested | rejected; approved → suspended | changes_requested; suspended → approved | changes_requested (only via `ReinstateTutor`); rejected → none. Approval and reinstatement re-check the permit, every required document accepted, and the rate inside the current price band.
+- **`displayName()`** (R32) is what any public page or parent email calls the tutor: the first word of `users.name`; admin screens keep the full name.
 - v1.2 drops the per-document `*_verified_at` columns: verification lives on `tutor_documents.status` per document type. Approval requires every `document_types.required` row to have an `accepted` document (code, CP1).
 - Bank fields are shown masked (last four of the IBAN) everywhere except the payout CSV generated by an admin.
 
@@ -63,7 +70,7 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 `id, tutor_profile_id, document_type_id (fk document_types), disk_path (private), original_name, status (pending|accepted|rejected), reviewed_by, reviewed_at, timestamps` · unique (tutor_profile_id, document_type_id) for the current document; superseded uploads keep history via soft delete.
 
 ### document_types
-`id, code (permit|id|qualification|police_clearance|…), name, description (shown to the tutor), required (bool), active (bool), sort, timestamps`
+`id, code (permit|id|qualification|police_clearance|… — a lowercase slug, unique, immutable once created), name, description (shown to the tutor), required (bool), active (bool), sort, timestamps`
 - Seeded with the four defaults; managed in Filament. The permit remains a first-class field on `tutor_profiles` (number + expiry drive `bookable()`); its scan is a document type like the others.
 
 ### curricula
@@ -73,7 +80,12 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 `id, name (Mathematics, Physics, English Language, …), slug, sort`
 
 ### tutor_subjects
-`id, tutor_profile_id, curriculum_id, subject_id, level_min (string), level_max (string), level_tier (enum: lower_secondary|exam_1|exam_2)` · unique (tutor, curriculum, subject)
+`id, tutor_profile_id, curriculum_id, subject_id, level_min_id (fk year_groups, nullable, restrict), level_max_id (fk year_groups, nullable, restrict), level_min_legacy (string, nullable), level_max_legacy (string, nullable), level_tier (enum: lower_secondary|exam_1|exam_2 — derived from the year-group range, never taken from the client)` · unique (tutor, curriculum, subject)
+- A row with a null `level_min_id`/`level_max_id` is an unmapped legacy row: a draft or changes-requested tutor is sent back to the subjects step to re-pick; an approved tutor's unmapped row is permissive in search until the tutor is re-vetted.
+
+### year_groups
+`id, curriculum_id (fk curricula, restrict), code, label, sort (smallint, max 32767), level_tier (enum: lower_secondary|exam_1|exam_2), timestamps` · unique (curriculum_id, code) · unique (curriculum_id, label) · index (curriculum_id, sort)
+- Seeded from one source (21 rows: GCSE, A Level, IB MYP, IB DP, CBSE); managed in Filament (admin only, audited; curriculum fixed after creation; delete hidden while any learner or tutor subject references it). Editing `level_tier` or `sort` re-derives the stored `tutor_subjects.level_tier`, with one audit row. `LegacyYearGroupMapper` maps old text onto a row by trimmed, whitespace-collapsed, case-insensitive exact label; anything else stays in the `*_legacy` column.
 
 ### price_bands
 `id, curriculum_id, level_tier, min_rate (fils), max_rate (fils), effective_from` · unique (curriculum, tier, effective_from)
@@ -154,7 +166,7 @@ timestamps
 `id, tutor_profile_id, lesson_id, type (late_cancel|no_show|late_report_x3|admin), note, created_at`
 
 ### match_requests
-`id, account_user_id, learner_id, curriculum_id, subject_id, year_group, goals, preferred_times, budget_tier, status (open|suggested|closed), suggested_tutor_ids (json), handled_by, suggested_at, timestamps`
+`id, account_user_id, learner_id, curriculum_id, subject_id, year_group (string — the chosen year group's label, a snapshot at request time, not a foreign key), goals, preferred_times, budget_tier, status (open|suggested|closed), suggested_tutor_ids (json), handled_by, suggested_at, timestamps`
 
 ### conversations
 `id, account_user_id, tutor_profile_id, first_lesson_completed_at (nullable), last_message_at, timestamps` · unique (account_user_id, tutor_profile_id)
@@ -179,7 +191,8 @@ timestamps
 - Every publish writes a new row and bumps `pages.version`; the tutor agreement acceptance stores that number on `tutor_profiles.agreement_version`.
 
 ### content_blocks
-`id, key (unique: home_hero_title|home_hero_text|home_how_it_works|home_faq|…), body (markdown or json per key), updated_by, timestamps`
+`id, key (unique: home_hero_title|home_hero_text|home_how_it_works|home_faq, and the match-request budget labels match_budget_low|match_budget_mid|match_budget_high — R35), body (markdown, json or plain text per key), updated_by, timestamps`
+- The set of keys is fixed by the code and seeded (insert-missing, so an admin edit survives a re-seed); the admin edits the body only. A budget label is read live and falls back to the built-in wording; a request stores only the `budget_tier` value, so relabelling never rewrites history.
 - Layout decides where a key renders; the admin decides what it says.
 
 ### payment_gateways

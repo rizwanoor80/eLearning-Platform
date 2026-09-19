@@ -10,8 +10,9 @@ use Illuminate\Database\Seeder;
 class ContentBlockSeeder extends Seeder
 {
     /**
-     * The four homepage blocks with placeholder copy, inserted only when
-     * missing — an admin's edit survives a re-seed.
+     * The four homepage blocks and the three match-request budget labels,
+     * with placeholder copy, inserted only when missing — an admin's edit
+     * survives a re-seed.
      */
     public function run(): void
     {

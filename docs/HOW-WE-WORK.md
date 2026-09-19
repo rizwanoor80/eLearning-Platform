@@ -226,6 +226,10 @@ Short. Plain language first, technical detail after. Prose, not bullet soup. Sta
 - A plan revision described a bug as open that was already fixed; CC disclosed and corrected instead of redoing → **that is the right behaviour; now a rule**.
 - A guard script had never run against a real box until the rehearsal rule forced it; it failed → **rehearse everything**.
 - A stale server shell showed an old release → **fresh connection per check**.
+- A command that prompts, or hangs, stalled a whole run → **every artisan, composer, npm and gh call carries its non-interactive flag, and a command still running after ten minutes is stopped, logged as a BLOCKER and worked around (R16)**.
+- CC launched Herd from its own shell and tied Herd's console to it, then chased the crashes that caused → **Herd and its services are started and stopped only by the owner; a service that is down is a halt with an owner action (R18)**.
+- Browser automation prompts per action on local sites and cannot hold a standing permission, so an unattended run would stall → **no browser automation; pages are checked with `curl`, behaviour is proven by feature tests (R20)**.
+- Three times a form or step that could be revisited left stale downstream state (a rate after subjects, twice; documents after a rejection) → **the design consult lists what each revisitable step invalidates and how it is re-derived, with a test per dependency (R30)**.
 
 ---
 

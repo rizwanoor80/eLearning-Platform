@@ -9,8 +9,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * An admin-editable piece of homepage copy. The set of keys is fixed by the
- * layout (seeded, never created in the admin); the admin only changes the body.
+ * An admin-editable piece of site copy: the four homepage blocks (`home_*`) and
+ * the match-request budget labels (`match_budget_*`, R35). The set of keys is
+ * fixed by the code (seeded, never created in the admin); the admin only changes
+ * the body.
  *
  * @property int $id
  * @property string $key
