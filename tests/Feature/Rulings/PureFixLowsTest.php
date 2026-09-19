@@ -8,7 +8,6 @@ use App\Events\Match\MatchSuggestionsReady;
 use App\Exceptions\MatchRequestException;
 use App\Filament\Pages\ManageSettings;
 use App\Listeners\Match\SendMatchSuggestionsMail;
-use App\Mail\Match\MatchSuggestionsMail;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
@@ -116,7 +115,6 @@ it('discards the suggestions job when its request was deleted, and sends nothing
     event($event);
     Mail::assertNothingQueued();
     Mail::assertNothingSent();
-    expect(MatchSuggestionsMail::class)->toBeString();
 });
 
 // ---- the self-learner follows the account name (R30 #7, #16) -------------------------------------------
