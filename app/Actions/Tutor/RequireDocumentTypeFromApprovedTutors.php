@@ -33,8 +33,9 @@ class RequireDocumentTypeFromApprovedTutors
     /**
      * Same as `__invoke`, but also says how many tutors could NOT be moved: an
      * unexpected failure on one tutor is reported to the exception handler and does
-     * not stop the tutors after it, and the caller can tell the admin to run it
-     * again (saving the type again finds exactly the tutors still left).
+     * not stop the tutors after it, and the caller tells the admin how many were
+     * left. Running the action again (a developer, or the admin toggling the
+     * type's `required` flag off and on) finds exactly the tutors still left.
      *
      * @return array{moved: int, failed: int}
      */

@@ -33,7 +33,7 @@ class CreateDocumentType extends CreateRecord
         }
 
         if ($result['failed'] > 0) {
-            Notification::make()->title("{$result['failed']} approved tutor(s) could not be moved")->body('Save the document type again to retry; the failure was reported.')->danger()->send();
+            Notification::make()->title("{$result['failed']} approved tutor(s) could not be moved")->body('The failure was reported. Those tutors are still approved; turning the required flag off and on again retries them.')->danger()->send();
         }
     }
 }

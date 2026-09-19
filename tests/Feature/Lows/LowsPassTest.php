@@ -76,20 +76,33 @@ describe('year groups', function () {
     it('writes the year_group.deleted audit row once the delete has happened (the hook runs after it, not before)', function () {
         $free = lwYear('y11');
 
+        $statements = [];
+        DB::listen(function ($query) use (&$statements) {
+            if (str_starts_with($query->sql, 'delete from "year_groups"')) {
+                $statements[] = 'delete';
+            } elseif (str_starts_with($query->sql, 'insert into "audit_logs"') && str_contains(json_encode($query->bindings), 'year_group.deleted')) {
+                $statements[] = 'audit';
+            }
+        });
+
         Livewire::actingAs($this->admin)->test(EditYearGroup::class, ['record' => $free->getRouteKey()])->callAction('delete');
 
         expect(YearGroup::query()->whereKey($free->id)->exists())->toBeFalse()
-            ->and(AuditLog::query()->where('action', 'year_group.deleted')->count())->toBe(1);
-
+            ->and(AuditLog::query()->where('action', 'year_group.deleted')->count())->toBe(1)
+            // The audit row follows the delete: a delete that fails or is cancelled leaves none behind.
+            ->and($statements)->toBe(['delete', 'audit']);
     });
 
     it('offers and accepts only the tiers of the STORED curriculum on edit, whatever curriculum_id the client sends', function () {
         $year = lwYear('y8'); // GCSE: lower_secondary / exam_1 only
-        $myp = Curriculum::query()->where('code', CurriculumCode::IbMyp)->firstOrFail();
+        // A curriculum that HAS an exam_2 tier (GCSE does not): if the options followed the client's
+        // curriculum_id, this crafted pair would validate.
+        $alevel = Curriculum::query()->where('code', CurriculumCode::ALevel)->firstOrFail();
+        expect(CurriculumCode::ALevel->tiers())->toContain(LevelTier::Exam2)->and(CurriculumCode::Gcse->tiers())->not->toContain(LevelTier::Exam2);
 
         // A crafted state: another curriculum's id, and a tier the stored one does not have.
         Livewire::actingAs($this->admin)->test(EditYearGroup::class, ['record' => $year->getRouteKey()])
-            ->fillForm(['curriculum_id' => $myp->id, 'level_tier' => LevelTier::Exam2->value])
+            ->fillForm(['curriculum_id' => $alevel->id, 'level_tier' => LevelTier::Exam2->value])
             ->call('save')
             ->assertHasFormErrors(['level_tier']);
 
@@ -134,6 +147,10 @@ describe('year groups', function () {
         test()->actingAs($adult)->put(route('learners.update', $self), ['curriculum_id' => $myp->id, 'year_group_id' => $mypYear->id])
             ->assertSessionHasNoErrors();
         expect($self->fresh()->curriculum_id)->toBe($myp->id)->and($self->fresh()->year_group_id)->toBe($mypYear->id);
+
+        // An explicit empty curriculum is a curriculum change too: the year group of the old one goes with it.
+        test()->actingAs($adult)->put(route('learners.update', $self), ['curriculum_id' => null])->assertSessionHasNoErrors();
+        expect($self->fresh()->curriculum_id)->toBeNull()->and($self->fresh()->year_group_id)->toBeNull();
 
         // Editing only the school of an incomplete self learner still works (it may stay incomplete).
         test()->actingAs($adult)->put(route('learners.update', $self), ['school' => 'Dubai College'])->assertSessionHasNoErrors();
@@ -246,7 +263,9 @@ it('queues the reset email encrypted, so the token is not readable in the queue 
     expect($job->shouldBeEncrypted)->toBeTrue();
 });
 
-it('excludes the target by integer id when counting the other active admins', function () {
+// Defensive only: `User`'s key is cast to int, so the old strict `===` already behaved the same on
+// Postgres and a test cannot tell the two apart (the fresh review said so). This pins the behaviour.
+it('never counts the admin being disabled as the "other" active admin, whatever type the key has', function () {
     $actor = User::factory()->admin()->create();
     $target = User::factory()->admin()->create();
     // The same model reached through a string key (as some drivers return it): still "the target", so the
