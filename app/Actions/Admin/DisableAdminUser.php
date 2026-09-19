@@ -39,7 +39,9 @@ class DisableAdminUser
                 ->lockForUpdate()
                 ->pluck('id');
 
-            if ($activeAdminIds->reject(fn ($id) => $id === $target->getKey())->isEmpty()) {
+            // Compared as integers: the key type must not decide whether the target
+            // counts as "another" admin.
+            if ($activeAdminIds->reject(fn ($id) => (int) $id === (int) $target->getKey())->isEmpty()) {
                 throw new RuntimeException('You cannot disable the last active admin.');
             }
 

@@ -130,8 +130,14 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'permit');
 
+        // Compared by value, the expiry by DATE: a datetime string for the same day is
+        // not a change (`isDirty` on the cast attribute would say it is).
+        $oldNumber = $profile->permit_number;
+        $oldExpiry = $profile->permit_expires_at?->toDateString();
+
         $profile->fill($request->validated());
-        $permitChanged = $profile->isDirty(['permit_number', 'permit_expires_at']);
+        $permitChanged = $profile->permit_number !== $oldNumber
+            || $profile->permit_expires_at?->toDateString() !== $oldExpiry;
 
         DB::transaction(function () use ($profile, $permitChanged): void {
             $profile->save();

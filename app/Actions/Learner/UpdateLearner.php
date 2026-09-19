@@ -19,6 +19,15 @@ class UpdateLearner
             unset($data['display_name']);
         }
 
+        // A year group belongs to one curriculum: changing the curriculum without
+        // choosing a year group of the new one (an adult's own learner may stay
+        // incomplete) must not keep the old curriculum's year group.
+        if (isset($data['curriculum_id'])
+            && (int) $data['curriculum_id'] !== (int) $learner->curriculum_id
+            && empty($data['year_group_id'])) {
+            $data['year_group_id'] = null;
+        }
+
         $learner->fill($data);
 
         // Choosing a year group settles a legacy row: the original free text
