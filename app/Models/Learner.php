@@ -18,7 +18,8 @@ use Illuminate\Support\Carbon;
  * @property int $account_user_id
  * @property string $display_name
  * @property bool $is_minor
- * @property string|null $year_group
+ * @property int|null $year_group_id
+ * @property string|null $year_group_legacy
  * @property int|null $curriculum_id
  * @property string|null $school
  * @property string|null $notes
@@ -31,7 +32,7 @@ class Learner extends Model
     /** @use HasFactory<LearnerFactory> */
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['display_name', 'year_group', 'curriculum_id', 'school', 'notes'];
+    protected $fillable = ['display_name', 'year_group_id', 'curriculum_id', 'school', 'notes'];
 
     /**
      * @return array<string, string>
@@ -57,6 +58,23 @@ class Learner extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(User::class, 'account_user_id');
+    }
+
+    /**
+     * @return BelongsTo<YearGroup, $this>
+     */
+    public function yearGroup(): BelongsTo
+    {
+        return $this->belongsTo(YearGroup::class);
+    }
+
+    /**
+     * The year group as words: the list's label, or the original text for a
+     * legacy row that could not be mapped (the owner picks one on next edit).
+     */
+    public function yearGroupLabel(): ?string
+    {
+        return $this->year_group_id === null ? $this->year_group_legacy : $this->yearGroup->label;
     }
 
     /**

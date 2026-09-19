@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             CurriculumSeeder::class,
+            YearGroupSeeder::class,
             SubjectSeeder::class,
             PriceBandSeeder::class,
             SettingsSeeder::class,

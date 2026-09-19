@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\User;
+use App\Models\YearGroup;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -23,8 +24,9 @@ class LearnerFactory extends Factory
             'account_user_id' => User::factory(),
             'display_name' => fake()->firstName(),
             'is_minor' => true,
-            'year_group' => 'Year '.fake()->numberBetween(1, 13),
             'curriculum_id' => Curriculum::factory(),
+            // A year group of the learner's own curriculum, whichever it is.
+            'year_group_id' => fn (array $attributes) => YearGroup::factory()->create(['curriculum_id' => $attributes['curriculum_id']])->id,
             'school' => null,
             'notes' => null,
         ];
@@ -37,7 +39,7 @@ class LearnerFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'is_minor' => false,
-            'year_group' => null,
+            'year_group_id' => null,
             'curriculum_id' => null,
         ]);
     }
