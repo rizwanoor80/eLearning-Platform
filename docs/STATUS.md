@@ -1,32 +1,38 @@
-# STATUS — cycle 02 r5 — written 2026-09-19 21:20
-Tests: 390 (branch `cp/2c-match-pages-content`, unmerged; main 345) · Advisor: 2c consulted 2 times (design 19:00, pre-PR 21:10) · Review: 2c pending (not yet dispatched)
+# STATUS — cycle 02 r5 — written 2026-09-19 22:35
+Tests: 390 (merged main, `b0af825`) · Advisor: 16 consultations across cycle 02 (2c: design 19:00, pre-PR 21:10); cycle 01 had 5 · Review: 2c merged after one fresh review — no Medium/High (5 Low)
 
 ## §1 Git state
-`main` = `1c5ee05` (PR #6, sub-cycle 2b) plus docs commits. `cp/2c-match-pages-content` carries four commits (`dde9a32`, `e83986f`, `ff91e23`, `384abd9`), suite 390 / 1976 assertions, `npm run build` ✓, `vue-tsc` exit 0; pushed and PR opened after this STATUS write. Branch protection on `main`: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14): not created — optional, carried.
+`main` = `b0af825` (PR #7 merged with a merge commit) plus this post-merge record. Sub-cycles 1a, 1b, 1c, 2a, 2b, 2c merged (`c08bad8`, `10e6198`, `407a687`, `4bae31a`, `1c5ee05`, `b0af825`). No feature branch is open. Branch protection on `main`: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14): not created — optional, carried.
 
 ## §2 Step map (cycle 02 r5)
-0–5. Step 0 and sub-cycles 1a, 1b, 1c, 2a, 2b — [done]. CP1 complete except box 7's admin-payout clause (CP5, R25); CP2 boxes 1 and 2 closed.
-6. Sub-cycle 2c `cp/2c-match-pages-content` — [built, PR opening, awaiting CI and fresh-subagent review] — closes CP2 box 3 (match half; the toggle half closed in 2b), 4, 5, 6.
-7. Programme end — [not started] — planned halt (24-hour owner review).
+0. Merge PR #1 — [done] `646ce06`.
+1–3. Sub-cycles 1a, 1b, 1c — [done] (`c08bad8`, `10e6198`, `407a687`).
+4–6. Sub-cycles 2a, 2b, 2c — [done] (`4bae31a`, `1c5ee05`, `b0af825`).
+7. Programme end — [reached] — **programme CP1–CP2 complete**; halted for the 24-hour owner review. CP1 is complete except box 7's admin-payout clause (CP5, R25); every CP2 box is closed.
 
 ## §3 What changed this run
-- Sub-cycle 2b merged (`1c5ee05`) with post-merge smoke green.
-- 2c built: match requests (parent create/list under `feature:match_requests`, admin Filament queue with Suggest tutors / Close, `bookable()` at the picker, the action and the send, suggestions email from the public tutor card); versioned public pages (Filament editor where saving is Publish, versions relation manager, six public routes, footer links, insert-missing `PageSeeder`); the agreement form now echoes the version it displayed and a stale or missing version is refused; content blocks (Filament editor, homepage rendered from four blocks, insert-missing seeder).
-- Tests: 45 new (390 / 1976 assertions).
+- R31 pushed; final 1c re-review clean; PR #4 merged (`407a687`).
+- 2a merged (`4bae31a`): learners CRUD, adult-student self-learner, `lessons`/`recurring_slots` stubs, `SlotCalculator`.
+- 2b merged (`1c5ee05`): public tutor search and profile, batched slot loader, `TutorProfile::trialPrice()`, `feature:` middleware.
+- 2c merged (`b0af825`): match requests (parent flow, admin queue, suggestions email), versioned public pages (Filament publish editor, six public routes, footer links, agreement version echo), content blocks and a real homepage.
+- Post-merge on `main`: `composer.bat test` 390 tests / 1976 assertions, Pint + PHPStan (0 errors) + RTL passed; `npm run build` ✓; curl `/` and the six pages, `/tutors`, `/login`, `/register`, `/admin/login` → 200; `/dashboard`, `/match-requests`, `/learners`, `/admin` → 302.
 
 ## §4 Decisions
-- R30 list for 2c (CYCLE-LOG 19:00, 21 items, a test each); pre-push decisions (21:11).
+- Every merge followed a fresh-subagent review with no open Medium/High, CI green and a scoped diff (R21); Lows went to follow-up lists. Full record in docs/CYCLE-LOG.md (2c: DECISION 22:06, END 22:32).
 
 ## §5 Why stopping
-Not stopping — 2c is built; continuing to PR, CI and the fresh-subagent review per R21. Continuations used: 8/8 (this CI wait is the eighth and the last automatic continuation); the programme end is a planned halt.
+**Stopping: programme end.** PLAN step 7 makes this the planned halt for the 24-hour owner review; the resume cap (8/8 automatic continuations) is also used up. Nothing further runs until the owner replies.
 
 ## §6 Mismatches
 - **Branch protection on `main` not set** (owner action, carried; R23).
-- **CP1 box 7 admin-payout clause deferred to CP5** (R25) — "CP1 done" stays qualified.
-- **2c disclosures:** (a) `budget_tier` values (`low|mid|high`) are my choice — PRD §2.3 says only "budget band" (Owner action 5); (b) DATA_MODEL has no draft state for pages, so saving in the Filament editor IS publishing — the editor's Preview tab is the preview; (c) PRD §8 has no admin notification on a match-request submission (the queue is the mechanism) — none built; (d) the agreement acceptance now requires the echoed `version` — this edits merged 1b code (`TutorOnboardingController::storeAgreement`, `AgreementStepRequest`, `Onboarding.vue`) under R30, and every agreement POST in the onboarding tests now sends `version`; (e) `tests/Pest.php` now holds `agreementReadyTutor()` (moved from the onboarding test file and made re-callable within one test: it reuses an existing GCSE curriculum and price band); (f) R20 limits — the agreement form's Vue `watch`, and match entry-point absence, are proven by build/type-check, server re-render tests and the shared `features` prop, not a browser; the `lockForUpdate()` in `PublishPage` is proven by reading, with the unique `(page_id, version)` index as the tested backstop; (g) `SendMatchSuggestionsMail` (ShouldQueue) sends a ShouldQueue mailable — the same double hop as the tutor mails; (h) `footerPages` runs one `pages` query on every Inertia response (cache candidate); (i) `@tailwindcss/typography` is not installed, so `prose` classes on rendered markdown are inert (unstyled, not broken) — not added; (j) the Filament markdown editors have the attach-files button disabled; (k) `DatabaseSeederTest` counts grew (pages 1→6, versions 1→6, blocks 0→4); (l) the "suggestions dropped" audit row has `actor_user_id = null` (system).
-- **Diff-scope files outside step 6's named areas** (beyond those pre-declared at 19:00): `resources/js/types/global.d.ts`, `resources/js/layouts/app/AppSidebarLayout.vue`, `resources/js/pages/tutors/Show.vue`, `tests/Pest.php`, `app/Http/Controllers/HomeController.php` (replaces `Route::inertia('/')`), `app/Support/{Markdown,PublicPages,HomepageContent}.php`.
-- **2b review Lows for the follow-up list:** overflowing profile id → 500; fragile first-name split; onboarding trial-price preview rounds `100 − pct`; `loadMissing` mutating caller models; unrendered GET validation errors on `/tutors`; `whereDate` index bypass; in-memory pagination.
-- **Carried from earlier:** 2a Lows; the CP1 follow-up list; programme-end review list from PLAN r5; finding #9 disputed; owed downstream — CP3 freezes the trial price from `trialPrice()` and validates `bookable()` at booking, CP7 maintains `rating_avg`/`rating_count`, CP3/CP4 learner delete-guards.
+- **CP1 box 7 admin-payout clause deferred to CP5** (R25) — "CP1 done" is always qualified.
+- **2c disclosures (merged):** `budget_tier` `low|mid|high` is my choice (Owner action 5); saving a page in the editor IS publishing (no draft state in DATA_MODEL); no admin email on a match-request submission (PRD §8); the agreement acceptance now requires the echoed `version` — this edited merged 1b code under R30, and every agreement POST in the onboarding tests now sends it; `tests/Pest.php` holds the shared `agreementReadyTutor()`; R20 limits (Vue `watch`, entry-point absence, `lockForUpdate` proven by reading); double queue hop on the suggestions mail; `footerPages` queries once per Inertia response; `prose` classes inert (no typography plugin); markdown editors have attach-files disabled; seeder counts grew (pages 1→6, versions 1→6, blocks +4); null-actor audit row for dropped suggestions.
+- **2c review Lows (follow-up list):** L1 `Onboarding.vue:602` renders only `errors.accepted`, so the stale-agreement-version message is never shown (hint `<InputError :message="agreementForm.errors.version" />`); L2 two admins editing a page: last writer wins; L3 `CloseMatchRequest` takes no lock; L4 the onboarding agreement text shows raw markdown while the public page renders HTML; L5 a `MatchRequest` deleted between queueing and sending fails at deserialisation.
+- **2b review Lows:** overflowing profile id → 500 (`->where('tutor', '[0-9]{1,18}')`); fragile first-name split (`preg_split('/\s+/u', trim($name))[0]`); onboarding trial-price preview rounds `100 − pct` (CP3 must unify with `trialPrice()`); `loadMissing` mutating caller models; unrendered GET validation errors on `/tutors`; `whereDate` in `bookable()` may bypass the new index; in-memory pagination.
+- **2a review Lows:** `max_days` setting has no upper bound; admin-side rename in Filament does not sync the self-learner; `Lesson::$fillable` includes `status` (CP3 to drop); user-delete cascade decision for CP3; overlapping-offer race (CP3's transactional check); learner delete-guards owed by CP3/CP4; global Pest helper names may collide; raw checkbox in `Register.vue`.
+- **CP1 follow-up list (not built):** post-approval re-vetting; reinstate-from-suspended; `review_note` clearing; replaced-file disk cleanup; `onOneServer` on the permit job; document-type `code`/`sort` validation; admin Disable confirmation; approval-time permit/rate re-check; price bands editable in place; a permit edit not resetting the accepted permit scan; optional-document review gap. Programme-end review list from PLAN r5 (Fortify mail sender, queue "Submitted" sort, non-transactional last-admin check, double queue hop, logo/favicon untested, N+1 Docs column, duplicate price-band 500).
+- **Owed downstream:** CP3 freezes the trial price from `trialPrice()`, validates `bookable()` at booking and decides the user-delete behaviour; CP7 maintains `rating_avg`/`rating_count`; CP3/CP4 add the learner delete-guards.
+- **Finding #9** stays disputed (PRD §9 line 180; CHECKPOINTS).
 
 ## §7 Next step and owner actions
 Owner action 1: 24-hour review at the programme end (PLAN step 7, the §12 review point) — reply `update` to acknowledge, or `where are we?` to the planner. This is the halt; nothing further runs until then.
@@ -34,7 +40,7 @@ Owner action 2: Public tutor profile name — currently the first word of the ac
 Owner action 3: Year groups — currently free text, so the year-group filter is low fidelity. Option 1 (Recommended): a controlled year-group list per curriculum in the next hand-run cycle — a schema change, so it needs a plan of its own; option 2: keep free text with the permissive filter. Reply `update` when decided.
 Owner action 4: Slots beyond a permit's expiry — a tutor whose permit expires in five days shows slots up to day 14. Option 1 (Recommended): cap offered slots at `permit_expires_at`, decided in the CP3 plan alongside booking validation; option 2: leave as is and reject at booking. Reply `update` when decided.
 Owner action 5: Match-request budget tiers — the form offers Budget-friendly / Mid-range / Premium (stored `low|mid|high`) because PRD §2.3 names no bands. Option 1 (Recommended): keep the three tiers and relabel later through a PLAN ruling; option 2: tie the tiers to price bands per curriculum (a schema and copy decision for a hand-run cycle). Reply `update` when decided.
-Next automatically: CI on the 2c PR, a fresh-subagent adversarial review, and — if there is no Medium/High — the merge, the post-merge record and the cycle END. Continuations used under R21's cap: **8/8**, the last. Any Medium/High halts the programme ("awaiting owner"); no fix loop is authorised for 2c. Carried, optional: Owner action A (R7 branch protection, steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`).
+Carried, optional: Owner action A (R7 branch protection on `main`, exact GitHub UI steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002). After the review the planner cuts the next plan (CP3 and the CP1 follow-up list); Forge rehearsal server remains its own hand-run cycle (PLAN "Carried forward").
 
 ## §8 Programme board (R21)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge hash |
@@ -44,7 +50,9 @@ Next automatically: CI on the 2c PR, a fresh-subagent adversarial review, and �
 | 1c admin-approval | **merged** | `cp/1c-admin-approval` | [#4](https://github.com/rizwanoor80/eLearning-Platform/pull/4) | 3 rounds; final 10 PASS/PASS WITH NOTE + 3 Low, no Med/High | `407a687` |
 | 2a learners-slots | **merged** | `cp/2a-learners-slots` | [#5](https://github.com/rizwanoor80/eLearning-Platform/pull/5) | 1 round; 7 verdicts PASS/PASS WITH NOTE, 3 Low, no Med/High | `4bae31a` |
 | 2b search-profile | **merged** | `cp/2b-search-profile` | [#6](https://github.com/rizwanoor80/eLearning-Platform/pull/6) | 1 round; 9 verdicts PASS/PASS WITH NOTE, 3 Low, no Med/High | `1c5ee05` |
-| 2c match-pages-content | built, PR opening, awaiting CI + review | `cp/2c-match-pages-content` | opened next (see §1) | pending | — |
+| 2c match-pages-content | **merged** | `cp/2c-match-pages-content` | [#7](https://github.com/rizwanoor80/eLearning-Platform/pull/7) | 1 round; 11 verdicts PASS/PASS WITH NOTE, 5 Low, no Med/High | `b0af825` |
+
+**Programme CP1–CP2: complete** (CP1 qualified by box 7's admin-payout clause, deferred to CP5).
 
 ## Deferred (out of v1 scope — do not build)
 - Lesson packs / subscriptions / credits
