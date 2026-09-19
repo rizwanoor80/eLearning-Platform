@@ -1,12 +1,12 @@
-# STATUS — cycle 04 r1 (CP3) — written 2026-09-21 06:15
-Tests: 619 tests / 2900 assertions on `cp/3a-lows` (main is 607 / 2830; `COMPOSER_PROCESS_TIMEOUT=1200 composer.bat test`, Pint, PHPStan 0, RTL, `npm run build` and `vue-tsc` green) · Advisor: cycle 04 consulted 3 times so far (3a design 05:20, mid-build 05:50, pre-PR 06:00); cycle 03 consulted 11 times (closed) · Review: 3a awaiting the fresh-subagent review
+# STATUS — cycle 04 r1 (CP3) — written 2026-09-21 07:20
+Tests: 619 tests / 2906 assertions on `main` `b75d6e9` (`COMPOSER_PROCESS_TIMEOUT=1200 composer.bat test`, Pint, PHPStan 0, RTL, `npm run build` green) · Advisor: cycle 04 consulted 3 times so far (3a design 05:20, mid-build 05:50, pre-PR 06:00); cycle 03 consulted 11 times (closed) · Review: 3a done (0 Medium/High, 9 Low notes/findings, 3 fixed in fix loop 1)
 
 ## §1 Git state
-`main` = `6b81de6` (docs only; code is `6214ad4` plus the cycle 03 close). Branch `cp/3a-lows` (code `a43f0c3`, plus a revert of a duplicate docs commit so its docs diff is empty), PR #11 opened next. trustutor-rehearsal runs `50d53ee` and is behind `main` by docs, the brand pack (`docs/brand`) and two comment-only docblock edits — expected: push-to-deploy is OFF (R41), nothing is deployed. Branch protection on `main`: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14): not created — optional, carried.
+`main` = `b75d6e9` (PR #11, sub-cycle 3a, merged under R50) plus docs; no open branch or PR. trustutor-rehearsal runs `50d53ee` and is behind `main` — expected: push-to-deploy is OFF (R41), nothing is deployed. Branch protection on `main`: **not set** (owner action, carried, R23). `.claude/settings.local.json` (R14): not created — optional, carried.
 
 ## §2 Step map (cycle 04 r1 — CP3, an autonomous programme, R50)
-1. `cp/3a-lows` — [built, awaiting review] the R42 Lows pass: ten Lows fixed with a test each; `whereDate` reviewed and kept (EXPLAIN); **search pagination not built** (deviation, Owner action 1). "Done except the pagination item" once merged.
-2. `cp/3b-state-machine` — [not started] `lessons`, `tutor_strikes`, `ledger_entries`, `LessonStateMachine` (R51, R52).
+1. `cp/3a-lows` — [done except the pagination item] PR #11 merged `b75d6e9`: the R42 Lows pass — ten Lows fixed with a test each; `whereDate` reviewed and kept (EXPLAIN); search pagination not built (Owner action 1).
+2. `cp/3b-state-machine` — [in progress] `lessons`, `tutor_strikes`, `ledger_entries`, `LessonStateMachine` (R51, R52).
 3. `cp/3c-booking` — [not started] `BookLesson`, `FakePaymentGateway`, money freezing (R53, R56). **Halts for the backend-dev GO before merge (R55).**
 4. `cp/3d-cancellation` — [not started] `CancelLesson`, `SkipLesson`, strikes.
 5. `cp/3e-dashboards-emails` — [not started] dashboards, CP3 emails, reminders, R54 deletion behaviour.
@@ -46,14 +46,14 @@ Carried, optional: Owner action A (R7 branch protection on `main`, exact GitHub 
 ## §8 Programme board — CP3 (R50)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 3a Lows pass | built, awaiting review (done except the pagination item) | `cp/3a-lows` | #11 | — | — |
-| 3b state machine + ledger | not started | `cp/3b-state-machine` | — | — | — |
+| 3a Lows pass | **merged** (done except the pagination item) | `cp/3a-lows` | [#11](https://github.com/rizwanoor80/eLearning-Platform/pull/11) | 1 round; 14 verdicts, 0 Medium/High, Lows: 3 fixed in fix loop 1, rest carried | `b75d6e9` (R50) |
+| 3b state machine + ledger | in progress | `cp/3b-state-machine` | — | — | — |
 | 3c booking | not started — halts for the backend-dev GO (R55) | `cp/3c-booking` | — | — | — |
 | 3d cancellation | not started | `cp/3d-cancellation` | — | — | — |
 | 3e dashboards, emails, deletion | not started | `cp/3e-dashboards-emails` | — | — | — |
 | Programme end + rehearsal deploy | not started — halt | — | — | — | — |
 
-Resume count: 0 of 8. Cycle 03 ("CP2.5") is complete: PRs #8–#10 merged (`a6281eb`, `530b5e5`, `6214ad4`), END in CYCLE-LOG. Cycle 02 (CP1–CP2) is complete: PRs #2–#7.
+Resume count: 0 of 8 (3a ran in the opening session). Cycle 03 ("CP2.5") is complete: PRs #8–#10 merged (`a6281eb`, `530b5e5`, `6214ad4`), END in CYCLE-LOG. Cycle 02 (CP1–CP2) is complete: PRs #2–#7.
 
 ## Deferred (out of v1 scope — do not build)
 - Lesson packs / subscriptions / credits
