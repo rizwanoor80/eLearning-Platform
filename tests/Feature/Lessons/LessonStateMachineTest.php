@@ -223,14 +223,17 @@ it('has no write to lessons.status under app/ except the state machine', functio
             continue;
         }
 
-        if (preg_match('/->status\s*=[^=]|[\'"]status[\'"]\s*=>|allowingStatusWrites/', $source)) {
+        // A property assignment, a forced status on a Lesson query, or the machine's private key. (A
+        // `'status' =>` in an array passed to `LessonStateMachine::open()` is not a write of ours: the
+        // machine sets it. Files that only READ a lesson's status never match.)
+        if (preg_match('/->status\s*=[^=]|Lesson::[A-Za-z]+\([^;]*[\'"]status[\'"]\s*=>|allowingStatusWrites/', $source)) {
             $offenders[] = $relative;
         }
     }
 
-    // Files that mention Lesson AND assign some other model's status are reviewed by name.
-    $reviewed = array_map(fn ($p) => str_replace('/', DIRECTORY_SEPARATOR, $p), []);
-    expect(array_values(array_diff($offenders, $reviewed)))->toBe([]);
+    // A file that mentions Lesson and legitimately assigns ANOTHER model's status (a tutor's, say) would
+    // be listed here by name after review; none does today.
+    expect($offenders)->toBe([]);
 });
 
 it('gives the factory the one other key to the status guard, and nothing under app/ uses it', function () {
