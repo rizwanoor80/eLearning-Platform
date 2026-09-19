@@ -104,7 +104,7 @@ it('never overwrites an edited block on a re-seed (R30 #12)', function () {
 
     test()->seed(ContentBlockSeeder::class);
 
-    expect(cbBlock(ContentBlock::HERO_TITLE)->body)->toBe('Edited headline')->and(ContentBlock::query()->count())->toBe(4);
+    expect(cbBlock(ContentBlock::HERO_TITLE)->body)->toBe('Edited headline')->and(ContentBlock::query()->count())->toBe(7);
 });
 
 it('neutralises script and unsafe links in block copy (R30 #13)', function () {

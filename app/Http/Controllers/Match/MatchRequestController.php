@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Match;
 
 use App\Actions\Match\CreateMatchRequest;
-use App\Enums\BudgetTier;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Match\StoreMatchRequestRequest;
 use App\Models\Curriculum;
@@ -12,6 +11,7 @@ use App\Models\MatchRequest;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Services\Search\TutorPresenter;
+use App\Support\BudgetTierLabels;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -68,6 +68,7 @@ class MatchRequestController extends Controller
 
         $learners = Learner::query()->where('account_user_id', $request->user()->id)->orderBy('display_name')->get();
         $chosen = $learners->firstWhere('id', $request->integer('learner'));
+        $labels = BudgetTierLabels::all();
 
         return Inertia::render('match-requests/Create', [
             'learners' => $learners->map(fn (Learner $l): array => [
@@ -79,7 +80,7 @@ class MatchRequestController extends Controller
             'selectedLearner' => $chosen?->id,
             'curricula' => Curriculum::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
             'subjects' => Subject::query()->orderBy('sort')->get(['id', 'name'])->map->only(['id', 'name'])->values()->all(),
-            'budgetTiers' => array_map(fn (BudgetTier $t): array => ['value' => $t->value, 'label' => $t->label()], BudgetTier::cases()),
+            'budgetTiers' => array_map(fn (string $value, string $label): array => ['value' => $value, 'label' => $label], array_keys($labels), $labels),
         ]);
     }
 

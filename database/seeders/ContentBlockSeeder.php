@@ -2,7 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Enums\BudgetTier;
 use App\Models\ContentBlock;
+use App\Support\BudgetTierLabels;
 use Illuminate\Database\Seeder;
 
 class ContentBlockSeeder extends Seeder
@@ -25,6 +27,11 @@ class ContentBlockSeeder extends Seeder
                 ['question' => 'DRAFT — replace before launch', 'answer' => 'DRAFT — replace before launch'],
             ], JSON_THROW_ON_ERROR),
         ];
+
+        // Budget-tier labels for the match-request form (R35).
+        foreach (BudgetTier::cases() as $tier) {
+            $placeholders[BudgetTierLabels::key($tier)] = $tier->label();
+        }
 
         foreach ($placeholders as $key => $body) {
             ContentBlock::query()->firstOrCreate(['key' => $key], ['body' => $body]);
