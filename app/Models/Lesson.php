@@ -26,7 +26,9 @@ class Lesson extends Model
     /** @use HasFactory<LessonFactory> */
     use HasFactory;
 
-    protected $fillable = ['tutor_profile_id', 'starts_at', 'ends_at', 'status'];
+    // `status` is deliberately not mass-assignable: it changes only through
+    // LessonStateMachine (CP3), which will `forceFill` it at creation.
+    protected $fillable = ['tutor_profile_id', 'starts_at', 'ends_at'];
 
     /**
      * @return array<string, string>

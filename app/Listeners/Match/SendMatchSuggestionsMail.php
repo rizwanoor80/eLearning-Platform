@@ -21,6 +21,13 @@ use Illuminate\Support\Facades\Mail;
  */
 class SendMatchSuggestionsMail implements ShouldQueue
 {
+    /**
+     * If the request row was deleted between queueing and running, the worker
+     * cannot re-fetch the event's model; drop the job quietly instead of
+     * failing it (the framework reads this default property).
+     */
+    public bool $deleteWhenMissingModels = true;
+
     public function __construct(private RecordAuditLog $recordAuditLog, private TutorPresenter $presenter) {}
 
     public function handle(MatchSuggestionsReady $event): void

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\MatchRequests\Schemas;
 
+use App\Enums\BudgetTier;
 use App\Models\MatchRequest;
 use App\Models\TutorProfile;
+use App\Support\BudgetTierLabels;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
 
@@ -19,7 +21,7 @@ class MatchRequestInfolist
                 TextEntry::make('curriculum.name')->label('Curriculum'),
                 TextEntry::make('subject.name')->label('Subject'),
                 TextEntry::make('year_group'),
-                TextEntry::make('budget_tier')->label('Budget')->formatStateUsing(fn ($state) => $state->label()),
+                TextEntry::make('budget_tier')->label('Budget')->formatStateUsing(fn (BudgetTier $state): string => BudgetTierLabels::label($state)),
                 TextEntry::make('preferred_times')->placeholder('—'),
                 TextEntry::make('goals')->columnSpanFull(),
                 TextEntry::make('suggested_tutors')

@@ -75,3 +75,22 @@ it('runs one query per input table however many tutors are batched (R30 #6)', fu
 it('returns nothing for no tutors', function () {
     expect(app(SlotCalculator::class)->forTutors([], 'UTC'))->toBe([]);
 });
+
+it('leaves the caller’s models untouched and costs one extra query for tutors without a loaded user (R30 #8)', function () {
+    $now = CarbonImmutable::parse('2026-09-14 06:00:00', 'UTC');
+    $tutors = collect(range(1, 3))->map(fn () => batchTutor('Asia/Dubai'));
+    $calculator = app(SlotCalculator::class);
+    $calculator->forTutors($tutors->take(1)->all(), 'UTC', $now, 14); // warm the settings cache
+
+    $bare = TutorProfile::query()->get();
+    expect($bare->first()->relationLoaded('user'))->toBeFalse();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $batch = $calculator->forTutors($bare->all(), 'UTC', $now, 14);
+    DB::disableQueryLog();
+
+    expect(count(DB::getQueryLog()))->toBe(5)                       // four inputs + one timezone lookup
+        ->and($bare->first()->relationLoaded('user'))->toBeFalse()  // the caller's model was not given a relation
+        ->and(array_keys($batch))->toEqualCanonicalizing($bare->pluck('id')->all());
+});

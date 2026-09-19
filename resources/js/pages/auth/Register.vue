@@ -4,6 +4,7 @@ import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -90,16 +91,16 @@ defineOptions({
             </div>
 
             <div class="grid gap-1">
-                <label class="flex items-center gap-2 text-sm" for="is_adult_student">
-                    <input
+                <!-- value="1" is explicit: the component posts "on" by default and the server rule is boolean. -->
+                <Label for="is_adult_student" class="flex items-center gap-2 text-sm">
+                    <Checkbox
                         id="is_adult_student"
-                        type="checkbox"
                         name="is_adult_student"
                         value="1"
                         :tabindex="5"
                     />
-                    I am an adult student (18+) booking lessons for myself
-                </label>
+                    <span>I am an adult student (18+) booking lessons for myself</span>
+                </Label>
                 <p class="text-muted-foreground text-xs">
                     Leave this unticked if you are a parent adding your children.
                 </p>

@@ -90,6 +90,20 @@ class TutorProfile extends Model
     }
 
     /**
+     * What a public page or a parent email calls this tutor: the first word of
+     * the account name (R32). Splits on any Unicode whitespace and ignores empty
+     * pieces, so a leading no-break space or tab cannot produce an empty name.
+     * The one source — search, the profile and match suggestions all use it;
+     * admin screens deliberately keep the full name.
+     */
+    public function displayName(): string
+    {
+        $parts = preg_split('/\s+/u', (string) $this->user->name, -1, PREG_SPLIT_NO_EMPTY);
+
+        return $parts[0] ?? 'Tutor';
+    }
+
+    /**
      * The trial-lesson price: the hourly rate minus `trial_discount_pct` (PRD
      * §2.4). The one place this is computed — the profile shows it and CP3's
      * `BookLesson` freezes it from here, so what is displayed is what is charged.

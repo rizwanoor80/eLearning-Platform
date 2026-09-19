@@ -10,6 +10,7 @@ use App\Models\AvailabilityRule;
 use App\Models\Lesson;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
+use App\Models\User;
 use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -40,6 +41,12 @@ class SlotCalculator
     public const SLOT_MINUTES = 60;
 
     /**
+     * The longest booking horizon ever calculated, whatever `booking_max_days`
+     * holds (the settings editor caps the field at the same number).
+     */
+    public const MAX_HORIZON_DAYS = 90;
+
+    /**
      * @param  iterable<AvailabilityRule>  $rules
      * @param  iterable<AvailabilityException>  $exceptions
      * @param  iterable<Lesson>  $lessons
@@ -56,10 +63,15 @@ class SlotCalculator
         int $maxDays,
         string $exceptionTimezone,
         string $outputTimezone,
+        ?CarbonInterface $permitExpiresOn = null,
     ): array {
         $now = CarbonImmutable::instance($now)->utc();
         $windowStart = $now->addHours($leadHours);
         $windowEnd = $now->addDays($maxDays);
+        // R34: nothing is offered on or after the permit's expiry day. The
+        // cutoff is that day's UTC midnight, exclusive — the same day
+        // `TutorProfile::bookable()` stops counting the permit as valid.
+        $permitCutoff = $permitExpiresOn === null ? null : CarbonImmutable::instance($permitExpiresOn)->utc()->startOfDay();
 
         /** @var array<int, CarbonImmutable> $candidates keyed by UTC timestamp */
         $candidates = [];
@@ -120,7 +132,7 @@ class SlotCalculator
         $length = self::SLOT_MINUTES * 60;
 
         foreach ($candidates as $timestamp => $start) {
-            if ($start < $windowStart || $start > $windowEnd) {
+            if ($start < $windowStart || $start > $windowEnd || ($permitCutoff !== null && $start >= $permitCutoff)) {
                 continue;
             }
 
@@ -159,15 +171,21 @@ class SlotCalculator
      */
     public function forTutors(iterable $tutors, string $timezone, ?CarbonInterface $now = null, ?int $withinDays = null): array
     {
-        $tutors = Collection::make($tutors)->loadMissing('user:id,timezone')->keyBy('id');
+        $tutors = Collection::make($tutors)->keyBy('id');
 
         if ($tutors->isEmpty()) {
             return [];
         }
 
+        // Each tutor's own timezone reads exceptions. Read it from an already
+        // loaded `user` relation; for the rest, one query into a local map —
+        // the caller's models are never given a relation they did not have.
+        $unloaded = $tutors->reject(fn (TutorProfile $tutor): bool => $tutor->relationLoaded('user'))->pluck('user_id')->unique()->all();
+        $timezones = $unloaded === [] ? [] : User::query()->whereIn('id', $unloaded)->pluck('timezone', 'id')->all();
+
         $now = CarbonImmutable::instance($now ?? Date::now())->utc();
         $lead = (int) Settings::get('booking_min_lead_hours');
-        $maxDays = (int) Settings::get('booking_max_days');
+        $maxDays = min((int) Settings::get('booking_max_days'), self::MAX_HORIZON_DAYS);
 
         if ($withinDays !== null) {
             $maxDays = min($maxDays, $withinDays);
@@ -204,8 +222,9 @@ class SlotCalculator
                 $now,
                 $lead,
                 $maxDays,
-                $tutor->user->timezone,
+                $tutor->relationLoaded('user') ? $tutor->user->timezone : (string) $timezones[$tutor->user_id],
                 $timezone,
+                $tutor->permit_expires_at,
             );
         }
 

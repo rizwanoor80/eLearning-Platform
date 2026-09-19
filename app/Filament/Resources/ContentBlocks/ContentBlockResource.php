@@ -21,7 +21,7 @@ class ContentBlockResource extends Resource
 {
     protected static ?string $model = ContentBlock::class;
 
-    protected static ?string $navigationLabel = 'Homepage content';
+    protected static ?string $navigationLabel = 'Site content';
 
     protected static ?string $modelLabel = 'content block';
 

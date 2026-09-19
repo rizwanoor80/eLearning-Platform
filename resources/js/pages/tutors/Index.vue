@@ -79,6 +79,9 @@ function search(page = 1) {
 
     <main class="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4">
         <h1 class="text-xl font-semibold">Find a tutor</h1>
+        <ul v-if="Object.keys($page.props.errors ?? {}).length" class="text-destructive grid gap-1 text-sm" role="alert">
+            <li v-for="(message, field) in $page.props.errors" :key="field">{{ message }}</li>
+        </ul>
         <p v-if="$page.props.features.match_requests" class="text-sm">
             Not sure who to pick?
             <Link href="/match-requests/create" class="underline underline-offset-4">Ask us to suggest tutors</Link>

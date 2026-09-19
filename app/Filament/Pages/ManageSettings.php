@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Actions\RecordAuditLog;
 use App\Enums\SettingGroup;
 use App\Models\Setting;
+use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
 use BackedEnum;
 use Filament\Forms\Components\FileUpload;
@@ -80,7 +81,7 @@ class ManageSettings extends Page implements HasSchemas
                             TextInput::make('payout_weekday')->numeric()->integer()->minValue(0)->maxValue(6)->required(),
                             TextInput::make('payout_min')->label('Payout minimum (fils)')->numeric()->integer()->minValue(0)->required(),
                             TextInput::make('booking_min_lead_hours')->numeric()->integer()->minValue(0)->required(),
-                            TextInput::make('booking_max_days')->numeric()->integer()->minValue(1)->required(),
+                            TextInput::make('booking_max_days')->numeric()->integer()->minValue(1)->maxValue(SlotCalculator::MAX_HORIZON_DAYS)->required(),
                             TextInput::make('recurring_horizon_weeks')->numeric()->integer()->minValue(1)->required(),
                             TextInput::make('recurring_charge_lead_hours')->numeric()->integer()->minValue(0)->required(),
                             TagsInput::make('recurring_retry_hours')->helperText('Hours before the lesson, e.g. 36 and 24'),

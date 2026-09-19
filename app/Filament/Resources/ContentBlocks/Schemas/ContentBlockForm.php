@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ContentBlocks\Schemas;
 
 use App\Models\ContentBlock;
+use App\Support\BudgetTierLabels;
 use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
@@ -23,11 +24,12 @@ class ContentBlockForm
             ->components([
                 TextInput::make('key')->disabled()->dehydrated(false),
 
+                // A single line of plain text: the homepage headline, or a match-request budget-tier label.
                 TextInput::make('title_value')
-                    ->label('Headline')
+                    ->label('Text')
                     ->required()
                     ->maxLength(255)
-                    ->visible(fn (Get $get): bool => $get('key') === ContentBlock::HERO_TITLE),
+                    ->visible(fn (Get $get): bool => $get('key') === ContentBlock::HERO_TITLE || in_array($get('key'), BudgetTierLabels::keys(), true)),
 
                 MarkdownEditor::make('markdown_value')
                     ->disableToolbarButtons(['attachFiles'])

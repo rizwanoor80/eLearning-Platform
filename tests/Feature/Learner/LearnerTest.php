@@ -11,7 +11,7 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 
-function learnerPayload(array $overrides = []): array
+function lnPayload(array $overrides = []): array
 {
     return array_merge([
         'display_name' => 'Amina',
@@ -25,7 +25,7 @@ function learnerPayload(array $overrides = []): array
 it('lets an account owner list, add, edit and remove their own learners', function () {
     $owner = User::factory()->create();
 
-    test()->actingAs($owner)->post(route('learners.store'), learnerPayload())->assertRedirect(route('learners.index'));
+    test()->actingAs($owner)->post(route('learners.store'), lnPayload())->assertRedirect(route('learners.index'));
 
     $learner = Learner::query()->where('account_user_id', $owner->id)->firstOrFail();
     expect($learner->display_name)->toBe('Amina')->and($learner->is_minor)->toBeTrue();
@@ -34,7 +34,7 @@ it('lets an account owner list, add, edit and remove their own learners', functi
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('learners/Index')->has('learners', 1)->where('learners.0.display_name', 'Amina'));
 
-    test()->actingAs($owner)->put(route('learners.update', $learner), learnerPayload(['display_name' => 'Amina K']))->assertRedirect(route('learners.index'));
+    test()->actingAs($owner)->put(route('learners.update', $learner), lnPayload(['display_name' => 'Amina K']))->assertRedirect(route('learners.index'));
     expect($learner->fresh()->display_name)->toBe('Amina K');
 
     test()->actingAs($owner)->delete(route('learners.destroy', $learner))->assertRedirect(route('learners.index'));
@@ -45,7 +45,7 @@ it('never lets the client choose is_minor or the owning account', function () {
     $owner = User::factory()->create();
     $other = User::factory()->create();
 
-    test()->actingAs($owner)->post(route('learners.store'), learnerPayload(['is_minor' => false, 'account_user_id' => $other->id]))->assertRedirect();
+    test()->actingAs($owner)->post(route('learners.store'), lnPayload(['is_minor' => false, 'account_user_id' => $other->id]))->assertRedirect();
 
     $learner = Learner::query()->firstOrFail();
     expect($learner->is_minor)->toBeTrue()->and($learner->account_user_id)->toBe($owner->id);
@@ -57,7 +57,7 @@ it('keeps another account owner out of a learner they do not own', function () {
     $learner = Learner::factory()->create(['account_user_id' => $owner->id]);
 
     test()->actingAs($stranger)->get(route('learners.edit', $learner))->assertForbidden();
-    test()->actingAs($stranger)->put(route('learners.update', $learner), learnerPayload())->assertForbidden();
+    test()->actingAs($stranger)->put(route('learners.update', $learner), lnPayload())->assertForbidden();
     test()->actingAs($stranger)->delete(route('learners.destroy', $learner))->assertForbidden();
     test()->actingAs($stranger)->get(route('learners.index'))->assertInertia(fn ($page) => $page->has('learners', 0));
 });
@@ -66,7 +66,7 @@ it('keeps tutors and admins out of the parent learner area', function (Role $rol
     $user = User::factory()->create(['role' => $role]);
 
     test()->actingAs($user)->get(route('learners.index'))->assertForbidden();
-    test()->actingAs($user)->post(route('learners.store'), learnerPayload())->assertForbidden();
+    test()->actingAs($user)->post(route('learners.store'), lnPayload())->assertForbidden();
 })->with([Role::Tutor, Role::Admin]);
 
 it('redirects guests to login', function () {

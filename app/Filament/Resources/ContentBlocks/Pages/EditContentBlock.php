@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ContentBlocks\Pages;
 use App\Filament\Concerns\AuditsResourceChanges;
 use App\Filament\Resources\ContentBlocks\ContentBlockResource;
 use App\Models\ContentBlock;
+use App\Support\BudgetTierLabels;
 use Filament\Resources\Pages\EditRecord;
 use JsonException;
 
@@ -21,6 +22,10 @@ class EditContentBlock extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $body = (string) ($data['body'] ?? '');
+
+        if (in_array($data['key'] ?? null, BudgetTierLabels::keys(), true)) {
+            return [...$data, 'title_value' => $body];
+        }
 
         return match ($data['key'] ?? null) {
             ContentBlock::HERO_TITLE => [...$data, 'title_value' => $body],
@@ -40,15 +45,26 @@ class EditContentBlock extends EditRecord
         /** @var ContentBlock $record */
         $record = $this->getRecord();
 
-        $body = match ($record->key) {
+        $body = match (true) {
+            in_array($record->key, BudgetTierLabels::keys(), true) => (string) ($data['title_value'] ?? ''),
+            default => $this->bodyFor($record->key, $record->body, $data),
+        };
+
+        return ['body' => $body, 'updated_by' => auth()->id()];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function bodyFor(string $key, string $current, array $data): string
+    {
+        return match ($key) {
             ContentBlock::HERO_TITLE => (string) ($data['title_value'] ?? ''),
             ContentBlock::HERO_TEXT => (string) ($data['markdown_value'] ?? ''),
             ContentBlock::HOW_IT_WORKS => json_encode(array_values($data['steps'] ?? []), JSON_THROW_ON_ERROR),
             ContentBlock::FAQ => json_encode(array_values($data['questions'] ?? []), JSON_THROW_ON_ERROR),
-            default => $record->body,
+            default => $current,
         };
-
-        return ['body' => $body, 'updated_by' => auth()->id()];
     }
 
     protected function afterSave(): void

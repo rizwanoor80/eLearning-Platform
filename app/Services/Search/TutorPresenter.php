@@ -5,7 +5,6 @@ namespace App\Services\Search;
 use App\Models\TutorProfile;
 use App\Services\Scheduling\Slot;
 use App\Support\Facades\Settings;
-use Illuminate\Support\Str;
 
 /**
  * The public face of a tutor. Every field that leaves the server on a public
@@ -55,8 +54,8 @@ class TutorPresenter
 
         return [
             'id' => $tutor->id,
-            // First name only: the account name's first word (PRD §2.2 lists no name field).
-            'name' => Str::before($tutor->user->name, ' '),
+            // First name only (R32): one accessor, shared with the suggestions email.
+            'name' => $tutor->displayName(),
             'headline' => $tutor->headline,
             'rate' => $tutor->hourly_rate?->format($currency),
             'trial_price' => $tutor->trialPrice()?->format($currency),
