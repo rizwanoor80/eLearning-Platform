@@ -76,9 +76,10 @@ class YearGroup extends Model
 
     /**
      * Whether anything still points at this year group (so it cannot be deleted).
+     * Soft-deleted learners count: the foreign key still holds their row.
      */
     public function isReferenced(): bool
     {
-        return $this->learners()->exists() || $this->subjectsAsMin()->exists() || $this->subjectsAsMax()->exists();
+        return $this->learners()->withTrashed()->exists() || $this->subjectsAsMin()->exists() || $this->subjectsAsMax()->exists();
     }
 }

@@ -37,9 +37,8 @@ class EditYearGroup extends EditRecord
 
                         return;
                     }
-
-                    $this->auditDeleted($record);
-                }),
+                })
+                ->after(fn (YearGroup $record) => $this->auditDeleted($record)),
         ];
     }
 

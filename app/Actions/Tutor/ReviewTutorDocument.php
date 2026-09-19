@@ -51,10 +51,19 @@ class ReviewTutorDocument
     {
         $profile = DB::transaction(function () use ($admin, $document, $status): ?TutorProfile {
             $profile = TutorProfile::query()->whereKey($document->tutor_profile_id)->lockForUpdate()->firstOrFail();
+            // The page the admin clicked on may be stale: decide on the row as it is now
+            // (refresh first — it would also reload the relation set below).
+            $document->refresh();
             $document->setRelation('tutorProfile', $profile);
 
             if (! self::canReview($document)) {
                 throw new TutorStatusTransitionException('Documents can only be reviewed while the profile is under review or approved.');
+            }
+
+            // Repeating a decision that is already recorded changes nothing (no audit
+            // row, no move) — a stale page cannot re-reject a document.
+            if ($document->status === $status) {
+                return null;
             }
 
             $before = ['status' => $document->status->value];
@@ -73,7 +82,13 @@ class ReviewTutorDocument
                 $this->deleteReplacedFiles($document);
             }
 
-            if ($status === TutorDocumentStatus::Rejected && $profile->status === TutorProfileStatus::Approved) {
+            // Only a document that counts toward approval (an active, required type) can
+            // take an approved tutor off the bookable list; an optional or retired type's
+            // document is reviewed but leaves the tutor as they are.
+            if ($status === TutorDocumentStatus::Rejected
+                && $profile->status === TutorProfileStatus::Approved
+                && $document->documentType->active
+                && $document->documentType->required) {
                 app(RequestTutorChanges::class)->apply($admin, $profile, sprintf(
                     'Your %s was rejected. Please upload a new one so it can be reviewed again.',
                     $document->documentType->name,

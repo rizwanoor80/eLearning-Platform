@@ -216,9 +216,18 @@ const submitBank = () => {
     bankForm.post('/tutor/onboarding/bank', afterSubmit);
 };
 
-type SubjectRow = { curriculum_id: number | string; subject_id: number | string; level_min_id: number | string; level_max_id: number | string };
+// `legacy` is the old free text of a row that could not be matched to a year group. It
+// travels with its row (so removing another row cannot shift it onto the wrong one)
+// and is stripped before the form is posted.
+type SubjectRow = {
+    curriculum_id: number | string;
+    subject_id: number | string;
+    level_min_id: number | string;
+    level_max_id: number | string;
+    legacy: string;
+};
 
-const emptySubjectRow = (): SubjectRow => ({ curriculum_id: '', subject_id: '', level_min_id: '', level_max_id: '' });
+const emptySubjectRow = (): SubjectRow => ({ curriculum_id: '', subject_id: '', level_min_id: '', level_max_id: '', legacy: '' });
 
 const subjectsForm = useForm<{ subjects: SubjectRow[] }>({
     subjects:
@@ -228,6 +237,8 @@ const subjectsForm = useForm<{ subjects: SubjectRow[] }>({
                   subject_id: s.subject_id,
                   level_min_id: s.level_min_id ?? '',
                   level_max_id: s.level_max_id ?? '',
+                  legacy:
+                      s.level_min_id === null || s.level_max_id === null ? [s.level_min_legacy, s.level_max_legacy].filter(Boolean).join(' – ') : '',
               }))
             : [emptySubjectRow()],
 });
@@ -243,13 +254,6 @@ const clearForeignLevels = (row: SubjectRow) => {
     if (!valid.includes(Number(row.level_max_id))) row.level_max_id = '';
 };
 
-const legacyText = (rowIndex: number) => {
-    const original = props.tutorSubjects[rowIndex];
-    return original && (original.level_min_id === null || original.level_max_id === null)
-        ? [original.level_min_legacy, original.level_max_legacy].filter(Boolean).join(' – ')
-        : null;
-};
-
 const addSubjectRow = () => {
     subjectsForm.subjects.push(emptySubjectRow());
 };
@@ -259,7 +263,9 @@ const removeSubjectRow = (index: number) => {
 };
 
 const submitSubjects = () => {
-    subjectsForm.post('/tutor/onboarding/subjects', afterSubmit);
+    subjectsForm
+        .transform((data) => ({ subjects: data.subjects.map(({ legacy: _legacy, ...row }) => row) }))
+        .post('/tutor/onboarding/subjects', afterSubmit);
 };
 
 const rateForm = useForm({
@@ -517,8 +523,8 @@ const submitComplete = () => {
                         <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
                     </select>
                 </div>
-                <p v-if="legacyText(index)" class="text-muted-foreground col-span-4 text-xs">
-                    We could not match “{{ legacyText(index) }}” to our list of year groups — please choose them.
+                <p v-if="row.legacy" class="text-muted-foreground col-span-4 text-xs">
+                    We could not match “{{ row.legacy }}” to our list of year groups — please choose them.
                 </p>
                 <Button v-if="subjectsForm.subjects.length > 1" type="button" variant="ghost" class="col-span-4 w-fit" @click="removeSubjectRow(index)">
                     Remove

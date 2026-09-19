@@ -8,6 +8,7 @@ use App\Exceptions\TutorStatusTransitionException;
 use App\Models\DocumentType;
 use App\Models\TutorProfile;
 use App\Models\User;
+use Throwable;
 
 class RequireDocumentTypeFromApprovedTutors
 {
@@ -26,18 +27,33 @@ class RequireDocumentTypeFromApprovedTutors
      */
     public function __invoke(User $admin, DocumentType $type): int
     {
+        return $this->run($admin, $type)['moved'];
+    }
+
+    /**
+     * Same as `__invoke`, but also says how many tutors could NOT be moved: an
+     * unexpected failure on one tutor is reported to the exception handler and does
+     * not stop the tutors after it, and the caller tells the admin how many were
+     * left. Running the action again (a developer, or the admin toggling the
+     * type's `required` flag off and on) finds exactly the tutors still left.
+     *
+     * @return array{moved: int, failed: int}
+     */
+    public function run(User $admin, DocumentType $type): array
+    {
         if (! $type->required || ! $type->active) {
-            return 0;
+            return ['moved' => 0, 'failed' => 0];
         }
 
         $moved = 0;
+        $failed = 0;
 
         TutorProfile::query()
             ->where('status', TutorProfileStatus::Approved)
             ->whereDoesntHave('tutorDocuments', fn ($documents) => $documents
                 ->where('document_type_id', $type->id)
                 ->where('status', TutorDocumentStatus::Accepted))
-            ->chunkById(100, function ($profiles) use ($admin, $type, &$moved) {
+            ->chunkById(100, function ($profiles) use ($admin, $type, &$moved, &$failed) {
                 foreach ($profiles as $profile) {
                     try {
                         ($this->requestChanges)($admin, $profile, sprintf(
@@ -47,10 +63,13 @@ class RequireDocumentTypeFromApprovedTutors
                         $moved++;
                     } catch (TutorStatusTransitionException) {
                         // Changed status since the query; not ours to move.
+                    } catch (Throwable $e) {
+                        report($e);
+                        $failed++;
                     }
                 }
             });
 
-        return $moved;
+        return ['moved' => $moved, 'failed' => $failed];
     }
 }

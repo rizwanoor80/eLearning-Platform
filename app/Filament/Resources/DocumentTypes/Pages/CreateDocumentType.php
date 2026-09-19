@@ -26,10 +26,14 @@ class CreateDocumentType extends CreateRecord
             return;
         }
 
-        $moved = app(RequireDocumentTypeFromApprovedTutors::class)(auth()->user(), $record);
+        $result = app(RequireDocumentTypeFromApprovedTutors::class)->run(auth()->user(), $record);
 
-        if ($moved > 0) {
-            Notification::make()->title("$moved approved tutor(s) moved to changes requested")->warning()->send();
+        if ($result['moved'] > 0) {
+            Notification::make()->title("{$result['moved']} approved tutor(s) moved to changes requested")->warning()->send();
+        }
+
+        if ($result['failed'] > 0) {
+            Notification::make()->title("{$result['failed']} approved tutor(s) could not be moved")->body('The failure was reported. Those tutors are still approved; turning the required flag off and on again retries them.')->danger()->send();
         }
     }
 }
