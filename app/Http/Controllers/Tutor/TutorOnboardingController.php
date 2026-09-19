@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tutor;
 
 use App\Actions\Tutor\CompleteTutorOnboarding;
+use App\Actions\Tutor\ResetPermitScanOnPermitChange;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
@@ -32,9 +33,11 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class TutorOnboardingController extends Controller
 {
@@ -127,7 +130,17 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'permit');
 
-        $profile->update($request->validated());
+        $profile->fill($request->validated());
+        $permitChanged = $profile->isDirty(['permit_number', 'permit_expires_at']);
+
+        DB::transaction(function () use ($profile, $permitChanged): void {
+            $profile->save();
+
+            // R36 (g): an accepted scan vouches for the old number and date.
+            if ($permitChanged) {
+                app(ResetPermitScanOnPermitChange::class)($profile);
+            }
+        });
 
         return redirect()->route('tutor.onboarding');
     }
@@ -146,16 +159,23 @@ class TutorOnboardingController extends Controller
         $file = $request->file('file');
         $path = $file->store('tutor-documents/'.$profile->id, 'local');
 
-        DB::transaction(function () use ($profile, $documentType, $file, $path): void {
-            $profile->tutorDocuments()->where('document_type_id', $documentType->id)->delete();
+        try {
+            DB::transaction(function () use ($profile, $documentType, $file, $path): void {
+                $profile->tutorDocuments()->where('document_type_id', $documentType->id)->delete();
 
-            TutorDocument::query()->create([
-                'tutor_profile_id' => $profile->id,
-                'document_type_id' => $documentType->id,
-                'disk_path' => $path,
-                'original_name' => $file->getClientOriginalName(),
-            ]);
-        });
+                TutorDocument::query()->create([
+                    'tutor_profile_id' => $profile->id,
+                    'document_type_id' => $documentType->id,
+                    'disk_path' => $path,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+            });
+        } catch (Throwable $e) {
+            // The file was written before the transaction; no row points at it now (R36 d).
+            Storage::disk('local')->delete($path);
+
+            throw $e;
+        }
 
         return redirect()->route('tutor.onboarding');
     }
