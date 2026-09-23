@@ -77,7 +77,8 @@
             "@lint:check",
             "@types:check",
             "@rtl:check",
-            "@php artisan test"
+            "@php artisan test",
+            "@php artisan ledger:verify --no-interaction"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
