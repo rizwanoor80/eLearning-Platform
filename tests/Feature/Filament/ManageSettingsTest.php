@@ -64,6 +64,26 @@ it('rejects an invalid timezone and an out-of-range percentage', function () {
         ->assertHasFormErrors(['default_timezone', 'commission_pct']);
 });
 
+it('rejects a 100% trial discount — a free trial is not a valid configuration (R77)', function () {
+    Livewire::actingAs($this->admin)
+        ->test(ManageSettings::class)
+        ->fillForm(['trial_discount_pct' => 100])
+        ->call('save')
+        ->assertHasFormErrors(['trial_discount_pct']);
+
+    Livewire::actingAs($this->admin)
+        ->test(ManageSettings::class)
+        ->fillForm(['trial_discount_pct' => 99])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect(Settings::get('trial_discount_pct'))->toBe(99);
+
+    // The seeded default itself must already be inside the now-valid range, so a fresh
+    // install never starts on a value the form it feeds would reject (R77).
+    expect(config('settings.defaults.trial_discount_pct'))->toBeLessThanOrEqual(99);
+});
+
 it('changes the layout title and the shared site name without a deploy (CP1 box 8, layout half)', function () {
     Livewire::actingAs($this->admin)
         ->test(ManageSettings::class)

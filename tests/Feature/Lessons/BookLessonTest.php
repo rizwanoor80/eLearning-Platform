@@ -207,6 +207,54 @@ it('books a trial at exactly TutorProfile::trialPrice(), agreeing across the ban
     'the docblock\'s own odd-fils example (10001 @ 50% -> 5000, not 5001)' => [10001, 50, 5000],
 ]);
 
+it('refuses to book when the computed price rounds to zero, writing no lesson and no payment row (R77)', function () {
+    // A 1-fil hourly rate at the 99%-capped max discount (item 1 makes 100%/free unreachable
+    // through the settings form, but this combination still rounds the trial price to 0 fils via
+    // TutorProfile::trialPrice()'s own rounding rule — exactly the case the guard must catch).
+    Settings::set('trial_discount_pct', 99);
+
+    $curriculum = Curriculum::query()->firstOrCreate(
+        ['code' => CurriculumCode::Gcse],
+        ['name' => CurriculumCode::Gcse->value, 'sort' => 0],
+    );
+    $subject = Subject::factory()->create();
+    $tutor = TutorProfile::factory()->approved()->create(['hourly_rate' => 1]);
+
+    TutorSubject::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'curriculum_id' => $curriculum->id,
+        'subject_id' => $subject->id,
+        'level_tier' => LevelTier::LowerSecondary,
+    ]);
+
+    PriceBand::query()->firstOrCreate(
+        ['curriculum_id' => $curriculum->id, 'level_tier' => LevelTier::LowerSecondary, 'effective_from' => '2000-01-01'],
+        ['min_rate' => 1, 'max_rate' => 100],
+    );
+
+    AvailabilityRule::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'weekday' => 2,
+        'start_time' => '09:00:00',
+        'end_time' => '12:00:00',
+        'timezone' => 'UTC',
+    ]);
+
+    $tutor = $tutor->fresh();
+    expect($tutor->trialPrice()->toFils())->toBe(0);
+
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculum->id);
+
+    expect(fn () => app(BookLesson::class)($parent, $learner, $tutor, [
+        'curriculum_id' => $curriculum->id,
+        'subject_id' => $subject->id,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]))->toThrow(BookingException::class);
+
+    expect(Lesson::query()->count())->toBe(0)
+        ->and(Payment::query()->count())->toBe(0);
+});
+
 it('stores a Dubai-timezone booking request as UTC on the raw row', function () {
     ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
     ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);

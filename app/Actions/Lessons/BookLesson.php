@@ -95,6 +95,10 @@ class BookLesson
             throw new BookingException('This tutor has no hourly rate set.');
         }
 
+        if ($price->isZero() || $price->isNegative()) {
+            throw new BookingException('The computed price for this lesson is not a valid, chargeable amount.');
+        }
+
         $commissionPct = (int) Settings::get('commission_pct');
         $split = $price->splitCommission($commissionPct);
 
