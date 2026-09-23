@@ -126,18 +126,19 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
     redo finished work, never silently do something else.
 12. Read back and diff every file after writing it. Cite file:line or quoted output for every
     claim about behaviour. Own mistakes in plain words.
-13. One PLAN step per session. At every step boundary: write STATUS.md with §5 "context handoff",
-    log a HANDOFF entry with the context size and the step closed, and raise "Owner action N:
-    `/clear` this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and
-    CYCLE-LOG carry what is done, what is next and what was ruled out — if they do not, write that
-    first. Never raise it mid-edit: commit the work, suite green with the count, nothing
-    half-written. You cannot clear yourself; the owner does it.
-14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle. If
-    /context passes 100k inside a step, stop taking on new work, finish and commit what is in
-    hand, and raise the clear action there; the step stays [in progress] with what remains named,
-    and the next session resumes it. Auto-compaction reached means the clear was late; routine
-    /compact is not a tool. An autonomous programme cannot be cleared, so it stops at its stated
-    context cap (default 100k) instead of continuing.
+13. One cycle per session. Run every step and gate of the cycle without asking for a clear. Only
+    at the cycle's END: write STATUS.md with §5 "context handoff", log a HANDOFF entry with the
+    context size and the number of compactions this session, and raise "Owner action N: `/clear`
+    this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and CYCLE-LOG carry
+    what is done, what is next and what was ruled out — if they do not, write that first. A halt
+    for an owner GO is not a clear; wait, and resume on the next `update`. You cannot clear
+    yourself; the owner does it.
+14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle.
+    Auto-compaction inside a cycle is normal and expected — it fires around 180k, you carry on.
+    Never ask for a clear because compaction is approaching, and never stop work because it fired.
+    STATUS.md at every step boundary is what makes compaction safe; keep that rule. Manual /compact
+    is rarely needed and never at cycle END. A programme runs across compactions the same way and
+    stops only on a failed compaction or its resume cap.
     Sessions are free — never consolidate work into a long-lived session to save cost, and never
     treat a fresh session as a cost. MCP servers, plugins and skills not needed this cycle stay
     off. Simple subagents (search, read, grep) run on the cheapest capable model; advisor and
