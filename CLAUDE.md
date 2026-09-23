@@ -73,7 +73,7 @@ If a task or a "helpful" abstraction would introduce one of these, do not build 
 ### Owner loop (standing protocol — no exceptions; full text in docs/HOW-WE-WORK.md)
 The owner, the planning seat (a separate Claude session that writes only docs/PLAN.md) and
 Claude Code work in one fixed loop: owner says "go ahead" → planner writes docs/PLAN.md into the
-checkout at `C:\project elearning`, uncommitted → owner tells Claude Code `update` → Claude Code works,
+checkout at C:\project elearning, uncommitted → owner tells Claude Code `update` → Claude Code works,
 logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repeat.
 1. On every `update`: git fetch; fast-forward main; read docs/PLAN.md; if newer than the
    committed one, commit it as "PLAN.md cycle NN rN" before any other work; refuse a revision
