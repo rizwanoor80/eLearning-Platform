@@ -79,33 +79,35 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
    committed one, commit it as "PLAN.md cycle NN rN" before any other work; refuse a revision
    that already has an END in docs/CYCLE-LOG.md; execute from the first unfinished step. No new
    work → NOTE entry + STATUS.md, never silence.
-2. One session, one checkout, no worktrees. Independence comes from a fresh subagent with no
-   prior context, never a second session.
+2. One window per checkout, one `update` at a time, no worktrees. A window runs many sessions in
+   sequence (rule 13); that is required, not an exception. Independence comes from a fresh
+   subagent with no prior context, never a second window.
 3. Log while working in docs/CYCLE-LOG.md using the kinds START, ADVICE (owner), ADVISOR (tool),
-   DECISION, DEVIATION, BLOCKER, VERIFICATION, REVIEW, NOTE, END. Results, hashes and counts go
-   in the entry that reports them. END carries the advisor summary; "0 times" is written.
-4. Never ask the owner for anything in chat. Every GO, credential, script run or decision is a
-   numbered "Owner action N:" line in STATUS.md §7 with the exact thing to do, ending "reply
-   `update` when done". Every question carries "(Recommended)" on option 1 with a one-line
-   reason. Check the evidence before restating an action.
+   DECISION, DEVIATION, BLOCKER, VERIFICATION, REVIEW, HANDOFF, NOTE, END. Results, hashes and
+   counts go in the entry that reports them. END carries the advisor summary; "0 times" is written.
+4. Never ask the owner for anything in chat. Every GO, credential, script run, session clear or
+   decision is a numbered "Owner action N:" line in STATUS.md §7 with the exact thing to do,
+   ending "reply `update` when done". Every question carries "(Recommended)" on option 1 with a
+   one-line reason. Check the evidence before restating an action.
 5. STATUS.md has the fixed eight-section shape (§1 Git state, §2 Step map, §3 What changed,
    §4 Decisions and by whom, §5 Why stopping, §6 Mismatches, §7 Next step / Owner actions,
-   §8 Programme board). Rewritten at every step boundary, push and halt, and at the end of every
+   §8 Programme board) and a header carrying tests, advisor counts, review verdict and the
+   context size at write. Rewritten at every step boundary, push and halt, and at the end of every
    run no matter what — when in doubt, STATUS.md first. A halt IS a STATUS.md write.
 6. Docs-only commits (PLAN revision, STATUS, CYCLE-LOG, reports, DECISIONS when authorised,
-   post-merge record) go to main and push immediately. Code goes on a branch per cycle → PR →
-   fresh-subagent adversarial review with a numbered PASS / PASS WITH NOTE / FAIL(severity,
-   file, line, scenario) list logged as REVIEW → fix loop (cap 2) → merge only under the plan's
-   merge rule or an owner GO. Low doc-only findings fixed in-cycle; Medium+ or anything in
-   code/config/routes/migrations/tests stops and returns to the owner.
+   post-merge record) go to main and push immediately, with `[skip ci]` in the message. Code goes
+   on a branch per cycle → PR → fresh-subagent adversarial review with a numbered PASS / PASS WITH
+   NOTE / FAIL(severity, file, line, scenario) list logged as REVIEW → fix loop (cap 2) → merge
+   only under the plan's merge rule or an owner GO. Low doc-only findings fixed in-cycle; Medium+
+   or anything in code/config/routes/migrations/tests stops and returns to the owner. Code commits
+   and PR branches never carry `[skip ci]`.
 7. Before every feature-branch push: full suite green with the literal count; `git log
    origin/main..HEAD` quoted. Suite never shrinks. Code held behind a GO is pushed as
    hold/<step>, never to main. Post-merge record lands on main directly.
 8. Named authorisation, one per action, quoted in the log before acting: merge to main, deploy,
-   remote migration, real identities, real email/messages, any live-money switch (gateway live
-   keys, auto-charge, payouts), deleting production data. Nobody self-authorises a gate the plan
-   states. Owner advice in chat is logged as ADVICE before it is acted on; scope-widening advice
-   needs an explicit "yes".
+   remote migration, real identities, real email/messages, any live-money switch, deleting
+   production data. Nobody self-authorises a gate the plan states. Owner advice in chat is
+   logged as ADVICE before it is acted on; scope-widening advice needs an explicit "yes".
 9. Servers follow the allow-list in CLAUDE.local.md: read-only free; state-changing per-command
    "yes"; the never-list (secrets, .env, tokens, interactive shells, prod seeding/reset,
    rollbacks, raw SQL on prod, deletes, sudo, key changes, composer setup) is absolute. Root only
@@ -113,14 +115,34 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
    phone, key, secret or webhook payload in any report, log, fixture, seeder, commit or STATUS.
 10. Every server-script change runs on the rehearsal server before production; rollback open
     before any cutover; failed check → rollback, no second attempt the same day. Frozen files
-    (listed above) change only under build → prove → halt → GO with a red/green proof.
+    (listed in CLAUDE.md) change only under build → prove → halt → GO with a red/green proof.
 11. Consult the advisor, and log an ADVISOR entry, at least the minimum the plan states and
-    always when touching auth, money/ledger/payout code, a frozen file, a plan–repo conflict, or
-    before a production-affecting judgment call. A timeout is a tool failure, not advice. Stale
-    plan text → disclose in STATUS.md §6 and correct the report; never silently redo finished
-    work, never silently do something else.
+    always when touching auth/tenancy, money/ledger/payout code, a frozen file, a plan–repo
+    conflict, or before a production-affecting judgment call. Every ADVISOR entry names the model
+    that answered and quotes one line of what came back; an entry that cannot name the model is a
+    tool failure, not a consultation, and does not count toward the minimum. Confirm on the first
+    consultation of each cycle that the advisor actually answered. A timeout is a tool failure,
+    not advice. Stale plan text → disclose in STATUS.md §6 and correct the report; never silently
+    redo finished work, never silently do something else.
 12. Read back and diff every file after writing it. Cite file:line or quoted output for every
     claim about behaviour. Own mistakes in plain words.
+13. One PLAN step per session. At every step boundary: write STATUS.md with §5 "context handoff",
+    log a HANDOFF entry with the context size and the step closed, and raise "Owner action N:
+    `/clear` this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and
+    CYCLE-LOG carry what is done, what is next and what was ruled out — if they do not, write that
+    first. Never raise it mid-edit: commit the work, suite green with the count, nothing
+    half-written. You cannot clear yourself; the owner does it.
+14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle. If
+    /context passes 100k inside a step, stop taking on new work, finish and commit what is in
+    hand, and raise the clear action there; the step stays [in progress] with what remains named,
+    and the next session resumes it. Auto-compaction reached means the clear was late; routine
+    /compact is not a tool. An autonomous programme cannot be cleared, so it stops at its stated
+    context cap (default 100k) instead of continuing.
+    Sessions are free — never consolidate work into a long-lived session to save cost, and never
+    treat a fresh session as a cost. MCP servers, plugins and skills not needed this cycle stay
+    off. Simple subagents (search, read, grep) run on the cheapest capable model; advisor and
+    review subagents use the stronger one. Never estimate or log your own token spend; report only
+    the measured context size.
 
 ## When unsure
 Ask the advisor first for architecture questions and log it. For product questions, write an "Owner action" in STATUS.md §7 with a recommended option and pick the default listed in PRD §11 or the simplest option that keeps invariants intact until the owner answers. docs/PROJECT_BRIEF.md, docs/PRD.md and docs/reference/ are read-only for you; if you believe the PRD is wrong, say so in STATUS.md §6. If it conflicts with docs/reference/, the PRD wins.
