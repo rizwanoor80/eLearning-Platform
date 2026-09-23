@@ -1,9 +1,10 @@
 # How We Work — Operating Method for AI-Assisted Projects
 
-_Version 1.1 · September 2026 · Owner: Rizwan_
+_Version 1.2 · September 2026 · Owner: Rizwan_
 _Merged from the Franchise OS and SaaS operating manuals. Hand this to every new project on day one together with PROJECT_BRIEF.md, the PRD and CLAUDE.md. Roles, loop, files and rules are fixed; only the names in §16 change per project._
 
-_Changes in 1.1: window/session vocabulary made precise (§1); new §15 Cost and context discipline, covering both seats; advisor consultations must now name the responding model (§10); HANDOFF log kind and the step-boundary clear (§5, §6); `[skip ci]` on docs-only commits (§8); one planning conversation per cycle (§15, Appendix A)._
+_Changes in 1.1: window/session vocabulary made precise (§1); new §15 Cost and context discipline, covering both seats; advisor consultations must now name the responding model (§10); HANDOFF log kind (§5); `[skip ci]` on docs-only commits (§8); one planning conversation per cycle (§15, Appendix A)._
+_Changes in 1.2: the clear moves from every step to the cycle END; auto-compaction inside a cycle is expected, not a failure; the 100k ceiling and the programme context cap are removed (§1, §2, §12, §15, Appendices A–B). 1.1's per-step clear stopped work every few minutes and cost more owner time than it saved in tokens._
 
 ---
 
@@ -19,7 +20,7 @@ The separation is the point: the planner keeps the plan honest because it cannot
 
 **Words used precisely.** A **window** is one live Claude Code workspace on one checkout — the thing the owner types `update` into. A **session** is one conversation inside that window, ended by `/clear` (or by closing the window), after which a fresh session continues in the same window on the same checkout. A **cycle** is one PLAN.md revision from START to END, and normally spans several sessions. "New session" never means "new window".
 
-**One CC window. One checkout. No worktrees.** Never a second Claude Code window open on the same project — one `update` at a time, always. A window runs many sessions in sequence: each PLAN step is worked in a fresh session, cleared at the step boundary, and the next `update` continues in the same window. That sequence is required, not an exception (§15). What is forbidden is concurrency — two windows, two `update`s, two views of one checkout drifting apart. One window **per project** is correct; three projects in parallel means three windows, each on its own checkout. When a plan needs independence (reviewing the previous cycle's work), CC delegates to a fresh subagent with no prior context inside the current session. Any tool offer to spin work into a separate window is declined.
+**One CC window. One checkout. No worktrees.** Never a second Claude Code window open on the same project — one `update` at a time, always. A window runs many sessions in sequence: each cycle is worked in a fresh session, cleared when the cycle closes, and the next cycle's `update` continues in the same window. That sequence is required, not an exception (§15). What is forbidden is concurrency — two windows, two `update`s, two views of one checkout drifting apart. One window **per project** is correct; three projects in parallel means three windows, each on its own checkout. When a plan needs independence (reviewing the previous cycle's work), CC delegates to a fresh subagent with no prior context inside the current session. Any tool offer to spin work into a separate window is declined.
 
 ---
 
@@ -29,7 +30,7 @@ The separation is the point: the planner keeps the plan honest because it cannot
 2. Owner and planner discuss until the owner is satisfied. The planner asks clarifying questions before proposing, gives options with pros and cons, and recommends one.
 3. Owner says **"go ahead"** → the planner writes `docs/PLAN.md` into the checkout, uncommitted, **re-reads it from disk and diffs it against what it intended** before replying with one line — *"PLAN.md written (cycle NN rN) — tell Claude Code: update"* — and a short plain-language summary of what the plan does and what, if anything, the owner will be asked to do.
 4. Owner types the single word **`update`** in CC. Nothing else.
-5. CC: `git fetch` and fast-forward `main`; read `docs/PLAN.md`; if it is newer than the committed one, commit it as *"PLAN.md cycle NN rN"* before any other work; refuse to execute a revision that already has an END in the cycle log; then execute from the first unfinished step — logging as it goes, writing STATUS.md, committing, stopping at the next gate. At each step boundary it closes the session down cleanly and raises the clear action (§15). If there is no new work, it writes a NOTE and a STATUS.md saying so rather than staying silent.
+5. CC: `git fetch` and fast-forward `main`; read `docs/PLAN.md`; if it is newer than the committed one, commit it as *"PLAN.md cycle NN rN"* before any other work; refuse to execute a revision that already has an END in the cycle log; then execute from the first unfinished step — logging as it goes, writing STATUS.md, committing, stopping at the next gate. When the cycle reaches END it raises the clear action (§15); within a cycle it keeps working, and auto-compaction along the way is normal. If there is no new work, it writes a NOTE and a STATUS.md saying so rather than staying silent.
 6. Back to 1.
 
 **Six phrases.** Three drive the loop: `where are we?` (planner → brief), `go ahead` (also "go", "approved", "write the plan": planner → write the plan), `update` (CC → execute). Three are auxiliary: `status` (CC → rewrite STATUS.md from repo evidence, execute nothing, touch no code), `stop` (CC → halt an autonomous programme cleanly with a logged reason and a STATUS.md), `refresh the brief` (planner → update PROJECT_BRIEF.md). If a seventh phrase seems necessary, something is wrong with the files, not the phrases.
@@ -49,7 +50,7 @@ All under `docs/` in the repository. The repository is the source of truth; chat
 | `DECISIONS.md` | CC, only when the plan authorises | Accepted architecture/policy decisions (ADRs) that outlive any plan. Proposals go in STATUS.md §4 for the owner to accept first. |
 | `reports/<step>.md` | CC, optional | Evidence too long for a log entry: full test output, screenshots per state, command transcripts. Always cited from the log entry that relies on it. |
 | `CLAUDE.md` (repo root) | Planner drafts, owner approves; **committed** | Engineering conventions, domain invariants, checkpoint protocol, and the Owner-loop block (Appendix B). Binding on CC when building and on the planner when planning. |
-| `CLAUDE.local.md` (repo root) | Owner; **git-ignored, never committed** | The security boundary: server allow-list and never-list, hosts, paths, anything environment-specific. CC loads it at the start of every session, so a rule added mid-session takes effect at the next clear or restart — which now happens at every step boundary; per-cycle must-haves still go in PLAN.md. |
+| `CLAUDE.local.md` (repo root) | Owner; **git-ignored, never committed** | The security boundary: server allow-list and never-list, hosts, paths, anything environment-specific. CC loads it at the start of every session, so a rule added mid-session takes effect at the next clear or restart — which now happens at every cycle boundary; per-cycle must-haves still go in PLAN.md. |
 
 The planner reads BRIEF, PLAN, STATUS, CYCLE-LOG (recent entries), DECISIONS and CLAUDE.md at the start of every task without being asked. If STATUS.md contradicts PLAN.md or the brief, the planner tells the owner first and assumes nothing is done unless STATUS.md says so.
 
@@ -63,9 +64,9 @@ These files carry the whole state between sessions. A fresh session after a clea
 # PLAN — cycle NN rN — YYYY-MM-DD
 Standing (applies to every step): suite green with the literal count before every push;
 `git log origin/main..HEAD` quoted before every push; each step names its ADVISOR entries
-(with the model that answered) or states none was triggered; one step per session, cleared
-at every step boundary; temporary scripts deleted from every server and said so;
-if the session nears its context ceiling or a plan usage limit, STATUS.md first.
+(with the model that answered) or states none was triggered; one cycle per session, cleared
+at END; temporary scripts deleted from every server and said so;
+if the session nears a plan usage limit, STATUS.md first.
 Advisor minimum this cycle: N consultations (design before the first edit; before the PR).
 Authorisation boundary: what CC may push/merge/deploy in this cycle without asking, and
 what needs an owner GO.
@@ -84,7 +85,7 @@ R1 …   R2 …
 Parked items, one line each, so nothing is lost without cluttering the steps.
 ```
 
-A plan is a contract CC can execute without talking to anyone. Halts exist only where the owner must act; everything else runs through. Steps are sized so one step is one session's work; a step that cannot be finished in a session is two steps. When the owner overrides caution, the planner states the trade-off once and writes the plan the owner's way.
+A plan is a contract CC can execute without talking to anyone. Halts exist only where the owner must act; everything else runs through. A cycle is sized to one session — a day or two of CC work, at most a handful of compactions; a cycle that would run far past that is two cycles. When the owner overrides caution, the planner states the trade-off once and writes the plan the owner's way.
 
 ---
 
@@ -106,7 +107,7 @@ Append-only. One entry per line-block, written *during* the work, never reconstr
 | BLOCKER | Cannot proceed; what is needed |
 | VERIFICATION | A check and its literal result — hashes, counts, quoted output in this entry, never "in the next one" |
 | REVIEW | The fresh-subagent verdict list for a PR (see §9) |
-| HANDOFF | Session closed at a step boundary: context size at close, step closed, and confirmation that PLAN/STATUS/CYCLE-LOG carry what is done, what is next and what was ruled out (§15) |
+| HANDOFF | Session closed at cycle END: context size at close, compactions this session, and confirmation that PLAN/STATUS/CYCLE-LOG carry what is done, what is next and what was ruled out (§15) |
 | NOTE | Anything else worth a record, including "update found no new work" |
 | END | Step/cycle closed: test count, commit hashes, **advisor summary** ("consulted N times, N confirmed: …" — "0 times" written explicitly) |
 
@@ -134,7 +135,7 @@ Tests: <count> (was <count>) · Advisor: consulted N times (N confirmed) · Revi
 
 Rules:
 
-- Written at the end of **every** run, no matter what: success, failure, halt, error, a bare `update` with nothing new, a session near its context ceiling, a step-boundary handoff, an interrupted turn. When in doubt, write it first. A run that ends without it is a protocol breach; the next run's first act is to write the missing one.
+- Written at the end of **every** run, no matter what: success, failure, halt, error, a bare `update` with nothing new, a cycle handoff, an interrupted turn. When in doubt, write it first. A run that ends without it is a protocol breach; the next run's first act is to write the missing one.
 - A halt is expressed by writing STATUS.md, not by a chat message. "Task complete" without a STATUS.md write is not complete.
 - Every step boundary, every push, every halt gets a rewrite, however small the work.
 - The `Context:` figure is read from `/context` at the moment of writing. It is a fact for the owner to watch across cycles, never an estimate of cost.
@@ -213,7 +214,7 @@ Off by default. Once the loop is trusted, the owner may authorise a **programme*
 - the **programme board** in STATUS.md §8 so "where are we?" is answerable at any moment;
 - a review with the owner after ~24 hours or when the board says the programme is done.
 
-A programme runs unattended, and nobody is there to clear, so §15 applies to it in a different shape: the programme's own **context cap** is stated in the plan (default 100k). At each sub-cycle boundary CC checks `/context`; below the cap it continues to the next sub-cycle, at or above it the programme **stops**, writes STATUS.md with §5 "context handoff", updates the board, and raises the clear action. Context reaching the cap is a stop condition like any other in the list above. A programme that carries one session past its cap is a protocol breach, disclosed by the next session that notices.
+A programme runs unattended, and nobody is there to clear. On a 200k window that is fine: auto-compaction carries it between sub-cycles, and STATUS.md is rewritten at every sub-cycle boundary so nothing a compaction drops is lost. Two things are stop conditions: a compaction that fails, and the automatic-resume cap in the plan being reached. When the programme finishes or stops, it raises the clear action like any cycle END.
 
 ---
 
@@ -241,10 +242,9 @@ Short. Plain language first, technical detail after. Prose, not bullet soup. Sta
 - A plan revision described a bug as open that was already fixed; CC disclosed and corrected instead of redoing → **that is the right behaviour; now a rule**.
 - A guard script had never run against a real box until the rehearsal rule forced it; it failed → **rehearse everything**.
 - A stale server shell showed an old release → **fresh connection per check**.
-- Sessions were left open for weeks with the 1M context window enabled; auto-compaction sat at a 935–970k ceiling, cache re-reads reached 82% of all spend, and one 59-day session cost more than the rest of the month combined → **200k only, one step per session, clear at every step boundary** (§15).
+- Sessions were left open for weeks with the 1M context window enabled; auto-compaction sat at a 935–970k ceiling, cache re-reads reached 82% of all spend, and one 59-day session cost more than the rest of the month combined → **200k only, one cycle per session, clear at END** (§15).
 - A planning conversation carried every cycle of a project for months, on the stronger model, until it began compacting mid-brief → **one planning conversation per cycle, retired at the cycle boundary** (§15).
 - Docs-only commits to `main` triggered a full CI run each time, about half of all runs, on work that could not affect a merge rule → **`[skip ci]` on docs-only commits** (§8).
-
 - A command that prompts, or hangs, stalled a whole run → **every artisan, composer, npm and gh call carries its non-interactive flag, and a command still running after ten minutes is stopped, logged as a BLOCKER and worked around** (TrusTutor R16).
 - CC launched Herd from its own shell and tied Herd's console to it, then chased the crashes that caused → **Herd and its services are started and stopped only by the owner; a service that is down is a halt with an owner action** (TrusTutor R18).
 - Browser automation prompts per action on local sites and cannot hold a standing permission, so an unattended run would stall → **no browser automation by CC; pages are checked with `curl`, behaviour is proven by feature tests** (TrusTutor R20).
@@ -253,7 +253,7 @@ Short. Plain language first, technical detail after. Prose, not bullet soup. Sta
 - A setting was verified on a page that did not read it (the Filament panel title reads `APP_NAME`, not the `site_name` setting) → **verify a value on the surface that renders it, and name that surface in the ruling** (TrusTutor R48).
 - Console work in Forge, the admin panel, GitHub settings and DNS was reachable by neither seat and silently fell to the owner → **the planner performs owner-console work in the owner's browser and records each one as a numbered ruling; it never signs in on his behalf** (TrusTutor R45).
 
-_The seven lines above are TrusTutor's own additions to §14; the rest of this file is v1.1 unchanged._
+_The seven lines above are TrusTutor's own additions to §14; the rest of this file is v1.2 unchanged._
 
 ---
 
@@ -263,19 +263,19 @@ Context is re-read on every turn, so a session's cost is set by how large it has
 
 **The window setting.** 200k context only. `CLAUDE_CODE_DISABLE_1M_CONTEXT: "1"` in the `env` block of user settings. The 1M window is never enabled for project work; if a task genuinely needs it, that is an owner decision recorded as a ruling in PLAN.md, for that cycle only.
 
-**One step, one session.**
+**One cycle, one session.**
 
-- A session covers one PLAN.md step, or one cycle when steps are small. Never a project, never a week.
-- At every step boundary CC writes STATUS.md, logs a HANDOFF entry, and raises **"Owner action N: `/clear` this session, then reply `update`."**
+- A session covers one cycle — one PLAN.md revision from START to END. Never a project, never a month. Within the cycle CC runs through every step and every gate without asking for a clear.
+- When the cycle reaches END, CC writes STATUS.md, logs a HANDOFF entry, and raises **"Owner action N: `/clear` this session, then reply `update`."** That is the only point at which it asks.
 - STATUS.md §5 states **context handoff** as the stopping reason.
-- The owner clears and types `update`. The fresh session reads PLAN.md, STATUS.md and the recent CYCLE-LOG as it does on any `update`, and continues.
+- The owner clears and types `update` for the next cycle. The fresh session reads PLAN.md, STATUS.md and the recent CYCLE-LOG as it does on any `update`.
 - **CC raises the clear action only when the files carry the state** — what is done, what is next, what was tried and rejected. If they do not, it writes that first and raises the action afterwards.
-- **Never mid-edit.** Before the action goes into §7: work is committed, the suite is green with the count stated, and nothing is half-written. A step may legitimately end *unfinished* (see Context ceiling); what may never happen is a handoff with loose ends.
 - CC cannot clear itself. The **clear action** — the numbered §7 line reading *"`/clear` this session, then reply `update`"* — is an owner action like any other, and no rule pretends otherwise.
+- A cycle that halts mid-way for an owner GO does **not** trigger a clear. The session waits; the owner's `update` after the GO resumes it.
 
-**Context ceiling.** If `/context` passes 100k inside a step, CC stops taking on new work in that step, finishes and commits what is already in hand, and raises the clear action at that point rather than running on. The step stays `[in progress]` in STATUS.md §2 with what remains named, and the next session resumes it. This is the one case where the session ends before the step does, and it should be rare — a step that repeatedly exceeds 100k was written too large, and the fix belongs in PLAN.md (§4). A step that genuinely cannot be split is an owner ruling in the plan, which raises the ceiling for that step alone and says so. Reaching auto-compaction means the clear was late — auto-compaction is a backstop, not a tool.
+**Auto-compaction inside a cycle is normal.** On a 200k window it fires around 180k, summarises, and the session carries on. That is the mechanism that lets a cycle run for hours unattended, and it is expected to fire a few times per cycle. What makes it safe is the existing rule that STATUS.md is rewritten at every step boundary, push and halt — the files hold the state, so a lossy summary loses nothing that matters. CC never asks the owner to clear because compaction is approaching. A cycle that has compacted more than a handful of times is a signal to the planner that the cycle was too large, not a reason to stop.
 
-**Compaction is not routine.** Manual `/compact` is used only when a step genuinely cannot be closed and the context must survive. Compacting a session that is about to end is pure waste, and compacting several open windows in one batch buys nothing.
+**Manual `/compact` is rarely needed.** Auto-compaction handles the in-cycle case. Compacting a session at cycle END is pure waste — it is about to be cleared — and compacting several open windows in one batch buys nothing.
 
 **Sessions are free.** Cost comes from context size per turn, not session count. CC never consolidates work into a long-lived session to "save" anything, and never treats starting a fresh session as a cost. A session with no activity for 14 days is never resumed — its state is in the channel files. Clearing it out of the projects folder is housekeeping the owner does; CC neither archives nor deletes session logs.
 
@@ -336,8 +336,10 @@ HOW WE WORK:
   from disk and diff it; then reply with one line — "PLAN.md written (cycle NN rN) — tell Claude
   Code: update" — and a short plain-language summary of what the plan does and anything the
   owner will be asked to do.
-- Size steps so one step is one session's work. A step that cannot be finished in a session is
-  two steps. The standing line states: one step per session, cleared at every step boundary.
+- Size a cycle to one CC session — a day or two of work, a handful of compactions at most. A
+  cycle that would run far past that is two cycles. The standing line states: one cycle per
+  session, cleared at END. If STATUS.md shows a cycle compacted many times, say so in the brief;
+  the next plan is smaller.
 - This conversation lasts one cycle. When the cycle's plan has been executed and closed, say so
   and recommend the owner start a fresh conversation in this Project for the next cycle. Before
   that, write anything argued here that is not yet in a file — decisions, rejected options, the
@@ -423,18 +425,19 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
     redo finished work, never silently do something else.
 12. Read back and diff every file after writing it. Cite file:line or quoted output for every
     claim about behaviour. Own mistakes in plain words.
-13. One PLAN step per session. At every step boundary: write STATUS.md with §5 "context handoff",
-    log a HANDOFF entry with the context size and the step closed, and raise "Owner action N:
-    `/clear` this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and
-    CYCLE-LOG carry what is done, what is next and what was ruled out — if they do not, write that
-    first. Never raise it mid-edit: commit the work, suite green with the count, nothing
-    half-written. You cannot clear yourself; the owner does it.
-14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle. If
-    /context passes 100k inside a step, stop taking on new work, finish and commit what is in
-    hand, and raise the clear action there; the step stays [in progress] with what remains named,
-    and the next session resumes it. Auto-compaction reached means the clear was late; routine
-    /compact is not a tool. An autonomous programme cannot be cleared, so it stops at its stated
-    context cap (default 100k) instead of continuing.
+13. One cycle per session. Run every step and gate of the cycle without asking for a clear. Only
+    at the cycle's END: write STATUS.md with §5 "context handoff", log a HANDOFF entry with the
+    context size and the number of compactions this session, and raise "Owner action N: `/clear`
+    this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and CYCLE-LOG carry
+    what is done, what is next and what was ruled out — if they do not, write that first. A halt
+    for an owner GO is not a clear; wait, and resume on the next `update`. You cannot clear
+    yourself; the owner does it.
+14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle.
+    Auto-compaction inside a cycle is normal and expected — it fires around 180k, you carry on.
+    Never ask for a clear because compaction is approaching, and never stop work because it fired.
+    STATUS.md at every step boundary is what makes compaction safe; keep that rule. Manual /compact
+    is rarely needed and never at cycle END. A programme runs across compactions the same way and
+    stops only on a failed compaction or its resume cap.
     Sessions are free — never consolidate work into a long-lived session to save cost, and never
     treat a fresh session as a cost. MCP servers, plugins and skills not needed this cycle stay
     off. Simple subagents (search, read, grep) run on the cheapest capable model; advisor and
