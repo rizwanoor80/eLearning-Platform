@@ -3,7 +3,7 @@
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
 _v1.3 (cycle 03, rulings R32–R36, ADR-004; describes what shipped): adds `year_groups` — year group becomes a controlled list per curriculum (R33), so `learners` and `tutor_subjects` point at it and keep their old free text only in `*_legacy` columns; `tutor_profiles` gains `submitted_at` and the status lifecycle is one table of allowed edges (R36); `content_blocks` also carries the match-request budget labels (R35); `TutorProfile::displayName()` is the one public name (R32)._
-_v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped — three deviations from v1.3's forward-looking design, called out inline below): `lessons` gains its CP3 columns exactly as v1.3 specified (money frozen at booking, room/completion/cancellation fields), `tutor_strikes` and `ledger_entries` (with an enforcing `BEFORE UPDATE OR DELETE` trigger, not just application-level discipline) built as speculated, `payments` built as speculated with one addition (`lesson_id` unique). The one real schema deviation: overlap protection is now two constraints, not one — see "Overlap protection" under `### lessons`._
+_v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped): two real schema deviations from v1.3's forward-looking design, plus one implementation-detail note, all called out inline below. `lessons` gains its CP3 columns exactly as v1.3 specified (money frozen at booking, room/completion/cancellation fields); `tutor_strikes` built as speculated. Schema deviation 1 — overlap protection is now two constraints, not one, see "Overlap protection" under `### lessons`. Schema deviation 2 — `payments.lesson_id` is UNIQUE, see `### payments`. Implementation-detail note — `ledger_entries` enforces append-only with a DB-level `BEFORE UPDATE OR DELETE` trigger, not just application discipline, see `### ledger_entries`; this was always the stated design (the table's v1.3 prose already said "append-only"), so it is not counted as a schema deviation._
 
 ## ERD
 
@@ -142,6 +142,7 @@ timestamps
 `id, lesson_id (nullable), payout_id (nullable), dispute_id (nullable), account (enum: escrow|tutor|platform|refund), tutor_profile_id (nullable), type (enum: hold|release_tutor|release_commission|refund|goodwill|payout), amount (signed fils), memo, created_by_user_id (nullable), created_at`
 - Invariant: for any lesson, sum of all entries across accounts = 0 after every transaction.
 - `platform` may go negative on a single lesson (goodwill refund). That is allowed and expected.
+- **v1.4 implementation-detail note:** append-only is enforced by a DB-level `BEFORE UPDATE OR DELETE` trigger (`ledger_entries_are_append_only()` / `ledger_entries_no_update_delete`), not application discipline alone. Not counted as a schema deviation — the table's own heading already stated "append-only" in v1.3.
 
 **Tutor balance buckets** (derived, never stored as a single number):
 | Bucket | Definition |

@@ -172,6 +172,41 @@ it('books at the trial-discounted price even when that price falls below the tut
     expect($trial->price->toFils())->toBe(2500);
 });
 
+/**
+ * R53 ("a test proving preview and booked price agree across the whole band
+ * table including an odd-fils case"): TutorOnboardingBankSubjectsRateTest.php
+ * already proves the onboarding preview prop equals TutorProfile::trialPrice()
+ * for these same three rates, but never books a lesson — so it cannot prove
+ * "booked price" agrees with anything. This test books an actual trial for
+ * each rate and asserts the lesson's frozen price equals trialPrice() read
+ * fresh from the database, closing that gap. Same three cases as the
+ * onboarding dataset: band minimum, band maximum, and the docblock's own
+ * odd-fils worked example (10001 @ 50% -> 5000, not the old formula's 5001).
+ */
+it('books a trial at exactly TutorProfile::trialPrice(), agreeing across the band table including an odd-fils case', function (int $hourlyRateFils, int $discountPct, int $expectedTrialFils) {
+    Settings::set('trial_discount_pct', $discountPct);
+
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup(['hourly_rate' => $hourlyRateFils]);
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
+
+    expect($tutor->trialPrice()->toFils())->toBe($expectedTrialFils);
+
+    $trial = app(BookLesson::class)($parent, $learner, $tutor, [
+        'curriculum_id' => $curriculumId,
+        'subject_id' => $subjectId,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]);
+
+    expect($trial->type)->toBe(LessonType::Trial)
+        ->and($trial->price->toFils())->toBe($expectedTrialFils)
+        ->and($trial->price->toFils())->toBe($tutor->fresh()->trialPrice()->toFils());
+})->with([
+    // bookableTutorSetup()'s own PriceBand is min_rate 5000, max_rate 20000.
+    'band minimum, even split (5000 @ 25% -> 3750)' => [5000, 25, 3750],
+    'band maximum, even split (20000 @ 25% -> 15000)' => [20000, 25, 15000],
+    'the docblock\'s own odd-fils example (10001 @ 50% -> 5000, not 5001)' => [10001, 50, 5000],
+]);
+
 it('stores a Dubai-timezone booking request as UTC on the raw row', function () {
     ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
     ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
