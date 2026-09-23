@@ -24,9 +24,12 @@ use App\Services\Lessons\LessonStateMachine;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentCaptureResult;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 // 2026-09-14 06:00 UTC is a Monday; Tuesday is weekday 2 (Sunday = 0) — same
@@ -411,6 +414,51 @@ it('refuses to book a subject the tutor does not teach', function () {
         'subject_id' => $otherSubject->id,
         'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
     ]))->toThrow(BookingException::class);
+});
+
+it('refuses a second learner racing the same tutor slot at the database, not just the app-level check, leaving exactly one confirmed lesson and one HOLD behind (R74 in-process concurrency proof)', function () {
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
+    ['parent' => $firstParent, 'learner' => $firstLearner] = parentAndLearner($curriculumId);
+    ['parent' => $secondParent, 'learner' => $secondLearner] = parentAndLearner($curriculumId);
+    $slot = ['curriculum_id' => $curriculumId, 'subject_id' => $subjectId, 'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC')];
+
+    // Both learners' requests are served the same pre-race availability, exactly what two
+    // concurrent readers would each have seen before either write lands — the "slot no longer
+    // available" app-level check (BookLesson.php:80) never fires, so the second call reaches
+    // LessonStateMachine::open() and the real database constraint decides it.
+    $staleSlots = app(SlotCalculator::class)->forTutor($tutor, 'UTC');
+    app()->instance(SlotCalculator::class, new class($staleSlots) extends SlotCalculator
+    {
+        public function __construct(private readonly array $staleSlots) {}
+
+        public function forTutor(TutorProfile $tutor, string $timezone, ?CarbonInterface $now = null, ?int $withinDays = null): array
+        {
+            return $this->staleSlots;
+        }
+    });
+
+    $book = app(BookLesson::class);
+    $winner = $book($firstParent, $firstLearner, $tutor, $slot);
+    expect($winner->status)->toBe(LessonStatus::Confirmed);
+
+    $caught = null;
+    try {
+        $book($secondParent, $secondLearner, $tutor, $slot);
+    } catch (BookingException $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->not->toBeNull()
+        ->and($caught->getPrevious())->toBeInstanceOf(QueryException::class)
+        ->and($caught->getPrevious()->getMessage())->toMatch('/lessons_tutor_slot_unique|lessons_tutor_no_overlap/');
+
+    expect(Lesson::query()->where('tutor_profile_id', $tutor->id)->count())->toBe(1)
+        ->and(Lesson::query()->findOrFail($winner->id)->status)->toBe(LessonStatus::Confirmed)
+        ->and(Payment::query()->count())->toBe(1);
+
+    $hold = LedgerEntry::query()->where('lesson_id', $winner->id)->get();
+    expect($hold->sum('amount'))->toBe(0)
+        ->and($hold->firstWhere('account', LedgerAccount::Escrow)->amount)->toBe($winner->price->toFils());
 });
 
 it('refuses to book a slot the tutor has no availability for', function () {

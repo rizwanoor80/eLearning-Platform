@@ -8,6 +8,7 @@ use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Support\Facades\Settings;
 
 function bankReadyTutor(): User
 {
@@ -153,6 +154,42 @@ it('accepts an hourly rate within the price band', function () {
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
     expect($profile->hourly_rate->toFils())->toBe(15000);
 });
+
+/**
+ * R53: the onboarding preview must be `TutorProfile::trialPrice()` itself, not
+ * an independently recomputed `100 - pct` formula (which rounds the wrong way
+ * on an odd fil — see the docblock on `TutorProfile::trialPrice()`). Table
+ * covers a band-minimum rate, a band-maximum rate, and the docblock's own
+ * 10001@50% worked example, which is the exact case the old formula got wrong
+ * (5001 instead of the correct 5000).
+ */
+it('previews the trial price via TutorProfile::trialPrice(), agreeing with it exactly across the band table including an odd-fils case', function (int $minRate, int $maxRate, string $hourlyRate, int $discountPct, int $expectedTrialFils) {
+    Settings::set('trial_discount_pct', $discountPct);
+
+    [$tutor, $curriculum, $subject] = subjectsReadyTutor();
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculum->id,
+        'level_tier' => LevelTier::Exam1,
+        'min_rate' => $minRate,
+        'max_rate' => $maxRate,
+        'effective_from' => now()->subYear()->toDateString(),
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => $hourlyRate]);
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->trialPrice()->toFils())->toBe($expectedTrialFils);
+
+    $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
+
+    $response->assertInertia(fn ($page) => $page->where('trialPriceFils', $expectedTrialFils));
+})->with([
+    'band minimum, even split' => [10000, 20000, '100.00', 25, 7500],
+    'band maximum, even split' => [10000, 20000, '200.00', 25, 15000],
+    'the docblock\'s own odd-fils example (10001 @ 50% -> 5000, not 5001)' => [10000, 20000, '100.01', 50, 5000],
+]);
 
 it('refuses the rate step before any subject has been added', function () {
     $tutor = bankReadyTutor();

@@ -1,8 +1,9 @@
-# DATA MODEL — v1.3
+# DATA MODEL — v1.4
 
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
 _v1.3 (cycle 03, rulings R32–R36, ADR-004; describes what shipped): adds `year_groups` — year group becomes a controlled list per curriculum (R33), so `learners` and `tutor_subjects` point at it and keep their old free text only in `*_legacy` columns; `tutor_profiles` gains `submitted_at` and the status lifecycle is one table of allowed edges (R36); `content_blocks` also carries the match-request budget labels (R35); `TutorProfile::displayName()` is the one public name (R32)._
+_v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped — three deviations from v1.3's forward-looking design, called out inline below): `lessons` gains its CP3 columns exactly as v1.3 specified (money frozen at booking, room/completion/cancellation fields), `tutor_strikes` and `ledger_entries` (with an enforcing `BEFORE UPDATE OR DELETE` trigger, not just application-level discipline) built as speculated, `payments` built as speculated with one addition (`lesson_id` unique). The one real schema deviation: overlap protection is now two constraints, not one — see "Overlap protection" under `### lessons`._
 
 ## ERD
 
@@ -127,7 +128,7 @@ timestamps
 ```
 - Indexes: `(tutor_profile_id, starts_at)`, `(learner_id, starts_at)`, `(status)`, `(report_due_at)`, `(next_charge_at) WHERE status = 'reserved'`.
 - Unique partial index `(learner_id, tutor_profile_id) WHERE type = 'trial' AND status NOT IN (cancelled states)` — one trial per pair.
-- Overlap protection: unique partial index on `(tutor_profile_id, starts_at) WHERE status NOT IN ('expired','cancelled_by_parent','cancelled_by_tutor','cancelled_payment_failed','refunded')` plus a transactional check in `BookLesson`.
+- **Overlap protection, v1.4 — two constraints, not one (deviation from v1.3):** the CP2 unique partial index `lessons_tutor_slot_unique` on `(tutor_profile_id, starts_at) WHERE status NOT IN (freeing states)` only catches two lessons sharing the exact same `starts_at`. It cannot catch a tutor whose availability sits on different grid offsets (e.g. one rule at :00, another at :30) producing two bookable slots that genuinely overlap without sharing a `starts_at`. 3c adds `lessons_tutor_no_overlap`, an additive `EXCLUDE USING gist (tutor_profile_id WITH =, tsrange(starts_at, ends_at, '[)') WITH &&) WHERE (status NOT IN (freeing states))` (requires `CREATE EXTENSION btree_gist`; `tsrange` not `tstzrange` because casting a `timestamp without time zone` column to `timestamptz` inside a GiST index expression is STABLE, not IMMUTABLE, which Postgres refuses). Both constraints stand; `BookLesson` catches either violation transactionally and translates it to a `BookingException` naming which one fired.
 
 ### progress_reports
 `id, lesson_id (unique), tutor_profile_id, topics_covered, went_well, work_on_next, homework, engagement (1–5), trial_suitability (nullable enum: good_fit|partial_fit|not_a_fit), trial_recommended_frequency (nullable int 1–3), trial_focus_areas (nullable text), submitted_at, emailed_at, timestamps`
@@ -135,6 +136,7 @@ timestamps
 
 ### payments
 `id, lesson_id, payer_user_id, payment_method_id (nullable), gateway (string), gateway_ref, amount, currency (AED), status (pending|captured|failed|refunded|partially_refunded), refunded_amount, failure_reason, raw_response (json), timestamps`
+- **v1.4 addition (deviation from v1.3):** `lesson_id` is UNIQUE — one lesson has at most one payment row in v1 (a lesson never re-books after a failed capture; `BookLesson` creates a fresh lesson instead). The uniqueness doubles as the idempotency guard when `BookLesson` writes this row immediately after a successful capture.
 
 ### ledger_entries  (append-only — never updated or deleted)
 `id, lesson_id (nullable), payout_id (nullable), dispute_id (nullable), account (enum: escrow|tutor|platform|refund), tutor_profile_id (nullable), type (enum: hold|release_tutor|release_commission|refund|goodwill|payout), amount (signed fils), memo, created_by_user_id (nullable), created_at`
