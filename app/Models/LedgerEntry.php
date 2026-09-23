@@ -28,6 +28,8 @@ use LogicException;
  * @property string|null $memo
  * @property int|null $created_by_user_id
  * @property Carbon|null $created_at
+ *
+ * No factory by design — invariant #1: entries are written only by LedgerService::write().
  */
 class LedgerEntry extends Model
 {
