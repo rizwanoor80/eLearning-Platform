@@ -25,6 +25,35 @@ it('computes a percentage, rounding half-up on fils', function () {
         ->and(Money::fils(99)->percentage(25)->toFils())->toBe(25);
 });
 
+it('splits a commission with the remainder fil landing on the commission side', function () {
+    // 12345 @ 25%: exact tutor share is 9258.75 — truncation gives the tutor
+    // 9258, not the half-up 9259 that percentage(25) would produce.
+    $split = Money::fils(12345)->splitCommission(25);
+
+    expect($split['tutor']->toFils())->toBe(9258)
+        ->and($split['commission']->toFils())->toBe(3087)
+        ->and($split['tutor']->add($split['commission'])->toFils())->toBe(12345);
+});
+
+it('splits an odd-fils price where the naive half-up formula would disagree', function () {
+    // 101 @ 25%: exact tutor share is 75.75 — truncation gives 75, and the
+    // rejected `price->percentage(100 - pct)` approach would also give 75
+    // here, but a `price->percentage($pct)`-then-subtract approach would
+    // round the commission to 25 and hand the tutor the wrong remainder (76).
+    $split = Money::fils(101)->splitCommission(25);
+
+    expect($split['tutor']->toFils())->toBe(75)
+        ->and($split['commission']->toFils())->toBe(26)
+        ->and($split['tutor']->add($split['commission'])->toFils())->toBe(101);
+});
+
+it('splits an evenly-divisible price with no remainder', function () {
+    $split = Money::fils(10000)->splitCommission(25);
+
+    expect($split['tutor']->toFils())->toBe(7500)
+        ->and($split['commission']->toFils())->toBe(2500);
+});
+
 it('does not leak float rounding error through decimal string parsing', function () {
     $sum = Money::fromDecimalString('0.1')->add(Money::fromDecimalString('0.2'));
 

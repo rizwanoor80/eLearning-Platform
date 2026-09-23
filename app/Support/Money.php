@@ -67,6 +67,21 @@ final readonly class Money implements Castable, JsonSerializable
         return new self(intdiv($this->fils * $percent + 50, 100));
     }
 
+    /**
+     * Split into tutor/commission shares for a lesson price. Tutor share is
+     * truncated first; commission takes the remainder, so an odd fil always
+     * lands on the commission side (R53) — never `percentage($pct)` here,
+     * which rounds half-up and can hand the tutor the remainder instead.
+     *
+     * @return array{tutor: self, commission: self}
+     */
+    public function splitCommission(int $commissionPct): array
+    {
+        $tutor = new self(intdiv($this->fils * (100 - $commissionPct), 100));
+
+        return ['tutor' => $tutor, 'commission' => $this->subtract($tutor)];
+    }
+
     public function isZero(): bool
     {
         return $this->fils === 0;

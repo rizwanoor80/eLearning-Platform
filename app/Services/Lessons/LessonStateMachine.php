@@ -7,6 +7,7 @@ use App\Events\Lessons\LessonStatusChanged;
 use App\Exceptions\LessonTransitionException;
 use App\Models\Lesson;
 use Closure;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -102,6 +103,9 @@ final class LessonStateMachine
      * @param  array<string, mixed>  $attributes
      *
      * @throws LessonTransitionException
+     * @throws QueryException a caller-visible DB constraint (e.g. the overlap
+     *                        exclusion or the one-trial-per-pair partial unique index) rejected the
+     *                        insert; this method does not translate it, the caller does
      */
     public static function open(array $attributes, LessonStatus $initial): Lesson
     {
