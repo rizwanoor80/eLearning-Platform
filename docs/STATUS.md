@@ -1,64 +1,60 @@
-# STATUS — cycle 04 r3 (CP3) — written 2026-09-23 13:15 — Context: 119.2k/200k (60%, auto-compacts at 84%; this session inherited an already-disclosed auto-compaction breach from the prior session and has now independently passed its own 100k in-step ceiling — see §5)
-Tests: **1005/1005 passed, 4588 assertions, run this session** (Pint/PHPStan/RTL/`ledger:verify` also green) — reproduces `4d3ed3c`'s previously-unverified commit-message claim exactly · Advisor: 0 this session (none needed — the prior session's 12:30 ADVISOR entry already covers this session's stop/hand-off decision; cycle 04 total unchanged at 4, all model-unreported/configured-not-measured, carried); cycle 03 consulted 11 times (closed) · Review: 3a done (0 Medium/High, 9 Low, 3 fixed fix loop 1); 3b review **not yet run** — PR #12 open, ready
+# STATUS — cycle 04 r4 (CP3) — written 2026-09-23 14:10 — Context: 152.8k/200k (76%, auto-compacts at 84%; past the 100k in-step ceiling — see §5)
+Tests: **1005/1005 passed, 4588 assertions** (unchanged, carried from the 13:10 run this cycle — no suite run this session) · Advisor: 0 this session (cycle 04 total unchanged at 4, all "configured, not measured" per R63; the pre-review consult is still owed — R66 item 4) · Review: 3a done (0 Medium/High); 3b review **still not run** — PR #12 open, green, mergeable, unchanged
 
 ## §1 Git state
-`main` = `a6a9a1e` (this session's VERIFICATION/DEVIATION/HANDOFF entries, pushed). `cp/3b-state-machine` = pushed to `origin`, 10 commits ahead of `origin/main`. **PR #12 open:** https://github.com/rizwanoor80/eLearning-Platform/pull/12 (base `main`, head `cp/3b-state-machine`), body carries the six-point review brief and the test-plan summary. `git diff --name-only origin/main...HEAD -- docs/` on the branch: empty. Full diff: 23 files, matching the 07:55 DECISION's pre-declared list plus one undeclared `phpunit.xml` line (DEVIATION, non-behavioural). trustutor-rehearsal runs `50d53ee`, behind `main` — expected, push-to-deploy OFF (R41). Branch protection on `main`: not set (carried, R23). `.claude/settings.local.json` (R14): not created — optional, carried.
+`main` = `171fe37` (this session's PLAN r4 commit, pushed). `cp/3b-state-machine` = pushed to `origin`, unchanged at `07e7b7f`, 10 commits ahead of `origin/main`. **PR #12 open, confirmed this session via `gh pr view 12`:** head `07e7b7f`, CI check "CI" COMPLETED/SUCCESS, `mergeable: MERGEABLE` — https://github.com/rizwanoor80/eLearning-Platform/pull/12. trustutor-rehearsal unchanged, behind `main` (push-to-deploy OFF, R41). Branch protection on `main`: not set (carried, R23).
 
-## §2 Step map (cycle 04 r3 — CP3, an autonomous programme, R50)
-1. `cp/3a-lows` — **merged** `b75d6e9` (PR #11): the R42 Lows pass; search pagination not built (Owner action, carried below).
-2. `cp/3b-state-machine` — **in progress.** Code built and verified (`lessons`, `tutor_strikes`, `ledger_entries`, `LessonStateMachine`, `LedgerService` — R51, R52), suite run and green this session (1005/1005, 4588 assertions), `npm run build` green, branch pushed, **PR #12 open**. **Remaining:** fresh-subagent adversarial review, fix loop (cap 2), merge under R50's rule or an owner GO.
-3. `cp/3c-booking` — not started — `BookLesson`, `FakePaymentGateway`, money freezing (R53, R56). **Halts for the backend-dev GO before merge (R55).**
-4. `cp/3d-cancellation` — not started — `CancelLesson`, `SkipLesson`, strikes.
-5. `cp/3e-dashboards-emails` — not started — dashboards, CP3 emails, reminders, R54 deletion behaviour.
-6. Programme end and rehearsal deploy — not started — docs per R57; halt with the Deploy action.
+## §2 Step map (cycle 04 r4 — CP3, an autonomous programme, R50)
+1. `cp/3a-lows` — **merged** `b75d6e9` (PR #11).
+2. `cp/3b-state-machine` — **in progress.** Code built, suite verified green last session (1005/1005, 4588 assertions), PR #12 open and confirmed green/mergeable this session. PLAN r4 committed to `main` this session (`171fe37`). **Remaining, exactly R66 items 4–10:** advisor consult on the PR diff, fresh-subagent adversarial review, fix loop (cap 2), merge under R50's rule, post-merge record, read-only smoke, then continue to step 3.
+3. `cp/3c-booking` — not started — halts for the backend-dev GO before merge (R55).
+4. `cp/3d-cancellation` — not started.
+5. `cp/3e-dashboards-emails` — not started.
+6. Programme end and rehearsal deploy — not started — halt with the Deploy action.
 
 ## §3 What changed this run
-- Confirmed, read-only, that PostgreSQL and Redis are up on Herd (owner started them between sessions) — the prior session's Owner action 1 is satisfied.
-- Ran the full suite for the first time this cycle (`COMPOSER_PROCESS_TIMEOUT=1200 composer.bat test`, backgrounded, output to a file, no pipe): Pint passed, PHPStan passed (0 errors), RTL grep passed, Pest **1005/1005 tests, 4588 assertions**, `ledger:verify` — every lesson sums to zero. This reproduces `4d3ed3c`'s previously-unverified commit-message claim exactly, closing that mismatch.
-- Ran `npm run build`: green, exit 0, built in 31.52s.
-- Pushed `cp/3b-state-machine` to `origin` and opened **PR #12** with a six-point review brief: frozen-file status (created not edited), R59/R60 authorisation for `ci.yml`/`CLAUDE.md`, the `gateway`/RELEASE-split deviation from DATA_MODEL v1.3, the forward-dated `LedgerService.php:30` docblock reference, the `phpunit.xml` `memory_limit` line, and the disclosed-not-reconciled commit-date mismatch.
-- Disclosed a second stale `.git/index.lock` removal (NOTE, same verified-safe procedure as before) and a small undeclared `phpunit.xml` change (`memory_limit` bump — DEVIATION, non-behavioural, already present in `4d3ed3c`, not added this session).
-- Measured this session's context via `get_usage`: 119,200/200,000 (60%) — past the 100k in-step ceiling. Stopping before the fresh-subagent adversarial review, which is new work, per CLAUDE.md rule 14.
+- Read HOW-WE-WORK.md, PROJECT_BRIEF.md, PRD.md, DATA_MODEL.md, CHECKPOINTS.md, PLAN.md (r4, uncommitted), STATUS.md, tail of CYCLE-LOG.md per CLAUDE.md's session-start order.
+- Measured context via `get_usage`: 133,981/200,000 (67%) on first check — already past R64(b)'s 40k continuation line and the 100k ceiling, despite a preceding owner `/clear`. Logged as a DEVIATION (context should have been checked before the doc reads, per R64(b) literally) and a NOTE with the overhead breakdown (CYCLE-LOG 14:00).
+- Fourth occurrence of the stale `.git/index.lock` blocked `git stash`/`git switch`; verified no `git.exe` running, file 0 bytes, removed per R65's standing procedure; raised as a Medium process item per R65's fourth-occurrence clause (see §6).
+- Confirmed via `gh pr view 12` that PR #12 is unchanged: head `07e7b7f`, CI green, mergeable.
+- Committed and pushed PLAN.md cycle 04 r4 to `main` (`171fe37`), satisfying R66 item 3.
+- Re-measured context: 152,841/200,000 (76%). Stopped before R66 items 4–10 (advisor consult, subagent review, fix loop, merge, post-merge record, smoke) — each is new work that will not fit the remaining ~15k-token budget before auto-compaction, per R64(b) and HOW-WE-WORK rule 14.
 
 ## §4 Decisions and by whom
-- Owner rulings (via the planner), carried unchanged: R50–R62 (see PLAN.md; no new PLAN revision this session — still r3, no END logged against it).
-- CC decisions this session: run the suite and push/open the PR (both were the explicit, already-queued next unblocking action, not new discretionary work) before stopping; defer the adversarial review itself (a new, discretionary, heavier step) to the next session, matching the prior session's own advisor guidance for the same class of decision rather than re-consulting the advisor for an equivalent call.
+- Owner rulings (via the planner), carried unchanged: R50–R66 (PLAN.md r4; PLAN r4 itself is a planner document, committed by CC this session as the loop requires — no new ruling made by CC).
+- CC decisions this session: commit PLAN r4 and confirm PR #12's state before stopping (both cheap, read-only-or-required bookkeeping, not new discretionary work); defer R66 items 4–10 to a fresh session rather than attempt them inside a ~15k-token remaining budget.
 
 ## §5 Why stopping
-**Session-boundary discipline (CLAUDE.md rule 14), the same reason as the prior halt, now recurring within this continuation:** this session is itself a continuation (no owner `/clear` occurred) of the session that disclosed an auto-compaction breach at 105k/200k tokens. This session's own measured context is now 119,200/200,000 (60%), past the 100k in-step ceiling. Everything queued and safe to finish was finished — suite run and green, branch pushed, PR #12 opened and complete, logs current. The fresh-subagent adversarial review is explicitly new work (spawning a subagent, reading numbered verdicts, potentially running a fix loop) and is left for a fresh session with a full context budget, per rule 14's "stop taking on new work" and rule 13's "raise the clear action... nothing half-written."
+**Context ceiling, reached before the step's new work could start.** This session opened at 133,981/200,000 (67%) immediately after the required session-start reads — already past the 100k in-step ceiling — and reached 152,841/200,000 (76%) after the git/PLAN bookkeeping in §3. R66 items 4–10 (advisor consult, fresh-subagent review, fix loop, merge, post-merge record, smoke check) are each new, heavier work that cannot safely start this close to the 84% auto-compaction line. Per HOW-WE-WORK rule 14 and PLAN R64(b): stopping, nothing half-written — PLAN r4 is committed, PR #12 is confirmed unchanged and ready, logs are current.
 
 ## §6 Mismatches
-- **Unverified test count — CLOSED this session:** suite run, 1005/1005 tests, 4588 assertions, matches `4d3ed3c`'s claim exactly.
-- **Services-down blocker — CLOSED this session:** both confirmed up, read-only checks only, Herd not touched by this session.
-- **Advisor-model-naming gap (carried, still open):** none of cycle 04's four ADVISOR entries name a responding model — the tool does not report which model answered. PROJECT_BRIEF names Fable 5.1 as the *configured* advisor, a configuration fact not a per-call measurement. Owner action below, non-blocking, unchanged from the prior STATUS.
-- **Commit-date / log-date mismatch (carried, disclosed, not reconciled):** `4d3ed3c`/`9f80bda` carry author/committer dates earlier than the 2026-09-21 CYCLE-LOG entries describing the design work preceding their build. Already in the PR #12 review brief; does not affect correctness (independently verified against the pinned design).
-- **New, Low:** `phpunit.xml` carries one undeclared line (`memory_limit` bump) not in the 07:55 DECISION's file list — non-behavioural, flagged for the reviewer (CYCLE-LOG DEVIATION, 13:10).
-- **New, Low, process only:** the stale `.git/index.lock` recurred a second time in this window. Not a code or data risk; worth the owner's attention if it keeps recurring.
-- **Search pagination not built (Owner action, carried):** in-memory paging kept as-is (CYCLE-LOG 05:22, 3a).
-- **Rehearsal server:** behind `main` by design (push-to-deploy OFF, R41); not touched this session.
-- **Branch protection on `main` not set** (owner action, carried; R23).
+- **New, for an owner ruling — session baseline overhead exceeds R64's thresholds by itself.** Immediately after `/clear`, before any project file was read, this session's fixed overhead was System tools 47,262 + MCP tools 16,495 + System prompt 10,866 + Memory files 7,010 = 81,633 tokens (41% of the 200k window). Adding CLAUDE.md's mandatory session-start reads (HOW-WE-WORK, PROJECT_BRIEF, PRD, DATA_MODEL, CHECKPOINTS, PLAN, STATUS ≈ 20–30k tokens) puts a maximally-fresh session at ~110–130k before any step work begins — meaning R66 items 4–10 (a subagent spawn plus a fix loop) may not fit in **any** session under the current 100k ceiling and current tool loadout, not just a carried-over one. R62 ("MCP servers, plugins and skills not needed for CP3 stay off") assumes this is reachable from inside the session; it is not — there is no `/config` available here. Recommend the owner (via the planner) either (a) trims the tool/MCP surface available to this CC window at the app level, or (b) raises the in-step ceiling for step 2 specifically as a named ruling, or (c) splits R66 items 4–10 across two sessions (advisor consult + review spawn in one, fix loop + merge + smoke in the next). This is a new finding, not yet an owner action below because it needs a ruling, not a one-off task.
+- **`.git/index.lock`, fourth occurrence (Medium, per R65's own escalation clause):** blocked this session's `git stash`/`git switch` at session start. Verified stale (no `git.exe` running, 0 bytes) and removed per the standing procedure, but four occurrences now (2026-09-21 05:00, 2026-09-23 12:29, 13:00, and this session) warrants the owner investigating the mount R65 names (the planner's Cowork seat reading the repo through a mounted folder while CC works the same checkout).
+- **Advisor-model-naming — CLOSED by R63** (carried note only): resolved by the planner's ruling; no longer open.
+- **Commit-date / log-date mismatch (carried, disclosed, not reconciled):** unchanged from the last STATUS; already in PR #12's review brief for the reviewer.
+- **`phpunit.xml` undeclared line (carried, Low):** unchanged, already flagged for the reviewer.
+- **Search pagination not built (Owner action, carried).**
+- **Rehearsal server behind `main` by design (R41); branch protection on `main` not set (R23)** — both carried, unchanged.
 
 ## §7 Next step / Owner actions
-No owner action is required to unblock — services are up, the suite is green, PR #12 is open and complete. Two numbered items; each ends "reply `update` when done."
+- **Owner action 1 (Recommended): rule on the session-overhead mismatch in §6** — pick (a) trim this CC window's tool/MCP loadout, (b) raise step 2's context ceiling as a named ruling for this step only, or (c) split R66 items 4–10 across two more sessions (this is CC's own fallback recommendation if no ruling arrives — it will proceed on (c) by default next session, doing the advisor consult + review spawn only and leaving fix-loop/merge/smoke for the session after). Reason (c) is the fallback: it needs no owner action to proceed and matches how this step has already been splitting. Reply `update` when done, or take no action to let (c) proceed by default.
+- **Owner action 2 (carried, still open, non-blocking): the search-pagination question** — options unchanged from cycle-04-r1 STATUS (`git log -p` on this file). Reply `update` when done.
 
-- **Owner action 1 (Recommended, not blocking): reply `update`** to let the next session run the fresh-subagent adversarial review on PR #12 and proceed under R50's merge rule if it comes back clean (0 open Medium/High) — the standard path, no owner involvement needed unless the review finds Medium+ or the merge rule isn't met. Reason this is Option 1: PR #12 is already complete and self-documenting (the review brief is in the PR body), so the next session needs nothing further from the owner to start the review.
-- **Owner action 2 (does not block anything, carried unchanged): decide the advisor-model-citation question in §6.** Option 1 (Recommended): accept "configured, not measured, per PROJECT_BRIEF (Fable 5.1)" as satisfying R58's naming requirement, since the tool has no way to report the answering model. Option 2: read R58 down to "quote the tool's response text only" and drop the naming requirement in a future docs-only commit. Reply `update` when done.
+**Owner action, standing: `/clear` this session, then reply `update`.** Nothing is half-written: PLAN r4 is on `main`, PR #12 is confirmed green and mergeable, logs are current. Given §6's finding, the next session should expect to open already well above 40k from platform overhead alone — that is expected, not itself a fresh breach, unless it exceeds this session's own 133,981 starting point.
 
-**Owner action, standing: `/clear` this session, then reply `update`.** This session closed a clean unit of work (suite verified, branch pushed, PR opened, logs current) and is past its context ceiling — per HOW-WE-WORK v1.1 rule 13, this is the point to clear.
-
-Carried, optional: Owner action A (R7 branch protection on `main`, steps in cycle 01's CYCLE-LOG 18:35 BLOCKER); Owner action B (`.claude/settings.local.json`, ADR-002); Owner action C (search pagination, options in cycle-04-r1 STATUS, carried, see `git log -p` on this file if needed).
+Carried, optional: Owner action A (R7 branch protection on `main`); Owner action B (`.claude/settings.local.json`, ADR-002).
 
 ## §8 Programme board — CP3 (R50)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 3a Lows pass | **merged** (done except the pagination item) | `cp/3a-lows` | [#11](https://github.com/rizwanoor80/eLearning-Platform/pull/11) | 1 round; 14 verdicts, 0 Medium/High, Lows: 3 fixed in fix loop 1, rest carried | `b75d6e9` (R50) |
-| 3b state machine + ledger | **PR open, suite green, review pending** | `cp/3b-state-machine` | [#12](https://github.com/rizwanoor80/eLearning-Platform/pull/12) | not yet run | — |
-| 3c booking | not started — halts for the backend-dev GO (R55) | `cp/3c-booking` | — | — | — |
+| 3a Lows pass | **merged** | `cp/3a-lows` | [#11](https://github.com/rizwanoor80/eLearning-Platform/pull/11) | 0 Medium/High | `b75d6e9` (R50) |
+| 3b state machine + ledger | **PR open, green, mergeable, review still pending** | `cp/3b-state-machine` | [#12](https://github.com/rizwanoor80/eLearning-Platform/pull/12) | not yet run | — |
+| 3c booking | not started — halts for backend-dev GO (R55) | `cp/3c-booking` | — | — | — |
 | 3d cancellation | not started | `cp/3d-cancellation` | — | — | — |
 | 3e dashboards, emails, deletion | not started | `cp/3e-dashboards-emails` | — | — | — |
 | Programme end + rehearsal deploy | not started — halt | — | — | — | — |
 
-Resume count: 2 of 8 (this session resumed mid-step-2 via `update`, found services up, ran the suite, opened PR #12, halted again at the context ceiling before the review). Cycle 03 ("CP2.5") is complete: PRs #8–#10 merged. Cycle 02 (CP1–CP2) is complete: PRs #2–#7.
+Resume count: **3 of 8** (this session: resumed step 2, found context already over the ceiling from platform overhead, committed PLAN r4, confirmed PR #12, halted again before the review — a rule-(b) stop per R64(d)).
 
 ## Deferred (out of v1 scope — do not build)
 - Lesson packs / subscriptions / credits
