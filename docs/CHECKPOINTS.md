@@ -78,7 +78,7 @@ Acceptance
 
 ---
 
-## CP3 — Booking, trial, cancellation
+## CP3 — Booking, trial, cancellation — in progress (cycle 04 sub-cycle 3b merged `5471bcb`: `LessonStateMachine` full edge matrix per DATA_MODEL with a test per allowed and forbidden transition; append-only `ledger_entries` with HOLD/RELEASE/REFUND and the zero-sum invariant, `ledger:verify` wired into CI; `SETTLE`/`PAYOUT` declared, unused until CP5)
 **Goal:** a parent can book a single lesson (trial or regular); the lifecycle up to `confirmed` works; cancellations follow PRD §4. Money is stubbed with a fake gateway. **Backend dev reviews.**
 
 Tasks
@@ -91,7 +91,7 @@ Tasks
 - **Carried in from cycles 02–03:** `BookLesson` re-checks `TutorProfile::bookable()` and the permit at booking time (not only at search); the trial price is frozen on the lesson from `TutorProfile::trialPrice()` — the one place it is computed — and the onboarding trial-price preview (which rounds `100 − pct`) is unified with it; learner delete-guards and the user-delete behaviour are decided; the overlapping-offer transactional check; `whereDate` in `bookable()` is reviewed against the new index; search pagination moves out of memory. The plan for CP3 opens with the R42 Lows pass (year-group `withTrashed()` 500 and `sort` bound first).
 
 Acceptance
-- [ ] Every transition in the state diagram has a passing feature test; every invalid transition throws.
+- [x] Every transition in the state diagram has a passing feature test; every invalid transition throws. _(3b, `5471bcb`: `LessonStateMachineTest.php`, every DATA_MODEL edge including the CP4–CP6 ones per R51; independently re-verified by the fresh-subagent review against the actual diff.)_
 - [ ] First booking for a learner–tutor pair is `trial` at the discounted price; second is `regular` at full price; a cancelled trial does not consume the trial.
 - [ ] Double-booking the same tutor slot fails under concurrent requests (test with DB constraint).
 - [ ] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created.
