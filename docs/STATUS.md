@@ -3,8 +3,8 @@
 Tests: full suite on `cp/3d-cancellation` at `1294dd0`: **1074/1074 passed, 4891 assertions** — unchanged since the 14:41 gate run this cycle. All seven gates green (Pint, PHPStan, RTL grep, `ledger:verify`, `npm run build` — detail in CYCLE-LOG `14:41`). Advisor: 1 this cycle (design consult, CYCLE-LOG `14:35`). Review: 3a/3b/3c merged (see §8); **PR #14 (3d) reviewed this write — 13 PASS, 2 PASS WITH NOTE, 1 FAIL(Medium), 1 FAIL(Low) — left open, unmerged**, per the disposition in §5 below.
 
 ## §1 Git state
-`origin/main` at `9482375`, unchanged. Local `main` matches.
-`cp/3d-cancellation` pushed at `1294dd0` (two commits ahead of the merge base: the Throwable-catch first commit `0920716`, then this window's `CancelLesson`/`SkipLesson` implementation+tests+docs commit `1294dd0`). PR #14 open: https://github.com/rizwanoor80/eLearning-Platform/pull/14.
+`origin/main` at `a8adbdf` (this cycle's own halt-state docs commit), unchanged since. Local `main` matches.
+`cp/3d-cancellation` pushed at `fbdfad5` — a merge of `main` into the feature branch (CYCLE-LOG `15:31` NOTE) done after PR #14 turned `CONFLICTING` because `a8adbdf` landed on `main` with an older copy of the same two doc files already baked into `1294dd0`. Resolved by taking `main`'s newer copy for `docs/STATUS.md`/`docs/CYCLE-LOG.md`; no code touched. PR #14 is `MERGEABLE` again: https://github.com/rizwanoor80/eLearning-Platform/pull/14.
 Working tree: clean, nothing uncommitted. trustutor-rehearsal unchanged, not touched this cycle.
 
 ## §2 Step map (cycle 04 r8 — CP3, an autonomous programme, R50)
