@@ -1,57 +1,59 @@
-# STATUS — cycle 04 r8 (CP3) — written 2026-09-24 13:45 — Context: 128.2k/200k (64%), measured via `get_usage`
+# STATUS — cycle 04 r8 (CP3) — written 2026-09-24 15:12 — Context: 121.3k/200k (61%), measured via `get_usage`
 
-Tests: full suite re-run directly on merged `main` at `db4c36b` (`php artisan test`, Git Bash prepended to PATH so `rtl:check`'s shell-outs resolve; `composer test`'s own 300s process-timeout wrapper could not finish on this machine, same limit the round-2 reviewer hit — worked around by calling `php artisan test` directly, matching CI's own step): **1053/1053 passed, 4835 assertions** — unchanged from CI's count, suite did not shrink. Pint passed, PHPStan passed (0 errors), RTL grep passed. `php artisan ledger:verify` → "Ledger OK: every lesson sums to zero." `npm run build` → built in 40.14s, no errors. `curl` smoke on `http://project-elearning.test/`, `/login`, `/admin/login` → 200/200/200. CI: PR #13's last confirmed run (`35965654421`) on head `07970e3` was `SUCCESS`; the merge commit `df0aa88` was not separately re-run (merge to `main`, not a push to a PR branch). Advisor: 1 this write (built-in `advisor()` tool, full-transcript review, consulted before executing the merge per rule 11's production-affecting-judgment-call trigger — see §4; cycle 04 total for the CLAUDE.md-defined ADVISOR mechanism, quoting the R63 phrase, remains 20, unchanged, since this was the other advisor tool). Review: 3a done (0 Medium/High); 3b done (resolved by R70, merged); **3c: merged. Round-2 review had no open Medium/High; the R55 GO condition was met; owner gave explicit merge confirmation in chat.**
+Tests: full suite on `cp/3d-cancellation` at `1294dd0`: **1074/1074 passed, 4891 assertions** — unchanged since the 14:41 gate run this cycle. All seven gates green (Pint, PHPStan, RTL grep, `ledger:verify`, `npm run build` — detail in CYCLE-LOG `14:41`). Advisor: 1 this cycle (design consult, CYCLE-LOG `14:35`). Review: 3a/3b/3c merged (see §8); **PR #14 (3d) reviewed this write — 13 PASS, 2 PASS WITH NOTE, 1 FAIL(Medium), 1 FAIL(Low) — left open, unmerged**, per the disposition in §5 below.
 
 ## §1 Git state
-`origin/main` at `9482375` (three docs-only `[skip ci]` commits pushed this window: `d857728` pre-merge verification, `db4c36b` post-merge CHECKPOINTS.md record, `9482375` merge-outcome + smoke CYCLE-LOG entry — none needed confirmation per the owner's relaxed rule). Local `main` matches exactly.
-PR #13 **MERGED** — `gh pr view 13`: `state: MERGED`, `mergeCommit.oid: df0aa88e778412b47a466d5b8e9ec2c102b54824`, `mergedAt: 2026-09-24T09:33:25Z`. Merged with `--merge --match-head-commit 07970e34813a6f71ec6d03856e1c6365190121fb` (real merge commit, matching 3a/3b's own `git show --no-patch --format='%H %P %s'` two-parent shape, not a squash); no `--delete-branch` passed (`gh repo view --json deleteBranchOnMerge` → `false`; `cp/3c-booking` remains on the remote, CLAUDE.md forbids deleting anything but a merged `hold/<step>`).
-`cp/3d-cancellation` — **not yet branched.** Next action: branch from `main` at `9482375`.
-Working tree: clean. trustutor-rehearsal unchanged, behind `main` by design (R41), not touched this cycle.
+`origin/main` at `9482375`, unchanged. Local `main` matches.
+`cp/3d-cancellation` pushed at `1294dd0` (two commits ahead of the merge base: the Throwable-catch first commit `0920716`, then this window's `CancelLesson`/`SkipLesson` implementation+tests+docs commit `1294dd0`). PR #14 open: https://github.com/rizwanoor80/eLearning-Platform/pull/14.
+Working tree: clean, nothing uncommitted. trustutor-rehearsal unchanged, not touched this cycle.
 
 ## §2 Step map (cycle 04 r8 — CP3, an autonomous programme, R50)
 1. `cp/3a-lows` — **merged** `b75d6e9` (PR #11).
 2. `cp/3b-state-machine` — **merged** `5471bcb` (PR #12).
-3. `cp/3c-booking` — **merged** `df0aa88` (PR #13). Post-merge record and read-only smoke both done this window.
-4. `cp/3d-cancellation` — **starting now, same session per R77's own instruction.** First commit: the missing Throwable-catch test for `BookLesson.php:163` (round-2 review's one non-blocking Low finding, disposed per the owner's chat instruction rather than a separate micro-cycle). Then `CancelLesson`/`SkipLesson` per PLAN.md line 45's scope (PRD §4, frozen-window refund/strike logic, `tutor_strikes`, CP3 boxes 4 and 6). PR #14; fresh review; **halt: no** — self-merges under R50, no backend-dev GO required (unlike 3c).
-5. `cp/3e-dashboards-emails` — not started.
+3. `cp/3c-booking` — **merged** `df0aa88` (PR #13).
+4. `cp/3d-cancellation` — **PR #14 open, halted for an owner decision.** Code and tests complete, all seven gates green, committed and pushed. The fresh-subagent review found 1 Medium + 1 Low FAIL, both in code files (not doc-only) — per HOW-WE-WORK rule 6 and R50's own merge-rule text, this does not self-fix-and-merge; it stops and returns to the owner. See §7 Owner action 1.
+5. `cp/3e-dashboards-emails` — not started. Not begun this write: the step map is a sequential list in PLAN.md, not a set of independent items, and starting it while PR #14 sits open on an unresolved review would widen scope without authorisation.
 6. Programme end and rehearsal deploy — not started — halt with the Deploy action.
 
 ## §3 What changed this run
-- Owner gave explicit merge confirmation in chat: *"yes, merge PR #13. Add the BookLesson Throwable-catch test as the first commit of cp/3d-cancellation."* Logged as ADVICE per rule 8 before acting.
-- Re-verified all four R50 clauses fresh on PR #13's exact current head (`07970e3`) immediately before merging — review clean, CI green, diff scope within step 3's authorised areas with no frozen-file violation (neither `LedgerService.php`'s nor `LessonStateMachine.php`'s freeze has taken effect yet — CP3 itself is still in progress), R55 GO (both PLAN r8's conditional grant and the owner's fresh explicit "yes").
-- Consulted the built-in `advisor()` tool before executing the merge (rule 11 trigger: production-affecting judgment call). Its advice was followed in full: re-checked PR state immediately before merging rather than trusting the earlier-window check; used `--match-head-commit` so GitHub would refuse if the head had moved; determined the merge method from 3a/3b's actual commit shape (`--merge`, not squash) instead of guessing; confirmed `--delete-branch` was never going to be passed; copied 3b's post-merge record shape instead of inventing a new one; planned the Throwable-catch test's acceptance check as a mutation (revert the catch, confirm the new test fails, restore it), not just a green run; read step 4's full PLAN.md text before scoping past the first commit (done — see §2).
-- Merged PR #13 (`gh pr merge 13 --merge --match-head-commit ...`) → `df0aa88`. Local `main` fast-forwarded; diff matched PR #13's own 30-file/1700-insertion diff exactly.
-- Post-merge record: CHECKPOINTS.md CP3 header updated (3c merged `df0aa88`, scope summarised); Acceptance boxes 2 and 3 checked with `BookLessonTest.php` test-name citations. No new ADR — R57 names only ADR-008/009/010, already written for 3b; no PLAN ruling calls for a 3c-specific ADR. DATA_MODEL.md's v1.4 update was already inside PR #13's own diff.
-- Read-only smoke on `main` at the merged head: full suite (1053/4835, unchanged), `ledger:verify` clean, `npm run build` clean, `/`/`/login`/`/admin/login` all 200. Details and exact commands in CYCLE-LOG's `13:41` DECISION entry.
-- R77 item 7 is now fully closed end-to-end: round-2 review, re-verification, owner GO, merge, post-merge record, read-only smoke.
+- Committed `1294dd0` on `cp/3d-cancellation`: the `CancelLesson`/`SkipLesson` implementation (9 app files), both test files (20 tests, 50 assertions), and this cycle's `docs/CHECKPOINTS.md`/`docs/CYCLE-LOG.md`/`docs/STATUS.md` updates — 14 files, 795 insertions/41 deletions.
+- Quoted `git log origin/main..HEAD` before pushing (rule 7): `1294dd0`, `1485204` (merge of `main`), `0920716`. Pushed `1485204..1294dd0`.
+- Opened PR #14 (`cp/3d-cancellation` → `main`), body listing scope and the seven green gates.
+- Ran the fresh-subagent adversarial review (general-purpose agent, no prior context, given the diff plus a checklist derived from CLAUDE.md's domain invariants, frozen-file list, scope guard, and code conventions). Full 15-item verdict list logged verbatim in CYCLE-LOG `15:10` REVIEW.
+- Result: 13 PASS, 2 PASS WITH NOTE, 1 FAIL(Medium), 1 FAIL(Low) — both FAILs in code (`CancelLesson.php`, `SkipLesson.php`). No frozen file or migration touched.
 
 ## §4 Decisions and by whom
-- Owner/planner rulings carried: R50, R55, R57, R77, R78, R79 (all pre-this-write).
-- **Owner ADVICE, in chat, logged before acting (CYCLE-LOG `13:26`)**: the merge-confirmation "yes" plus the instruction to add the Throwable-catch test as `cp/3d-cancellation`'s first commit rather than a separate micro-cycle.
-- **CC decision this write**: disposed of round-2's one non-blocking Low finding (test-coverage gap) exactly as the owner directed — first commit of step 4, not a reopened 3c fix loop (whose cap-2 budget was already spent).
-- **CC decision this write**: no DECISIONS.md ADR added for 3c's post-merge record, reasoned from R57's explicit list (ADR-008/009/010 only) rather than assumed from 3b's pattern.
-- Carried, unchanged from prior writes: R78 (payments.lesson_id UNIQUE deferred to CP5), R79 (docs land on `main` first, always), CC design decisions from 3c (gateway resolution unbound, commission-split formula, tutor overlap via `EXCLUDE USING gist`, `tsrange`, payments-row-before-transition ordering, R53 Option A).
+- Owner/planner rulings carried: R50, R55, R57, R77, R78, R79 (unchanged).
+- Advisor design consult and the two CC design decisions from the 14:41/14:35 CYCLE-LOG entries (the `Carbon::setTestNow()` test-timing fix, the PR #14 self-merge-under-R50 ambiguity resolution) — both carried, unaffected by this write's review outcome.
+- **CC decision this write**: read HOW-WE-WORK.md lines 209-211 and 395-402 directly (not just CLAUDE.md's summary) to confirm the fix-loop/owner-return rule precisely: "Low doc-only findings fixed in-cycle; Medium+ or anything in code/config/routes/migrations/tests stops and returns to the owner," and R50's merge rule: "review APPROVED with no open Medium+ ... otherwise leave the PR open, mark it awaiting the owner in §7." Both of this review's FAILs are in code files, so — regardless of the Low one's severity — neither qualifies for in-cycle self-fixing. **Did not run a fix loop. Did not merge. PR #14 left open.**
+- **CC decision this write**: did not start `cp/3e-dashboards-emails` while PR #14 is open and awaiting a decision — the step map in PLAN.md is presented as an ordered list (steps 1–6), and I found no explicit statement that 3e is independent of 3d; defaulting to the cautious reading rather than assuming independence and widening scope.
 
 ## §5 Why stopping
-**Not stopping — continuing straight into step 4 in this same session, per R77's own instruction and the owner's chat message.** This write is the step-boundary checkpoint rule 5 requires (STATUS.md rewritten at every step boundary) before branching `cp/3d-cancellation` and writing its first commit. No owner gate is open right now; the next halt this sub-cycle needs is its own PR's fresh review and (per PLAN.md line 45, "halt: no") self-merge under R50 — no backend-dev GO this time, unlike 3c.
+**Stopping for an owner decision — this is a genuine halt, not a step boundary.** PR #14's review found a Medium-severity finding in code (`SuspendTutorForStrikes` can throw after the cancellation itself has already committed, so a caller could see a failure for an action that actually succeeded) and a Low-severity finding in code (`CancelLesson` has no explicit status guard, so calling it on a non-cancellable lesson surfaces a generic `LedgerException` instead of a clear rejection). Per HOW-WE-WORK rule 6 and R50's merge rule, both are "anything in code" findings and stop for the owner rather than being fixed in-cycle. This is not the cycle's END (rule 13) — no `/clear` is being raised; on the next `update`, CC resumes from Owner action 1 below.
 
 ## §6 Mismatches
-- **Resolved this cycle**: PR #13's round-1 and round-2 findings all closed; the merge, post-merge record and smoke are done.
-- **Carried, to be disposed of as `cp/3d-cancellation`'s first commit (not a mismatch against this sub-cycle, disposed per direct owner instruction)**: round-2's Low finding — no committed test for `BookLesson.php:163`'s broadened `Throwable` catch handling a non-`LessonTransitionException` failure.
-- **New, non-blocking, disclosed for visibility, carried from 3c's round 2**: three latent PASS-WITH-NOTE observations (after-commit-callback misreporting on a confirmed-and-paid lesson; `VerifyLedger` would crash rather than fail cleanly against a database missing `payments`; non-`PaymentCaptureException` gateway errors leave a payment `pending` with no reconciliation path) — none currently reachable, on the CP8 hardening carry-forward list.
-- Deferred to CP5 by the planner (R78, carried): `payments.lesson_id` UNIQUE vs. weekly-charge-retry design.
-- Reassigned to the planner by R78, carried: confirming `btree_gist` privilege on trustutor-rehearsal ahead of R61.
-- Carried, unchanged: `composer test`'s `"test"` script lacks `disableProcessTimeout` on this machine (worked around each run by calling `php artisan test` directly); rehearsal behind `main` by design (R41); branch protection on `main` not set (R23, Owner action A, non-blocking); Owner action C (learner-side overlap constraint) and Owner action E (R53 live-preview UX loss) — see §7.
+- None new this write beyond the carried items in `## Carried to CP8 hardening checklist` below and the `## Deferred` gateway-refund-call item (added last write, unchanged).
 
 ## §7 Next step / Owner actions
-No blocking owner action this write. Work continues straight into `cp/3d-cancellation` per R77/the owner's own instruction.
 
-Non-blocking, carried:
-- Carried, unchanged: Owner action C (learner-side overlap constraint) — **Recommended: leave as-is (Recommended)**.
-- Carried, unchanged: Owner action E (R53 live-as-you-type preview UX loss, revisit at CP8) — **Recommended: leave as Option A for v1 (Recommended)**.
-- Carried, optional: Owner action A (branch protection on `main`, R7); Owner action B (`.claude/settings.local.json`, ADR-002).
+**Owner action 1: PR #14 (`cp/3d-cancellation`) has 1 Medium + 1 Low review finding, both in code — decide how to proceed.**
+Findings (full detail in CYCLE-LOG `15:10` REVIEW):
+- FAIL(Medium): `SuspendTutorForStrikes` runs in its own transaction, separate from and after the `CancelLesson`/`SkipLesson` transaction it's called from. If it throws (e.g. a transient DB error) after the cancellation has already committed, the exception propagates to the caller as if the whole operation failed — even though the lesson is already correctly cancelled and the strike already written. No test covers this.
+- FAIL(Low): `CancelLesson` has no explicit guard limiting it to cancellable lesson statuses (`SkipLesson` has one). Calling it on a non-cancellable lesson reaches `LedgerService` and throws a generic `LedgerException` instead of a clear `CancellationException`. No data corruption — the transaction rolls back cleanly — but the failure mode is unhelpful to a caller.
 
-The standing clear action is **not** raised here — this is a step boundary mid-cycle, not the cycle's END (rule 13); v1.2/R67 clears only at cycle END.
+Options:
+1. **(Recommended)** Authorise a fix-loop round (cap 2, one round used so far is zero — this would be round 1): wrap the `SuspendTutorForStrikes` call in `CancelLesson`/`SkipLesson` in a try/catch that logs the failure via `report()` but does not rethrow (the cancellation itself is already durably committed and correct; a failed suspension attempt can be reconciled separately, e.g. a scheduled `tutor-strikes:reconcile` command at CP8 hardening — noted as a carry-forward, not built now) for the Medium finding, and add an explicit status guard to `CancelLesson` mirroring `SkipLesson`'s pattern for the Low finding — then re-run the fresh-subagent review and self-merge under R50 if it comes back with 0 Medium/High. Recommended because both fixes are small, contained to the two already-reviewed files, touch no ledger/frozen-file/migration/route code, and close the exact failure scenarios the review found without changing PR #14's scope.
+2. Leave PR #14 open as-is and move on to `cp/3e-dashboards-emails` in parallel, returning to PR #14's fix loop later — only sensible if 3e is confirmed independent of 3d's actions, which has not been checked.
+3. Direct a different fix (e.g. let `SuspendTutorForStrikes`'s failure surface but document it as accepted risk for v1, deferring the reconciliation question) instead of option 1's swallow-and-log approach.
+
+Reply `update` to proceed under option 1, or state a different instruction.
+
+Non-blocking, carried unchanged:
+- Owner action C (learner-side overlap constraint) — **Recommended: leave as-is (Recommended)**.
+- Owner action E (R53 live-as-you-type preview UX loss, revisit at CP8) — **Recommended: leave as Option A for v1 (Recommended)**.
+- Owner action A (branch protection on `main`, R7); Owner action B (`.claude/settings.local.json`, ADR-002) — both optional, carried.
+
+The standing clear action is **not** raised here — this is a halt for an owner GO, not the cycle's END (rule 13); resume continues in this same session on the next `update`.
 
 ## §8 Programme board — CP3 (R50)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
@@ -59,11 +61,11 @@ The standing clear action is **not** raised here — this is a step boundary mid
 | 3a Lows pass | **merged** | `cp/3a-lows` | [#11](https://github.com/rizwanoor80/eLearning-Platform/pull/11) | 0 Medium/High | `b75d6e9` (R50) |
 | 3b state machine + ledger | **merged** | `cp/3b-state-machine` | [#12](https://github.com/rizwanoor80/eLearning-Platform/pull/12) | 14 findings, 1 FAIL(Low, scope) — resolved by R70 | `5471bcb` (R50, item 12 closed by owner ruling) |
 | 3c booking | **merged** | `cp/3c-booking` | [#13](https://github.com/rizwanoor80/eLearning-Platform/pull/13) | round 1: 1 Medium + 5 Low FAIL, closed by fix-loop items 1–6; round 2: 0 Medium/High, 1 new Low (disposed as 3d's first commit) | `df0aa88` (R50, R55 GO by owner) |
-| 3d cancellation | **starting** | `cp/3d-cancellation` | — | — | — |
+| 3d cancellation | **PR open, halted** — 1 Medium + 1 Low FAIL in code, awaiting Owner action 1 | `cp/3d-cancellation` | [#14](https://github.com/rizwanoor80/eLearning-Platform/pull/14) | round 1: 13 PASS, 2 PASS WITH NOTE, 1 FAIL(Medium), 1 FAIL(Low) | not yet |
 | 3e dashboards, emails, deletion | not started | `cp/3e-dashboards-emails` | — | — | — |
 | Programme end + rehearsal deploy | not started — halt | — | — | — | — |
 
-Resume count: **0 of 8** (unchanged — no stop condition hit).
+Resume count: **0 of 8** (unchanged — no stop condition hit; this is an owner-GO halt, not a resume-cap event).
 
 ## Deferred (out of v1 scope — do not build)
 - Lesson packs / subscriptions / credits
@@ -74,6 +76,7 @@ Resume count: **0 of 8** (unchanged — no stop condition hit).
 - Multi-currency
 - WhatsApp notifications
 - Meilisearch
+- Gateway `refund()` call in `CancelLesson` — CP5 with D-02; until then the `refund` ledger account is the record of money owed back.
 
 ## Carried to CP8 hardening checklist (R71)
 - Search pagination: tutor search pages in memory after the slot check; revisit at "a few hundred approved tutors" (same trigger as the Meilisearch item).
@@ -82,3 +85,4 @@ Resume count: **0 of 8** (unchanged — no stop condition hit).
 - Three latent round-2 PASS-WITH-NOTE observations — after-commit-callback misreporting on a confirmed-and-paid lesson; `VerifyLedger` crashing (not failing cleanly) against a database missing `payments`; non-`PaymentCaptureException` gateway errors leaving a payment `pending` with no reconciliation path.
 - A multi-process booking race test (R74) — box 3's concurrency proof is bounded to in-process tests only.
 - Learner-side overlap constraint (Owner action C, R76 — not in v1).
+- **New this write**: a reconciliation path for a `SuspendTutorForStrikes` failure after the triggering cancel/skip already committed (e.g. a scheduled command that re-derives and applies any pending 3-strike suspensions) — the fix-loop's recommended swallow-and-log approach (Owner action 1, option 1) makes this a "fixed but not forgotten" case, not a silent gap, if authorised.
