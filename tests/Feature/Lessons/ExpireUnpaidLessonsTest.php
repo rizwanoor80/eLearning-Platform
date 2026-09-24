@@ -5,6 +5,7 @@ use App\Enums\LessonStatus;
 use App\Enums\PaymentStatus;
 use App\Models\Lesson;
 use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 
 function pendingLessonAgedMinutes(int $minutes): Lesson
 {
@@ -36,6 +37,32 @@ it('never expires a pending_payment lesson that already has a captured payment',
     $this->artisan('lessons:expire-unpaid')->assertSuccessful();
 
     expect($lesson->fresh()->status)->toBe(LessonStatus::PendingPayment);
+});
+
+it('skips a lesson whose payment captures between the sweep\'s query and its row lock (R77 item 4)', function () {
+    $lesson = pendingLessonAgedMinutes(ExpireUnpaidLessons::UNPAID_TIMEOUT_MINUTES + 1);
+    $payment = Payment::factory()->for($lesson)->create(['status' => PaymentStatus::Pending]);
+
+    // The sweep's own WHERE clause saw no captured payment (it's still `pending` above) —
+    // this listener fires on `lazyById()`'s own listing query (the outer, un-locked
+    // snapshot), capturing the payment right after it but before the row lock, so the
+    // post-lock re-check — not the already-stale snapshot — is what has to catch it.
+    // It must NOT fire on the lock query itself: that runs inside `transition()`'s own
+    // `DB::transaction()`, and this test's abort-the-edge exception would roll a write
+    // made there straight back out, along with everything else in that transaction.
+    $fired = false;
+
+    DB::listen(function ($query) use ($payment, &$fired): void {
+        if (! $fired && str_contains($query->sql, '"lessons"') && ! str_contains($query->sql, 'for update')) {
+            $fired = true;
+            $payment->update(['status' => PaymentStatus::Captured]);
+        }
+    });
+
+    $this->artisan('lessons:expire-unpaid')->assertSuccessful();
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::PendingPayment)
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Captured);
 });
 
 it('expires a pending_payment lesson whose only payment attempt failed', function () {
