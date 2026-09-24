@@ -270,7 +270,24 @@ it('runs ledger:verify from the composer test script, after Pest', function () {
 // ---- money rules (R53) ---------------------------------------------------------------------------
 
 it('keeps floats and rounding out of the money code', function () {
-    foreach (['app/Services/Ledger/LedgerService.php', 'app/Services/Lessons/LessonStateMachine.php', 'app/Models/LedgerEntry.php', 'app/Models/Lesson.php'] as $path) {
+    $paths = [
+        'app/Services/Ledger/LedgerService.php',
+        'app/Services/Lessons/LessonStateMachine.php',
+        'app/Models/LedgerEntry.php',
+        'app/Models/Lesson.php',
+        // R77 item 5: widened to every 3c money file the round-1 review named.
+        'app/Actions/Lessons/BookLesson.php',
+        'app/Support/Money.php',
+        'app/Models/Payment.php',
+        'app/Services/Payments/FakePaymentGateway.php',
+        'app/Services/Payments/PaymentCaptureResult.php',
+        'app/Services/Payments/PaymentGateway.php',
+        'app/Console/Commands/ExpireUnpaidLessons.php',
+        'app/Models/TutorProfile.php',
+        'resources/js/pages/tutor/Onboarding.vue',
+    ];
+
+    foreach ($paths as $path) {
         $source = file_get_contents(base_path($path));
 
         expect($source)->not->toMatch('/\bround\s*\(|\bfloor\s*\(|\bceil\s*\(|\(float\)|\bfloatval\s*\(|\bdoubleval\s*\(/');
