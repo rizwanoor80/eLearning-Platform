@@ -7,10 +7,12 @@ use App\Enums\LessonStatus;
 use App\Enums\LessonType;
 use App\Enums\LevelTier;
 use App\Enums\PaymentStatus;
+use App\Enums\TutorProfileStatus;
 use App\Exceptions\BookingException;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
+use App\Models\DocumentType;
 use App\Models\Learner;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
@@ -68,6 +70,47 @@ function bookableTutorSetup(array $tutorOverrides = []): array
     PriceBand::query()->firstOrCreate(
         ['curriculum_id' => $curriculum->id, 'level_tier' => LevelTier::LowerSecondary, 'effective_from' => '2000-01-01'],
         ['min_rate' => 5000, 'max_rate' => 20000],
+    );
+
+    AvailabilityRule::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'weekday' => 2,
+        'start_time' => '09:00:00',
+        'end_time' => '12:00:00',
+        'timezone' => 'UTC',
+    ]);
+
+    return ['tutor' => $tutor->fresh(), 'curriculum_id' => $curriculum->id, 'subject_id' => $subject->id];
+}
+
+/**
+ * Like `bookableTutorSetup()` but with a real seeded `LevelTier::band()` row
+ * (R77 item 6) instead of that helper's own synthetic 5000-20000 band — a
+ * separate helper so other tests relying on `bookableTutorSetup()`'s fixed
+ * band (e.g. the below-band-minimum trial test) are untouched. A fresh CBSE
+ * curriculum per call keeps each dataset case's slots independent.
+ *
+ * @return array{tutor: TutorProfile, curriculum_id: int, subject_id: int}
+ */
+function bookableTutorSetupForTier(LevelTier $tier, int $hourlyRateFils): array
+{
+    $curriculum = Curriculum::factory()->create(['code' => CurriculumCode::Cbse]);
+    $subject = Subject::factory()->create();
+
+    $tutor = TutorProfile::factory()->approved()->create(['hourly_rate' => $hourlyRateFils]);
+
+    TutorSubject::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'curriculum_id' => $curriculum->id,
+        'subject_id' => $subject->id,
+        'level_tier' => $tier,
+    ]);
+
+    [$minRate, $maxRate] = $tier->band();
+
+    PriceBand::query()->firstOrCreate(
+        ['curriculum_id' => $curriculum->id, 'level_tier' => $tier, 'effective_from' => '2000-01-01'],
+        ['min_rate' => $minRate, 'max_rate' => $maxRate],
     );
 
     AvailabilityRule::factory()->create([
@@ -176,17 +219,20 @@ it('books at the trial-discounted price even when that price falls below the tut
  * R53 ("a test proving preview and booked price agree across the whole band
  * table including an odd-fils case"): TutorOnboardingBankSubjectsRateTest.php
  * already proves the onboarding preview prop equals TutorProfile::trialPrice()
- * for these same three rates, but never books a lesson — so it cannot prove
- * "booked price" agrees with anything. This test books an actual trial for
- * each rate and asserts the lesson's frozen price equals trialPrice() read
- * fresh from the database, closing that gap. Same three cases as the
- * onboarding dataset: band minimum, band maximum, and the docblock's own
- * odd-fils worked example (10001 @ 50% -> 5000, not the old formula's 5001).
+ * for these same rates, but never books a lesson — so it cannot prove "booked
+ * price" agrees with anything. This test books an actual trial for each rate
+ * and asserts the lesson's frozen price equals trialPrice() read fresh from
+ * the database, closing that gap.
+ *
+ * R77 item 6: widened from the one synthetic 5000-20000 band to **every
+ * seeded `LevelTier::band()` row** (LowerSecondary, Exam1, Exam2) at its real
+ * min and max fils, plus an odd-fils case per tier — same tier/rate/discount
+ * combinations as the widened onboarding-preview dataset.
  */
-it('books a trial at exactly TutorProfile::trialPrice(), agreeing across the band table including an odd-fils case', function (int $hourlyRateFils, int $discountPct, int $expectedTrialFils) {
+it('books a trial at exactly TutorProfile::trialPrice(), agreeing across the band table including an odd-fils case', function (LevelTier $tier, int $hourlyRateFils, int $discountPct, int $expectedTrialFils) {
     Settings::set('trial_discount_pct', $discountPct);
 
-    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup(['hourly_rate' => $hourlyRateFils]);
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetupForTier($tier, $hourlyRateFils);
     ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
 
     expect($tutor->trialPrice()->toFils())->toBe($expectedTrialFils);
@@ -201,11 +247,101 @@ it('books a trial at exactly TutorProfile::trialPrice(), agreeing across the ban
         ->and($trial->price->toFils())->toBe($expectedTrialFils)
         ->and($trial->price->toFils())->toBe($tutor->fresh()->trialPrice()->toFils());
 })->with([
-    // bookableTutorSetup()'s own PriceBand is min_rate 5000, max_rate 20000.
-    'band minimum, even split (5000 @ 25% -> 3750)' => [5000, 25, 3750],
-    'band maximum, even split (20000 @ 25% -> 15000)' => [20000, 25, 15000],
-    'the docblock\'s own odd-fils example (10001 @ 50% -> 5000, not 5001)' => [10001, 50, 5000],
+    'LowerSecondary band minimum, even split (8000 @ 25% -> 6000)' => [LevelTier::LowerSecondary, 8000, 25, 6000],
+    'LowerSecondary band maximum, even split (15000 @ 25% -> 11250)' => [LevelTier::LowerSecondary, 15000, 25, 11250],
+    'LowerSecondary odd-fils (8001 @ 50% -> 4000, not 4001)' => [LevelTier::LowerSecondary, 8001, 50, 4000],
+    'Exam1 band minimum, even split (10000 @ 25% -> 7500)' => [LevelTier::Exam1, 10000, 25, 7500],
+    'Exam1 band maximum, even split (20000 @ 25% -> 15000)' => [LevelTier::Exam1, 20000, 25, 15000],
+    'Exam1 odd-fils, the docblock\'s own worked example (10001 @ 50% -> 5000, not 5001)' => [LevelTier::Exam1, 10001, 50, 5000],
+    'Exam2 band minimum, even split (13000 @ 25% -> 9750)' => [LevelTier::Exam2, 13000, 25, 9750],
+    'Exam2 band maximum, even split (26000 @ 25% -> 19500)' => [LevelTier::Exam2, 26000, 25, 19500],
+    'Exam2 odd-fils (13001 @ 50% -> 6500, not 6501)' => [LevelTier::Exam2, 13001, 50, 6500],
 ]);
+
+/**
+ * R77 item 6, second half: the two agreement tests above (and the onboarding
+ * preview's own dataset) each independently assert equality with
+ * `TutorProfile::trialPrice()` — so they only agree with EACH OTHER by
+ * transitivity through that third computation. This test compares them
+ * directly for one tutor: a real onboarding flow (permit, bank, subjects,
+ * rate — the same steps a tutor actually takes) produces the Inertia preview,
+ * then a real booking for that same profile produces the frozen lesson price,
+ * and the assertion is preview-prop equals booked-price with no `trialPrice()`
+ * call anywhere in the comparison itself. Inlined rather than reusing
+ * `TutorOnboardingBankSubjectsRateTest.php`'s helpers, which are undefined
+ * when this file runs alone.
+ */
+it('reads the onboarding preview and books a trial for the same tutor, comparing the two prices directly rather than through trialPrice() (R77 item 6)', function () {
+    Settings::set('trial_discount_pct', 50);
+
+    DocumentType::query()->delete();
+    $tutorUser = User::factory()->tutor()->create();
+
+    test()->actingAs($tutorUser)->post(route('tutor.onboarding.permit'), [
+        'permit_number' => 'PMT-1',
+        'permit_expires_at' => now()->addYear()->toDateString(),
+    ]);
+    test()->actingAs($tutorUser)->post(route('tutor.onboarding.bank'), [
+        'bank_name' => 'Emirates NBD',
+        'bank_account_name' => 'Test Tutor',
+        'bank_iban' => 'AE070331234567890123456',
+        'bank_swift' => 'EBILAEAD',
+    ]);
+
+    $curriculum = Curriculum::query()->firstOrCreate(
+        ['code' => CurriculumCode::Gcse],
+        ['name' => CurriculumCode::Gcse->value, 'sort' => 0],
+    );
+    $subject = Subject::factory()->create();
+
+    PriceBand::query()->firstOrCreate(
+        ['curriculum_id' => $curriculum->id, 'level_tier' => LevelTier::Exam1, 'effective_from' => '2000-01-01'],
+        ['min_rate' => 10000, 'max_rate' => 20000],
+    );
+
+    test()->actingAs($tutorUser)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [ygRow($curriculum, $subject, 'y10', 'y11')],
+    ]);
+    // 100.01 @ 50%: the docblock's own odd-fils rate, so agreement isn't
+    // trivial the way a round number would be.
+    test()->actingAs($tutorUser)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '100.01']);
+
+    $tutor = TutorProfile::query()->where('user_id', $tutorUser->id)->firstOrFail();
+
+    // Onboarding alone never approves a tutor (invariant #5) — only bookable()
+    // matters for BookLesson. `status`/`approved_at` aren't mass-assignable
+    // (admin-only in production), so this uses the same forceFill() as the
+    // real `ApproveTutor` action rather than update().
+    $tutor->forceFill([
+        'status' => TutorProfileStatus::Approved,
+        'approved_at' => now(),
+    ])->save();
+
+    AvailabilityRule::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'weekday' => 2,
+        'start_time' => '09:00:00',
+        'end_time' => '12:00:00',
+        'timezone' => 'UTC',
+    ]);
+
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculum->id);
+
+    $trial = app(BookLesson::class)($parent, $learner, $tutor->fresh(), [
+        'curriculum_id' => $curriculum->id,
+        'subject_id' => $subject->id,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]);
+
+    expect($trial->type)->toBe(LessonType::Trial);
+
+    // Compared directly against the booked lesson's own frozen price — never
+    // against trialPrice() in this assertion, so it cannot pass merely because
+    // both sides independently agree with the same third computation.
+    test()->actingAs($tutorUser)
+        ->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('trialPriceFils', $trial->price->toFils()));
+});
 
 it('refuses to book when the computed price rounds to zero, writing no lesson and no payment row (R77)', function () {
     // A 1-fil hourly rate at the 99%-capped max discount (item 1 makes 100%/free unreachable

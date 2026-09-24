@@ -36,10 +36,11 @@ it('splits a commission with the remainder fil landing on the commission side', 
 });
 
 it('splits an odd-fils price where the naive half-up formula would disagree', function () {
-    // 101 @ 25%: exact tutor share is 75.75 — truncation gives 75, and the
-    // rejected `price->percentage(100 - pct)` approach would also give 75
-    // here, but a `price->percentage($pct)`-then-subtract approach would
-    // round the commission to 25 and hand the tutor the wrong remainder (76).
+    // 101 @ 25%: exact tutor share is 75.75 — truncation gives 75. The
+    // rejected `price->percentage(100 - pct)` approach rounds half-up too, so
+    // it would give 76 here — the same wrong remainder a
+    // `price->percentage($pct)`-then-subtract approach hands the tutor after
+    // rounding the commission down to 25.
     $split = Money::fils(101)->splitCommission(25);
 
     expect($split['tutor']->toFils())->toBe(75)
