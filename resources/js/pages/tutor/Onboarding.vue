@@ -101,7 +101,7 @@ const props = defineProps<{
     tutorSubjects: TutorSubjectProp[];
     yearGroups: YearGroupProp[];
     rateBand: { min: number; max: number; conflicting: string[] } | null;
-    trialDiscountPct: number;
+    trialPriceFils: number | null;
     availabilityRules: AvailabilityRuleProp[];
     availabilityExceptions: AvailabilityExceptionProp[];
     agreement: {
@@ -274,21 +274,6 @@ const rateForm = useForm({
 
 const submitRate = () => {
     rateForm.post('/tutor/onboarding/rate', afterSubmit);
-};
-
-// Display-only preview mirroring Money::percentage's half-up integer-fils
-// rounding (invariant #3 — no float arithmetic on money). The authoritative
-// trial price is computed server-side at booking time (CP3).
-const trialPriceFils = () => {
-    const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(rateForm.hourly_rate);
-    if (!match) {
-        return null;
-    }
-
-    const fils = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'));
-    const pct = 100 - props.trialDiscountPct;
-
-    return Math.floor((fils * pct + 50) / 100);
 };
 
 const profileForm = useForm({
@@ -555,7 +540,9 @@ const submitComplete = () => {
                 <InputError :message="rateForm.errors.hourly_rate" />
             </div>
 
-            <p v-if="trialPriceFils() !== null" class="text-muted-foreground text-sm">Trial lesson price: {{ formatFils(trialPriceFils()!) }} AED</p>
+            <p v-if="props.trialPriceFils !== null" class="text-muted-foreground text-sm">
+                Trial lesson price at your saved rate: {{ formatFils(props.trialPriceFils) }} AED. Save a new rate to update this.
+            </p>
 
             <Button type="submit" :disabled="rateForm.processing" class="w-fit">
                 <Spinner v-if="rateForm.processing" />

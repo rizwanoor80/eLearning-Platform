@@ -72,7 +72,7 @@ class ManageSettings extends Page implements HasSchemas
                     ->tabs([
                         Tab::make('Platform')->schema([
                             TextInput::make('commission_pct')->numeric()->integer()->minValue(0)->maxValue(100)->required(),
-                            TextInput::make('trial_discount_pct')->numeric()->integer()->minValue(0)->maxValue(100)->required(),
+                            TextInput::make('trial_discount_pct')->numeric()->integer()->minValue(0)->maxValue(99)->required(),
                             TextInput::make('cancel_window_hours')->numeric()->integer()->minValue(0)->required(),
                             TextInput::make('student_grace_min')->numeric()->integer()->minValue(0)->required(),
                             TextInput::make('tutor_grace_min')->numeric()->integer()->minValue(0)->required(),

@@ -8,6 +8,7 @@ use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Support\Facades\Settings;
 
 function bankReadyTutor(): User
 {
@@ -22,7 +23,7 @@ function bankReadyTutor(): User
     return $tutor;
 }
 
-function subjectsReadyTutor(): array
+function subjectsReadyTutor(CurriculumCode $code = CurriculumCode::Gcse): array
 {
     $tutor = bankReadyTutor();
     test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
@@ -32,7 +33,7 @@ function subjectsReadyTutor(): array
         'bank_swift' => 'EBILAEAD',
     ]);
 
-    $curriculum = Curriculum::factory()->create(['code' => CurriculumCode::Gcse]);
+    $curriculum = Curriculum::factory()->create(['code' => $code]);
     $subject = Subject::factory()->create();
 
     return [$tutor, $curriculum, $subject];
@@ -153,6 +154,62 @@ it('accepts an hourly rate within the price band', function () {
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
     expect($profile->hourly_rate->toFils())->toBe(15000);
 });
+
+/**
+ * R53: the onboarding preview must be `TutorProfile::trialPrice()` itself, not
+ * an independently recomputed `100 - pct` formula (which rounds the wrong way
+ * on an odd fil — see the docblock on `TutorProfile::trialPrice()`).
+ *
+ * R77 item 6: widened from one synthetic Exam1-only band to **every seeded
+ * `LevelTier::band()` row** (LowerSecondary, Exam1, Exam2) at its real min and
+ * max fils, plus an odd-fils case per tier. CBSE is the one curriculum whose
+ * `CurriculumCode::tiers()` spans all three, so it is used for every case here
+ * (grades 6-7 / 9-10 / 11-12 derive LowerSecondary / Exam1 / Exam2 via
+ * `YearGroupTiers::derive()` — see `YearGroupDefaults`).
+ */
+it('previews the trial price via TutorProfile::trialPrice(), agreeing with it exactly across the band table including an odd-fils case', function (LevelTier $tier, string $hourlyRate, int $discountPct, int $expectedTrialFils) {
+    Settings::set('trial_discount_pct', $discountPct);
+
+    [$tutor, $curriculum, $subject] = subjectsReadyTutor(CurriculumCode::Cbse);
+
+    [$minRate, $maxRate] = $tier->band();
+
+    PriceBand::factory()->create([
+        'curriculum_id' => $curriculum->id,
+        'level_tier' => $tier,
+        'min_rate' => $minRate,
+        'max_rate' => $maxRate,
+        'effective_from' => now()->subYear()->toDateString(),
+    ]);
+
+    [$fromCode, $toCode] = match ($tier) {
+        LevelTier::LowerSecondary => ['g6', 'g7'],
+        LevelTier::Exam1 => ['g9', 'g10'],
+        LevelTier::Exam2 => ['g11', 'g12'],
+    };
+
+    test()->actingAs($tutor)->post(route('tutor.onboarding.subjects'), [
+        'subjects' => [ygRow($curriculum, $subject, $fromCode, $toCode)],
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => $hourlyRate]);
+
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    expect($profile->trialPrice()->toFils())->toBe($expectedTrialFils);
+
+    $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
+
+    $response->assertInertia(fn ($page) => $page->where('trialPriceFils', $expectedTrialFils));
+})->with([
+    'LowerSecondary band minimum, even split (8000 @ 25% -> 6000)' => [LevelTier::LowerSecondary, '80.00', 25, 6000],
+    'LowerSecondary band maximum, even split (15000 @ 25% -> 11250)' => [LevelTier::LowerSecondary, '150.00', 25, 11250],
+    'LowerSecondary odd-fils (8001 @ 50% -> 4000, not 4001)' => [LevelTier::LowerSecondary, '80.01', 50, 4000],
+    'Exam1 band minimum, even split (10000 @ 25% -> 7500)' => [LevelTier::Exam1, '100.00', 25, 7500],
+    'Exam1 band maximum, even split (20000 @ 25% -> 15000)' => [LevelTier::Exam1, '200.00', 25, 15000],
+    'Exam1 odd-fils, the docblock\'s own worked example (10001 @ 50% -> 5000, not 5001)' => [LevelTier::Exam1, '100.01', 50, 5000],
+    'Exam2 band minimum, even split (13000 @ 25% -> 9750)' => [LevelTier::Exam2, '130.00', 25, 9750],
+    'Exam2 band maximum, even split (26000 @ 25% -> 19500)' => [LevelTier::Exam2, '260.00', 25, 19500],
+    'Exam2 odd-fils (13001 @ 50% -> 6500, not 6501)' => [LevelTier::Exam2, '130.01', 50, 6500],
+]);
 
 it('refuses the rate step before any subject has been added', function () {
     $tutor = bankReadyTutor();

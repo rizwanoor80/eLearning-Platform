@@ -25,7 +25,6 @@ use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\YearGroup;
 use App\Services\Tutors\TutorRateBands;
-use App\Support\Facades\Settings;
 use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
 use App\Support\YearGroups\YearGroupTiers;
@@ -96,7 +95,11 @@ class TutorOnboardingController extends Controller
                 ->get(['id', 'curriculum_id', 'subject_id', 'level_min_id', 'level_max_id', 'level_min_legacy', 'level_max_legacy', 'level_tier']),
             'yearGroups' => YearGroupOptions::all(),
             'rateBand' => $this->rateBandFor($profile),
-            'trialDiscountPct' => Settings::get('trial_discount_pct'),
+            // The one place this is computed (R53): `TutorProfile::trialPrice()`,
+            // the same method `BookLesson` freezes onto the lesson. Reflects the
+            // saved rate only — there is no live-as-you-type preview of an
+            // unsaved rate, so this updates after the rate step is submitted.
+            'trialPriceFils' => $profile->trialPrice()?->toFils(),
             'availabilityRules' => $profile->availabilityRules()
                 ->get(['id', 'weekday', 'start_time', 'end_time']),
             'availabilityExceptions' => $profile->availabilityExceptions()

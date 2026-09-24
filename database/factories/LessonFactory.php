@@ -23,8 +23,10 @@ class LessonFactory extends Factory
     /**
      * Define the model's default state: a confirmed, regular lesson at a price of
      * AED 100.00 with the seed policy, its commission split frozen exactly as
-     * `BookLesson` will freeze it (commission from the percentage, tutor amount the
-     * remainder — so the two always add up to the price).
+     * `BookLesson` will freeze it (`Money::splitCommission()` — tutor amount
+     * truncated first, commission the remainder, so the two always add up to
+     * the price; this default price divides evenly, so it doesn't itself
+     * exercise the remainder case — see `MoneyTest` for that).
      *
      * @return array<string, mixed>
      */

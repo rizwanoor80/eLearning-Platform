@@ -10,10 +10,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * The lessons table per DATA_MODEL and its two partial unique indexes (3b). The
- * predicates are baked into the indexes when the migration runs, so a test reads
- * them back and compares them with the enum — if `LessonStatus::freeingSlot()`
- * ever changes, the live index must change with it (a new migration).
+ * The lessons table per DATA_MODEL, its two partial unique indexes (3b), and the
+ * 3c `lessons_tutor_no_overlap` GiST exclusion constraint. The predicates are
+ * baked into the indexes when the migration runs, so a test reads them back and
+ * compares them with the enum — if `LessonStatus::freeingSlot()` ever changes,
+ * the live index must change with it (a new migration).
  */
 
 /**
@@ -122,6 +123,32 @@ it('still refuses two live lessons for one tutor at one time (the CP2 overlap in
     // A cancelled lesson frees it.
     Lesson::query()->where('tutor_profile_id', $tutor->id)->update(['status' => LessonStatus::CancelledByParent->value]);
     expect(Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $at, 'ends_at' => $at->copy()->addHour()])->exists)->toBeTrue();
+});
+
+it('refuses two live lessons for one tutor whose intervals overlap without sharing a starts_at (3c)', function () {
+    $tutor = TutorProfile::factory()->create();
+    $at = now()->addDays(3)->startOfHour();
+    Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $at, 'ends_at' => $at->copy()->addHour()]);
+
+    // Starts 30 minutes into the first lesson: shares no starts_at with it, so
+    // lessons_tutor_slot_unique would let this through — only the GiST exclusion catches it.
+    $overlapping = $at->copy()->addMinutes(30);
+    expect(fn () => DB::transaction(fn () => Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $overlapping, 'ends_at' => $overlapping->copy()->addHour()])))
+        ->toThrow(QueryException::class, 'lessons_tutor_no_overlap');
+
+    // A cancelled lesson frees the interval too.
+    Lesson::query()->where('tutor_profile_id', $tutor->id)->update(['status' => LessonStatus::CancelledByParent->value]);
+    expect(Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $overlapping, 'ends_at' => $overlapping->copy()->addHour()])->exists)->toBeTrue();
+});
+
+it('allows back-to-back lessons for one tutor since bounds are half-open [)', function () {
+    $tutor = TutorProfile::factory()->create();
+    $at = now()->addDays(3)->startOfHour();
+    Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $at, 'ends_at' => $at->copy()->addHour()]);
+
+    $backToBack = Lesson::factory()->create(['tutor_profile_id' => $tutor->id, 'starts_at' => $at->copy()->addHour(), 'ends_at' => $at->copy()->addHours(2)]);
+
+    expect($backToBack->exists)->toBeTrue();
 });
 
 it('indexes the charging job only on reserved lessons', function () {
