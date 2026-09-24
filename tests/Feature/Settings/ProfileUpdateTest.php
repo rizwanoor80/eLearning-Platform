@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -61,39 +62,32 @@ class ProfileUpdateTest extends TestCase
         $this->assertNotNull($user->refresh()->email_verified_at);
     }
 
-    public function test_user_can_delete_their_account()
+    /**
+     * R54: account deletion is an admin-only, audited action now
+     * (App\Actions\Admin\AnonymizeUser) — a signed-in user has no
+     * self-service way to delete their own row, so the route is gone.
+     */
+    public function test_there_is_no_self_service_account_deletion_route()
     {
         $user = User::factory()->create();
 
         $response = $this
             ->actingAs($user)
-            ->delete(route('profile.destroy'), [
-                'password' => 'password',
-            ]);
+            ->delete('/settings/profile', ['password' => 'password']);
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect(route('home'));
-
-        $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $response->assertStatus(405);
+        $this->assertNotNull($user->fresh());
     }
 
-    public function test_correct_password_must_be_provided_to_delete_account()
+    public function test_deleting_a_tutor_account_is_also_refused_self_service()
     {
-        $user = User::factory()->create();
+        $tutor = User::factory()->create(['role' => Role::Tutor]);
 
         $response = $this
-            ->actingAs($user)
-            ->from(route('profile.edit'))
-            ->delete(route('profile.destroy'), [
-                'password' => 'wrong-password',
-            ]);
+            ->actingAs($tutor)
+            ->delete('/settings/profile', ['password' => 'password']);
 
-        $response
-            ->assertSessionHasErrors('password')
-            ->assertRedirect(route('profile.edit'));
-
-        $this->assertNotNull($user->fresh());
+        $response->assertStatus(405);
+        $this->assertNotNull($tutor->fresh());
     }
 }
