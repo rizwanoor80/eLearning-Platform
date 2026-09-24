@@ -78,7 +78,7 @@ Acceptance
 
 ---
 
-## CP3 — Booking, trial, cancellation — in progress (cycle 04 sub-cycle 3b merged `5471bcb`: `LessonStateMachine` full edge matrix per DATA_MODEL with a test per allowed and forbidden transition; append-only `ledger_entries` with HOLD/RELEASE/REFUND and the zero-sum invariant, `ledger:verify` wired into CI; `SETTLE`/`PAYOUT` declared, unused until CP5)
+## CP3 — Booking, trial, cancellation — in progress (cycle 04 sub-cycle 3b merged `5471bcb`: `LessonStateMachine` full edge matrix per DATA_MODEL with a test per allowed and forbidden transition; append-only `ledger_entries` with HOLD/RELEASE/REFUND and the zero-sum invariant, `ledger:verify` wired into CI; `SETTLE`/`PAYOUT` declared, unused until CP5; sub-cycle 3c merged `df0aa88` (PR #13): `BookLesson` action per R53/R56 — slot validated, type decided, trial price frozen from `TutorProfile::trialPrice()`, band-validated, seven values frozen, `pending_payment` lesson created, overlap and one-trial-per-pair held by DB indexes plus a transactional check; `FakePaymentGateway` capturing instantly behind the CP5 driver interface; capture → `confirmed` + HOLD; 15-minute unpaid-expired sweep; onboarding preview unified)
 **Goal:** a parent can book a single lesson (trial or regular); the lifecycle up to `confirmed` works; cancellations follow PRD §4. Money is stubbed with a fake gateway. **Backend dev reviews.**
 
 Tasks
@@ -92,8 +92,8 @@ Tasks
 
 Acceptance
 - [x] Every transition in the state diagram has a passing feature test; every invalid transition throws. _(3b, `5471bcb`: `LessonStateMachineTest.php`, every DATA_MODEL edge including the CP4–CP6 ones per R51; independently re-verified by the fresh-subagent review against the actual diff.)_
-- [ ] First booking for a learner–tutor pair is `trial` at the discounted price; second is `regular` at full price; a cancelled trial does not consume the trial.
-- [ ] Double-booking the same tutor slot fails under concurrent requests (test with DB constraint).
+- [x] First booking for a learner–tutor pair is `trial` at the discounted price; second is `regular` at full price; a cancelled trial does not consume the trial. _(3c, `df0aa88`: `BookLessonTest.php` "books the first lesson for a pair as a discounted trial and the second as full-price regular" and "does not let a cancelled trial consume the pair's one trial"; independently re-verified by the round-2 fresh-subagent review.)_
+- [x] Double-booking the same tutor slot fails under concurrent requests (test with DB constraint). _(3c, `df0aa88`: `BookLessonTest.php` "refuses a second learner racing the same tutor slot at the database, not just the app-level check, leaving exactly one confirmed lesson and one HOLD behind (R74 in-process concurrency proof)" — scope bounded to in-process tests per R74, no cross-process runner.)_
 - [ ] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created.
 - [ ] Changing `cancel_window_hours` in settings does not change the outcome for an already-booked lesson.
 - [ ] 3 strikes within 90 days → tutor `suspended`, admin emailed.
