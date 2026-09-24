@@ -23,6 +23,7 @@ use App\Services\Tutors\TutorRateBands;
 use App\Support\Facades\Settings;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
  * R53/R56: validates the slot, the tutor's bookability and band, and the
@@ -127,15 +128,22 @@ class BookLesson
             throw $this->translateConstraintViolation($e);
         }
 
+        // Written `pending` before the gateway is ever called (R77 item 3): if the capture
+        // succeeds but this row's own update to `captured` never lands, the row still
+        // exists and `ledger:verify` flags it as stale-pending — it is never simply absent.
+        $payment = Payment::query()->create([
+            'lesson_id' => $lesson->id,
+            'payer_user_id' => $bookedBy->id,
+            'gateway' => $this->gateway->driver(),
+            'gateway_ref' => null,
+            'amount' => $price,
+            'status' => PaymentStatus::Pending,
+        ]);
+
         try {
             $result = $this->gateway->capture($lesson, $price, (string) $lesson->id);
         } catch (PaymentCaptureException $e) {
-            Payment::query()->create([
-                'lesson_id' => $lesson->id,
-                'payer_user_id' => $bookedBy->id,
-                'gateway' => $this->gateway->driver(),
-                'gateway_ref' => null,
-                'amount' => $price,
+            $payment->update([
                 'status' => PaymentStatus::Failed,
                 'failure_reason' => $e->getMessage(),
             ]);
@@ -149,25 +157,32 @@ class BookLesson
             throw $e;
         }
 
-        Payment::query()->create([
-            'lesson_id' => $lesson->id,
-            'payer_user_id' => $bookedBy->id,
-            'gateway' => $this->gateway->driver(),
-            'gateway_ref' => $result->gatewayRef,
-            'amount' => $price,
-            'status' => PaymentStatus::Captured,
-            'raw_response' => $result->rawResponse,
-        ]);
-
         try {
+            $payment->update([
+                'gateway_ref' => $result->gatewayRef,
+                'status' => PaymentStatus::Captured,
+                'raw_response' => $result->rawResponse,
+            ]);
+
             $lesson = LessonStateMachine::transition(
                 $lesson,
                 LessonStatus::Confirmed,
                 fn (Lesson $locked) => app(LedgerService::class)->hold($locked, $bookedBy),
             );
-        } catch (LessonTransitionException $e) {
+        } catch (Throwable $e) {
+            // The gateway already captured the money; there is no refund path yet
+            // (R77 item 3 — the fake gateway can't), so this is best-effort only: try
+            // to free the slot, and leave detection to `ledger:verify` (invariant #1),
+            // which flags any captured/pending payment with no matching ledger hold.
+            try {
+                LessonStateMachine::transition($lesson, LessonStatus::Expired);
+            } catch (Throwable) {
+                // Already moved on, or this edge is not currently allowed — either way
+                // there is nothing left to undo from here.
+            }
+
             throw new BookingException(
-                "Payment was captured but lesson {$lesson->id} could no longer be confirmed (it was likely already expired by the unpaid sweep); this needs manual review.",
+                "Payment was captured but lesson {$lesson->id} could no longer be confirmed; this needs manual review.",
                 previous: $e,
             );
         }

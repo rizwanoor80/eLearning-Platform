@@ -29,14 +29,20 @@ class VerifyLedger extends Command
 
         $unbalanced = $ledger->unbalancedLessons();
 
-        if ($unbalanced->isEmpty()) {
+        foreach ($unbalanced as $row) {
+            $this->error("Lesson {$row['lesson_id']} sums to {$row['total']} fils, not zero.");
+        }
+
+        $stranded = $ledger->strandedPayments();
+
+        foreach ($stranded as $row) {
+            $this->error("Payment {$row['payment_id']} on lesson {$row['lesson_id']} is {$row['status']} with no matching ledger hold (invariant #1).");
+        }
+
+        if ($unbalanced->isEmpty() && $stranded->isEmpty()) {
             $this->info('Ledger OK: every lesson sums to zero.');
 
             return self::SUCCESS;
-        }
-
-        foreach ($unbalanced as $row) {
-            $this->error("Lesson {$row['lesson_id']} sums to {$row['total']} fils, not zero.");
         }
 
         return self::FAILURE;

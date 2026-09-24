@@ -4,10 +4,13 @@ namespace App\Services\Ledger;
 
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
+use App\Enums\PaymentStatus;
 use App\Exceptions\LedgerException;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
+use App\Models\Payment;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -34,6 +37,12 @@ use LogicException;
 final class LedgerService
 {
     private static int $writing = 0;
+
+    /**
+     * Grace window for `strandedPayments()` (R77 item 3): a payment inside this
+     * many minutes of its relevant timestamp is mid-request, not stranded.
+     */
+    private const STRANDED_GRACE_MINUTES = 5;
 
     /**
      * Whether an operation of this service is inserting right now — the only
@@ -145,6 +154,55 @@ final class LedgerService
                 'total' => (int) $row->getAttribute('total'),
             ])
             ->values();
+    }
+
+    /**
+     * Every payment that is `captured` with no `hold` ledger entry for its lesson,
+     * or `pending` past the grace window (an unknown capture outcome) — the two
+     * shapes invariant #1 breaks into if a `Throwable` interrupts `BookLesson`
+     * after the gateway has already captured the money (R77 item 3). Excludes
+     * anything still inside the grace window so an in-flight booking is never
+     * flagged mid-request. Empty means nothing is stranded.
+     *
+     * @return Collection<int, array{payment_id: int, lesson_id: int, status: string}>
+     */
+    public function strandedPayments(): Collection
+    {
+        $cutoff = Carbon::now()->subMinutes(self::STRANDED_GRACE_MINUTES);
+
+        $capturedWithoutHold = Payment::query()
+            ->where('status', PaymentStatus::Captured)
+            ->where('updated_at', '<=', $cutoff)
+            ->whereNotExists(fn ($query) => $query
+                ->selectRaw('1')
+                ->from('ledger_entries')
+                ->whereColumn('ledger_entries.lesson_id', 'payments.lesson_id')
+                ->where('ledger_entries.type', LedgerEntryType::Hold))
+            ->get();
+
+        $stalePending = Payment::query()
+            ->where('status', PaymentStatus::Pending)
+            ->where('created_at', '<=', $cutoff)
+            ->get();
+
+        return $capturedWithoutHold->concat($stalePending)
+            ->sortBy('lesson_id')
+            ->values()
+            ->map(fn (Payment $payment): array => [
+                'payment_id' => $payment->id,
+                'lesson_id' => $payment->lesson_id,
+                'status' => $this->statusValue($payment),
+            ]);
+    }
+
+    /**
+     * A plain `string`, not the literal-value union PHPStan tracks through
+     * `PaymentStatus::value` — the declared return type is the widening
+     * boundary `strandedPayments()` needs (Collection's TValue is invariant).
+     */
+    private function statusValue(Payment $payment): string
+    {
+        return $payment->status->value;
     }
 
     /**

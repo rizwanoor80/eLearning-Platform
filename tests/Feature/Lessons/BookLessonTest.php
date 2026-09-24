@@ -405,6 +405,36 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
     expect($payment->status)->toBe(PaymentStatus::Captured);
 
     expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe(0);
+
+    // The stranded payment above isn't just documented in-memory — `ledger:verify`
+    // (invariant #1, R77 item 3) actually catches it once it's past the grace
+    // window, so the sweep can never leave one of these silently unflagged forever.
+    $this->travel(6)->minutes();
+
+    $this->artisan('ledger:verify')
+        ->expectsOutputToContain("Payment {$payment->id} on lesson {$lesson->id} is captured with no matching ledger hold (invariant #1).")
+        ->assertExitCode(1);
+});
+
+it('leaves ledger:verify clean after a normal successful booking, even past the stranded-payment grace window', function () {
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
+
+    $book = app(BookLesson::class);
+
+    $lesson = $book($parent, $learner, $tutor, [
+        'curriculum_id' => $curriculumId,
+        'subject_id' => $subjectId,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]);
+
+    expect($lesson->status)->toBe(LessonStatus::Confirmed);
+
+    $this->travel(6)->minutes();
+
+    $this->artisan('ledger:verify')
+        ->expectsOutputToContain('Ledger OK: every lesson sums to zero.')
+        ->assertExitCode(0);
 });
 
 it('lets the same slot and trial be rebooked after a declined capture expires the lesson', function () {
