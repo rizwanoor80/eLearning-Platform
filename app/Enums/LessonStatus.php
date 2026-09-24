@@ -83,4 +83,12 @@ enum LessonStatus: string
     {
         return in_array($this, self::terminal(), true);
     }
+
+    /**
+     * @return list<string>
+     */
+    public static function terminalValues(): array
+    {
+        return array_map(fn (self $status): string => $status->value, self::terminal());
+    }
 }

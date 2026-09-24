@@ -3,10 +3,13 @@
 use App\Actions\Learner\CreateLearner;
 use App\Actions\Learner\CreateSelfLearner;
 use App\Actions\Learner\DeleteLearner;
+use App\Enums\LessonStatus;
 use App\Enums\Role;
 use App\Exceptions\LearnerDeletionException;
 use App\Models\Curriculum;
 use App\Models\Learner;
+use App\Models\Lesson;
+use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\YearGroup;
 use Illuminate\Database\QueryException;
@@ -187,6 +190,37 @@ it('does not expose learner notes to anyone but the owner (no learner login exis
     expect(Schema::hasColumn('learners', 'user_id'))->toBeFalse()
         ->and(Schema::hasColumn('learners', 'password'))->toBeFalse()
         ->and(Schema::hasColumn('learners', 'email'))->toBeFalse();
+});
+
+it('refuses to delete a learner with a still-open lesson, naming it', function () {
+    $owner = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $owner->id]);
+    $tutor = TutorProfile::factory()->approved()->create();
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Confirmed)->create([
+        'learner_id' => $learner->id,
+        'tutor_profile_id' => $tutor->id,
+        'starts_at' => now()->addDay(),
+    ]);
+
+    expect(fn () => (new DeleteLearner)($learner))->toThrow(LearnerDeletionException::class, "#{$lesson->id}");
+
+    test()->actingAs($owner)->delete(route('learners.destroy', $learner))->assertRedirect(route('learners.index'));
+    expect($learner->fresh())->not->toBeNull();
+});
+
+it('deletes a learner once every lesson is terminal', function () {
+    $owner = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $owner->id]);
+    $tutor = TutorProfile::factory()->approved()->create();
+    Lesson::factory()->withStatus(LessonStatus::Settled)->create([
+        'learner_id' => $learner->id,
+        'tutor_profile_id' => $tutor->id,
+    ]);
+
+    (new DeleteLearner)($learner);
+
+    expect(Learner::query()->whereKey($learner->id)->exists())->toBeFalse()
+        ->and(Learner::withTrashed()->whereKey($learner->id)->exists())->toBeTrue();
 });
 
 /**
