@@ -1,7 +1,9 @@
 <?php
 
 use App\Actions\Admin\AnonymizeUser;
+use App\Actions\Tutor\ReinstateTutor;
 use App\Enums\LessonStatus;
+use App\Enums\MatchRequestStatus;
 use App\Enums\TutorProfileStatus;
 use App\Exceptions\UserDeletionException;
 use App\Models\AuditLog;
@@ -101,6 +103,36 @@ it('leaves match requests and learners intact, since anonymisation is not a casc
         ->and(Learner::query()->count())->toBe(1);
 });
 
+it('closes a still-open match request so SuggestTutors can never mail the tombstoned address', function () {
+    $admin = User::factory()->admin()->create();
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+    $request = MatchRequest::factory()->create(['account_user_id' => $parent->id, 'learner_id' => $learner->id]);
+
+    expect($request->fresh()->status)->toBe(MatchRequestStatus::Open);
+
+    app(AnonymizeUser::class)($admin, $parent);
+
+    expect($request->fresh()->status)->toBe(MatchRequestStatus::Closed)
+        ->and($request->fresh()->handled_by)->toBe($admin->id);
+});
+
+it('does not choke on a match request that is already closed', function () {
+    $admin = User::factory()->admin()->create();
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+    $request = MatchRequest::factory()->create([
+        'account_user_id' => $parent->id,
+        'learner_id' => $learner->id,
+        'status' => MatchRequestStatus::Closed,
+        'handled_by' => $admin->id,
+    ]);
+
+    app(AnonymizeUser::class)($admin, $parent);
+
+    expect($request->fresh()->status)->toBe(MatchRequestStatus::Closed);
+});
+
 it('propagates the tombstoned name to the account owner’s own learner, but not to a minor learner', function () {
     $admin = User::factory()->admin()->create();
     $parent = User::factory()->create(['name' => 'Original Name']);
@@ -130,4 +162,33 @@ it('does not attempt a tutor-status transition when the profile was never approv
     app(AnonymizeUser::class)($admin, $profile->user);
 
     expect($profile->fresh()->status)->toBe(TutorProfileStatus::Draft);
+});
+
+it('lets a past lesson still resolve the anonymised tutor’s display name', function () {
+    $admin = User::factory()->admin()->create();
+    $profile = TutorProfile::factory()->approved()->create();
+    $lesson = Lesson::factory()->create([
+        'tutor_profile_id' => $profile->id,
+        'status' => LessonStatus::Settled,
+    ]);
+
+    app(AnonymizeUser::class)($admin, $profile->user);
+
+    $lesson->refresh();
+
+    expect(fn () => $lesson->tutorProfile->displayName())->not->toThrow(Throwable::class)
+        ->and($lesson->tutorProfile->displayName())->toBe('Deleted');
+});
+
+it('stays unbookable after an anonymised tutor is reinstated, since Suspended->Approved is a valid edge', function () {
+    $admin = User::factory()->admin()->create();
+    $profile = TutorProfile::factory()->approved()->create();
+
+    app(AnonymizeUser::class)($admin, $profile->user);
+
+    expect($profile->fresh()->status)->toBe(TutorProfileStatus::Suspended);
+
+    app(ReinstateTutor::class)($admin, $profile->fresh());
+
+    expect(TutorProfile::query()->bookable()->whereKey($profile->id)->exists())->toBeFalse();
 });

@@ -78,12 +78,12 @@ class LearnerController extends Controller
         return to_route('learners.index');
     }
 
-    public function destroy(Learner $learner, DeleteLearner $delete): RedirectResponse
+    public function destroy(Request $request, Learner $learner, DeleteLearner $delete): RedirectResponse
     {
         Gate::authorize('delete', $learner);
 
         try {
-            $delete($learner);
+            $delete($request->user(), $learner);
         } catch (LearnerDeletionException $e) {
             Inertia::flash('toast', ['type' => 'error', 'message' => $e->getMessage()]);
 

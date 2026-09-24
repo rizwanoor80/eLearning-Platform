@@ -53,11 +53,14 @@ class MatchRequest extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) account (R54), matching
+     * `learner()` below.
+     *
      * @return BelongsTo<User, $this>
      */
     public function account(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'account_user_id');
+        return $this->belongsTo(User::class, 'account_user_id')->withTrashed();
     }
 
     /**
@@ -88,6 +91,11 @@ class MatchRequest extends Model
     }
 
     /**
+     * No `->withTrashed()`: `handled_by` only ever points to an admin, and
+     * `AnonymizeUser` refuses an admin target while `DisableAdminUser` only
+     * suspends (never soft-deletes) one, so this row never needs to resolve
+     * a trashed user.
+     *
      * @return BelongsTo<User, $this>
      */
     public function handler(): BelongsTo

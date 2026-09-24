@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property int $id
@@ -78,8 +79,16 @@ class TutorProfile extends Model
 
     /**
      * Bookable = approved AND the permit has not expired yet (strictly after
-     * today — a permit expiring today is not bookable). Never re-implement
-     * this condition elsewhere.
+     * today — a permit expiring today is not bookable) AND the owning user
+     * has not been deleted. The third condition enforces invariant #5 against
+     * R54: `AnonymizeUser` suspends an approved tutor's profile on deletion,
+     * but `ReinstateTutor` can later take `Suspended -> Approved` again (a
+     * valid edge on its own terms), so `status = Approved` alone is not
+     * enough once a user can be soft-deleted — this scope must also check
+     * `users.deleted_at` directly. Checked against the column rather than
+     * through the `user()` relation below, since that relation deliberately
+     * includes trashed rows for display. Never re-implement this condition
+     * elsewhere.
      *
      * @param  Builder<TutorProfile>  $query
      * @return Builder<TutorProfile>
@@ -88,7 +97,13 @@ class TutorProfile extends Model
     {
         return $query
             ->where('status', TutorProfileStatus::Approved)
-            ->whereDate('permit_expires_at', '>', Date::today());
+            ->whereDate('permit_expires_at', '>', Date::today())
+            ->whereExists(function ($query): void {
+                $query->select(DB::raw(1))
+                    ->from('users')
+                    ->whereColumn('users.id', 'tutor_profiles.user_id')
+                    ->whereNull('users.deleted_at');
+            });
     }
 
     /**
@@ -143,11 +158,16 @@ class TutorProfile extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) user (R54) so `displayName()`,
+     * admin screens and past-lesson views can still resolve the row instead
+     * of throwing — `bookable()` independently excludes a deleted user, so
+     * this does not affect invariant #5.
+     *
      * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     /**

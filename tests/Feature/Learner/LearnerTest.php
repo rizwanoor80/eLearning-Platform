@@ -6,6 +6,7 @@ use App\Actions\Learner\DeleteLearner;
 use App\Enums\LessonStatus;
 use App\Enums\Role;
 use App\Exceptions\LearnerDeletionException;
+use App\Models\AuditLog;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
@@ -135,7 +136,7 @@ it('never deletes the adult student self-learner', function () {
     $user = User::factory()->create();
     $self = (new CreateSelfLearner)($user);
 
-    expect(fn () => (new DeleteLearner)($self))->toThrow(LearnerDeletionException::class);
+    expect(fn () => app(DeleteLearner::class)($user, $self))->toThrow(LearnerDeletionException::class);
 
     test()->actingAs($user)->delete(route('learners.destroy', $self))->assertRedirect(route('learners.index'));
     expect($self->fresh())->not->toBeNull();
@@ -202,7 +203,7 @@ it('refuses to delete a learner with a still-open lesson, naming it', function (
         'starts_at' => now()->addDay(),
     ]);
 
-    expect(fn () => (new DeleteLearner)($learner))->toThrow(LearnerDeletionException::class, "#{$lesson->id}");
+    expect(fn () => app(DeleteLearner::class)($owner, $learner))->toThrow(LearnerDeletionException::class, "#{$lesson->id}");
 
     test()->actingAs($owner)->delete(route('learners.destroy', $learner))->assertRedirect(route('learners.index'));
     expect($learner->fresh())->not->toBeNull();
@@ -217,10 +218,14 @@ it('deletes a learner once every lesson is terminal', function () {
         'tutor_profile_id' => $tutor->id,
     ]);
 
-    (new DeleteLearner)($learner);
+    app(DeleteLearner::class)($owner, $learner);
 
     expect(Learner::query()->whereKey($learner->id)->exists())->toBeFalse()
         ->and(Learner::withTrashed()->whereKey($learner->id)->exists())->toBeTrue();
+
+    $log = AuditLog::query()->where('action', 'learner.deleted')->where('subject_id', $learner->id)->firstOrFail();
+
+    expect($log->actor_user_id)->toBe($owner->id);
 });
 
 /**

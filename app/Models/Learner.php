@@ -54,11 +54,14 @@ class Learner extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) account (R54): a learner's other
+     * data outlives the account, so this must still resolve.
+     *
      * @return BelongsTo<User, $this>
      */
     public function account(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'account_user_id');
+        return $this->belongsTo(User::class, 'account_user_id')->withTrashed();
     }
 
     /**

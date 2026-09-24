@@ -43,11 +43,14 @@ class AuditLog extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) actor (R54): the audit trail
+     * must still resolve who did what, even after that user is deleted.
+     *
      * @return BelongsTo<User, $this>
      */
     public function actor(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'actor_user_id');
+        return $this->belongsTo(User::class, 'actor_user_id')->withTrashed();
     }
 
     /**

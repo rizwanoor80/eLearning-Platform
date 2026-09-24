@@ -2,13 +2,16 @@
 
 namespace App\Actions\Admin;
 
+use App\Actions\Match\CloseMatchRequest;
 use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\SuspendTutor;
 use App\Enums\LessonStatus;
+use App\Enums\MatchRequestStatus;
 use App\Enums\Role;
 use App\Enums\TutorProfileStatus;
 use App\Exceptions\UserDeletionException;
 use App\Models\Lesson;
+use App\Models\MatchRequest;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +27,9 @@ use Illuminate\Support\Str;
  * the profile moved out of `approved` so `bookable()` (invariant #5) stays
  * safe. `lessons`, `payments`, `ledger_entries`, `match_requests` and
  * `learners` are left intact by design: financial history and a parent's
- * other data must outlive the account (R54).
+ * other data must outlive the account (R54) — the one exception is any
+ * still-open match request, closed here so `SuggestTutors` can never later
+ * mail the tombstoned address.
  *
  * Admin action, audited; enforced here because no `UserPolicy` exists yet.
  */
@@ -33,6 +38,7 @@ class AnonymizeUser
     public function __construct(
         private RecordAuditLog $recordAuditLog,
         private SuspendTutor $suspendTutor,
+        private CloseMatchRequest $closeMatchRequest,
     ) {}
 
     public function __invoke(User $actor, User $target): void
@@ -82,6 +88,12 @@ class AnonymizeUser
             if ($profile !== null && $profile->status === TutorProfileStatus::Approved) {
                 ($this->suspendTutor)($actor, $profile, 'Account deleted.');
             }
+
+            MatchRequest::query()
+                ->where('account_user_id', $locked->id)
+                ->where('status', '!=', MatchRequestStatus::Closed)
+                ->get()
+                ->each(fn (MatchRequest $request) => ($this->closeMatchRequest)($actor, $request));
 
             $locked->delete();
 

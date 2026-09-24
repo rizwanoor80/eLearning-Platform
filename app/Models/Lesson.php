@@ -151,11 +151,14 @@ class Lesson extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) user (R54) so a past lesson can
+     * still say who booked it.
+     *
      * @return BelongsTo<User, $this>
      */
     public function bookedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'booked_by_user_id');
+        return $this->belongsTo(User::class, 'booked_by_user_id')->withTrashed();
     }
 
     /**

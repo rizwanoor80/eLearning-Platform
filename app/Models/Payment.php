@@ -60,10 +60,15 @@ class Payment extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) payer (R54): payment history
+     * must outlive the account (invariant #1's "money moves only through
+     * `LedgerService`" applies to the ledger, but a payment row referencing
+     * a deleted payer must still resolve for audit purposes).
+     *
      * @return BelongsTo<User, $this>
      */
     public function payer(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'payer_user_id');
+        return $this->belongsTo(User::class, 'payer_user_id')->withTrashed();
     }
 }
