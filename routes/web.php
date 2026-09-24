@@ -1,10 +1,13 @@
 <?php
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
+use App\Http\Controllers\Lessons\CancelLessonController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\Tutor\TutorDashboardController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
@@ -22,7 +25,8 @@ Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
+    Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
     Route::resource('learners', LearnerController::class)->except('show');
 
@@ -42,6 +46,8 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function () {
+    Route::get('tutor/dashboard', [TutorDashboardController::class, 'show'])->name('tutor.dashboard');
+
     Route::get('tutor/onboarding', [TutorOnboardingController::class, 'show'])->name('tutor.onboarding');
     Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');
     Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->name('tutor.onboarding.permit');

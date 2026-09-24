@@ -104,6 +104,21 @@ function agreementReadyTutor(): User
 }
 
 /**
+ * The shared GCSE curriculum row (found or created), matching LessonFactory's
+ * own convention — a fresh, randomly coded Curriculum::factory() per Learner
+ * (LearnerFactory's default) can collide with it on the unique `code` when a
+ * test creates more than one Learner. Pin every extra Learner::factory() call
+ * to this id.
+ */
+function gcseCurriculumId(): int
+{
+    return Curriculum::query()->firstOrCreate(
+        ['code' => CurriculumCode::Gcse],
+        ['name' => CurriculumCode::Gcse->value, 'sort' => 0],
+    )->id;
+}
+
+/**
  * A tutor-subject row for the onboarding POST: the year groups are looked up by
  * their default code (found or created, so it can be called repeatedly) — e.g.
  * `ygRow($gcse, $subject, 'y10', 'y11')` is Year 10 to Year 11 (R33).

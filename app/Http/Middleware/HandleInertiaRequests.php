@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\Role;
+use App\Models\User;
 use App\Support\Facades\Settings;
 use App\Support\PublicPages;
 use Illuminate\Http\Request;
@@ -46,6 +48,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'auth' => [
                 'user' => $request->user(),
+                'home' => $this->homeRouteFor($request->user()),
             ],
             // Read from the pages table when a page renders, so a new page or a
             // renamed one shows in the footer at once.
@@ -57,5 +60,20 @@ class HandleInertiaRequests extends Middleware
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
+    }
+
+    /**
+     * The single "Dashboard" nav link every layout renders is role-specific —
+     * a tutor visiting the parent-only `dashboard` route gets a 403. Computed
+     * once here so no `.vue` file branches on `auth.user.role` (CYCLE-LOG,
+     * 3e dashboards slice).
+     */
+    private function homeRouteFor(?User $user): string
+    {
+        return match ($user?->role) {
+            Role::AccountOwner => route('dashboard'),
+            Role::Tutor => route('tutor.dashboard'),
+            default => route('home'),
+        };
     }
 }
