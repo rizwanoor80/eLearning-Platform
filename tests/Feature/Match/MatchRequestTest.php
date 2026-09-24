@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Admin\AnonymizeUser;
 use App\Actions\Match\CloseMatchRequest;
 use App\Actions\Match\SuggestTutors;
 use App\Enums\BudgetTier;
@@ -366,14 +367,16 @@ it('keeps a disabled admin out of the queue, and the handler stays recorded when
     test()->actingAs($this->admin)->get(MatchRequestResource::getUrl())->assertForbidden();
 });
 
-it('deletes a parent’s requests with their account without an error (R30 #17)', function () {
+it('leaves a parent’s match requests and learners intact when the account is deleted (R30 #17, revised for R54)', function () {
     $parent = User::factory()->create();
     $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
     MatchRequest::factory()->create(['account_user_id' => $parent->id, 'learner_id' => $learner->id]);
 
-    test()->actingAs($parent)->delete(route('profile.destroy'), ['password' => 'password'])->assertRedirect('/');
+    // R54: account deletion is admin-only anonymisation, not a self-service hard
+    // delete — no cascade fires, so the parent's other data survives.
+    app(AnonymizeUser::class)($this->admin, $parent);
 
-    expect(User::query()->whereKey($parent->id)->exists())->toBeFalse()
-        ->and(MatchRequest::query()->count())->toBe(0)
-        ->and(Learner::withTrashed()->count())->toBe(0);
+    expect($parent->fresh()->trashed())->toBeTrue()
+        ->and(MatchRequest::query()->count())->toBe(1)
+        ->and(Learner::query()->count())->toBe(1);
 });

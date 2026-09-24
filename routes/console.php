@@ -15,3 +15,9 @@ Schedule::command('tutors:check-permits')->dailyAt('06:00')->onOneServer()->with
 // or race a concurrent capture, hence onOneServer + withoutOverlapping alongside the command's own
 // "unpaid" predicate.
 Schedule::command('lessons:expire-unpaid')->everyMinute()->onOneServer()->withoutOverlapping();
+
+// 24h/1h pre-lesson reminders (CP3 step 5, PRD line 160). The per-row
+// `reminder_*_sent_at IS NULL` claim inside the command is the actual
+// idempotency guard; onOneServer + withoutOverlapping only stop a second
+// worker starting, not what makes one harmless if it does.
+Schedule::command('lessons:send-reminders')->everyMinute()->onOneServer()->withoutOverlapping();

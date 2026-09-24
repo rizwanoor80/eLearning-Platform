@@ -57,6 +57,8 @@ use LogicException;
  * @property string|null $cancel_reason
  * @property Carbon|null $report_due_at
  * @property Carbon|null $escrow_released_at
+ * @property Carbon|null $reminder_24h_sent_at
+ * @property Carbon|null $reminder_1h_sent_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -127,6 +129,8 @@ class Lesson extends Model
             'cancelled_at' => 'datetime',
             'report_due_at' => 'datetime',
             'escrow_released_at' => 'datetime',
+            'reminder_24h_sent_at' => 'datetime',
+            'reminder_1h_sent_at' => 'datetime',
         ];
     }
 
@@ -147,11 +151,14 @@ class Lesson extends Model
     }
 
     /**
+     * Includes an anonymised (soft-deleted) user (R54) so a past lesson can
+     * still say who booked it.
+     *
      * @return BelongsTo<User, $this>
      */
     public function bookedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'booked_by_user_id');
+        return $this->belongsTo(User::class, 'booked_by_user_id')->withTrashed();
     }
 
     /**

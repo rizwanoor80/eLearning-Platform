@@ -5,6 +5,7 @@ import { computed } from 'vue';
 const page = usePage();
 const siteName = computed(() => (page.props.name as string | undefined) ?? '');
 const user = computed(() => page.props.auth.user);
+const home = computed(() => page.props.auth.home);
 </script>
 
 <template>
@@ -12,7 +13,7 @@ const user = computed(() => page.props.auth.user);
         <Link href="/" class="font-semibold">{{ siteName }}</Link>
         <nav class="flex items-center gap-4 text-sm">
             <Link href="/tutors" class="underline-offset-4 hover:underline">Find a tutor</Link>
-            <Link v-if="user" href="/dashboard" class="underline-offset-4 hover:underline">Dashboard</Link>
+            <Link v-if="user" :href="home" class="underline-offset-4 hover:underline">Dashboard</Link>
             <template v-else>
                 <Link href="/login" class="underline-offset-4 hover:underline">Log in</Link>
                 <Link href="/register" class="underline-offset-4 hover:underline">Register</Link>

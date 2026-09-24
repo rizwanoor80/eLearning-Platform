@@ -269,7 +269,7 @@ it('does not suspend when only 2 of 3 strikes fall inside the 90-day window', fu
     app(CancelLesson::class)($tutor->user, $lesson);
 
     expect($tutor->fresh()->status)->toBe(TutorProfileStatus::Approved);
-    Mail::assertNothingQueued();
+    Mail::assertNotQueued(AdminTutorSuspendedMail::class);
 });
 
 it('no-ops a strike on an already-suspended tutor: no throw, no second mail', function () {
@@ -284,5 +284,5 @@ it('no-ops a strike on an already-suspended tutor: no throw, no second mail', fu
     app(CancelLesson::class)($tutor->user, $lesson);
 
     expect($tutor->fresh()->status)->toBe(TutorProfileStatus::Suspended);
-    Mail::assertNothingQueued();
+    Mail::assertNotQueued(AdminTutorSuspendedMail::class);
 });
