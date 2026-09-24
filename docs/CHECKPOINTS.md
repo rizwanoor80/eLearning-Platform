@@ -94,9 +94,9 @@ Acceptance
 - [x] Every transition in the state diagram has a passing feature test; every invalid transition throws. _(3b, `5471bcb`: `LessonStateMachineTest.php`, every DATA_MODEL edge including the CP4–CP6 ones per R51; independently re-verified by the fresh-subagent review against the actual diff.)_
 - [x] First booking for a learner–tutor pair is `trial` at the discounted price; second is `regular` at full price; a cancelled trial does not consume the trial. _(3c, `df0aa88`: `BookLessonTest.php` "books the first lesson for a pair as a discounted trial and the second as full-price regular" and "does not let a cancelled trial consume the pair's one trial"; independently re-verified by the round-2 fresh-subagent review.)_
 - [x] Double-booking the same tutor slot fails under concurrent requests (test with DB constraint). _(3c, `df0aa88`: `BookLessonTest.php` "refuses a second learner racing the same tutor slot at the database, not just the app-level check, leaving exactly one confirmed lesson and one HOLD behind (R74 in-process concurrency proof)" — scope bounded to in-process tests per R74, no cross-process runner.)_
-- [ ] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created.
-- [ ] Changing `cancel_window_hours` in settings does not change the outcome for an already-booked lesson.
-- [ ] 3 strikes within 90 days → tutor `suspended`, admin emailed.
+- [x] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created. _(3d: `CancelLessonTest.php` — parent-refund, parent-release, tutor-strike and exact-deadline-boundary tests, all `LedgerService::sum()===0`.)_
+- [x] Changing `cancel_window_hours` in settings does not change the outcome for an already-booked lesson. _(3d: `CancelLessonTest.php` "is unaffected by a settings change after booking" on both the parent-refund and tutor-strike boundaries — invariant #11, the window is read from the lesson row, never `Settings::get()`.)_
+- [x] 3 strikes within 90 days → tutor `suspended`, admin emailed. _(3d: `CancelLessonTest.php` "suspends a tutor and emails an admin after 3 strikes within 90 days", with a null-actor audit row and `Mail::assertQueued(AdminTutorSuspendedMail::class, ...)`; a strike older than 90 days does not count; a 3rd strike on an already-suspended tutor is a silent no-op.)_
 
 ---
 

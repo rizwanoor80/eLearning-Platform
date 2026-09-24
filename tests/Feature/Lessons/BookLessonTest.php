@@ -22,6 +22,7 @@ use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
+use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentCaptureResult;
@@ -545,6 +546,51 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
     // The stranded payment above isn't just documented in-memory — `ledger:verify`
     // (invariant #1, R77 item 3) actually catches it once it's past the grace
     // window, so the sweep can never leave one of these silently unflagged forever.
+    $this->travel(6)->minutes();
+
+    $this->artisan('ledger:verify')
+        ->expectsOutputToContain("Payment {$payment->id} on lesson {$lesson->id} is captured with no matching ledger hold (invariant #1).")
+        ->assertExitCode(1);
+});
+
+it('records a captured payment but no HOLD when something other than a lesson-transition failure breaks the post-capture step (round-2 review Low)', function () {
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
+
+    // A plain RuntimeException from inside the transition's `hold()` callback, not a
+    // LessonTransitionException — proves BookLesson.php's `catch (Throwable $e)` at the
+    // post-capture step is reached by more than the lesson-state-machine's own exception
+    // type. LedgerService is final, so this is a stand-in swapped into the container
+    // rather than a mock of the class itself; the call site resolves it from the
+    // container and calls `hold()` on it without an `instanceof LedgerService` check.
+    app()->instance(LedgerService::class, new class
+    {
+        public function hold(Lesson $lesson, ?User $by = null): void
+        {
+            throw new RuntimeException('ledger unavailable');
+        }
+    });
+
+    $book = app(BookLesson::class);
+
+    expect(fn () => $book($parent, $learner, $tutor, [
+        'curriculum_id' => $curriculumId,
+        'subject_id' => $subjectId,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]))->toThrow(BookingException::class);
+
+    $lesson = Lesson::query()->latest('id')->firstOrFail();
+    expect($lesson->status)->toBe(LessonStatus::Expired);
+
+    $payment = Payment::query()->where('lesson_id', $lesson->id)->firstOrFail();
+    expect($payment->status)->toBe(PaymentStatus::Captured);
+
+    expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe(0);
+
+    // The stand-in only needed to stay bound for BookLesson's own call; `ledger:verify`
+    // itself is real code type-hinting the real LedgerService, so drop the swap first.
+    app()->forgetInstance(LedgerService::class);
+
     $this->travel(6)->minutes();
 
     $this->artisan('ledger:verify')

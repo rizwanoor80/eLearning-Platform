@@ -16,11 +16,13 @@ class SuspendTutor
      * Suspends a previously approved tutor — `bookable()` (invariant #5)
      * already excludes any non-`approved` status, so suspending removes the
      * tutor from search/booking with no separate flag to maintain. No email
-     * is sent (not one of CP1's named triggers); suspension is expected to
-     * carry a note explaining why, shown to the tutor on next login.
-     * ReinstateTutor is the way back.
+     * is sent from here (not one of CP1's named triggers); automated callers
+     * (e.g. strike-count suspension) dispatch their own. `$admin` is null for
+     * a system-originated suspension — `RecordAuditLog` already tolerates a
+     * null actor. Suspension is expected to carry a note explaining why,
+     * shown to the tutor on next login. ReinstateTutor is the way back.
      */
-    public function __invoke(User $admin, TutorProfile $profile, string $note): void
+    public function __invoke(?User $admin, TutorProfile $profile, string $note): void
     {
         TutorStatusTransitions::transition(
             $profile,
