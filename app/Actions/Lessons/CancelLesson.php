@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Cancels a `confirmed` lesson (PRD §4). Only the lesson's own tutor or the
@@ -59,6 +60,10 @@ class CancelLesson
                 $lesson,
                 LessonStatus::CancelledByTutor,
                 function (Lesson $locked) use ($actor, $reason, &$strikeCreated) {
+                    if ($locked->status !== LessonStatus::Confirmed) {
+                        throw new CancellationException("Lesson {$locked->id} is not confirmed; it cannot be cancelled.");
+                    }
+
                     app(LedgerService::class)->refund($locked, $actor);
                     $this->markPaymentRefunded($locked);
 
@@ -83,7 +88,7 @@ class CancelLesson
         });
 
         if ($strikeCreated) {
-            ($this->suspendTutorForStrikes)($lesson->tutorProfile);
+            $this->suspendTutorForStrikesQuietly($lesson);
         }
 
         return $lesson;
@@ -98,6 +103,10 @@ class CancelLesson
                 $lesson,
                 LessonStatus::CancelledByParent,
                 function (Lesson $locked) use ($actor, $reason, &$insideWindow) {
+                    if ($locked->status !== LessonStatus::Confirmed) {
+                        throw new CancellationException("Lesson {$locked->id} is not confirmed; it cannot be cancelled.");
+                    }
+
                     $insideWindow = $this->insideWindow($locked);
 
                     $locked->forceFill([
@@ -144,5 +153,19 @@ class CancelLesson
             'status' => PaymentStatus::Refunded,
             'refunded_amount' => $lesson->price,
         ]);
+    }
+
+    /**
+     * The cancellation itself has already committed by the time this runs; a
+     * failure here must not surface as if the cancellation failed. Logged for
+     * reconciliation (CP8 hardening — see STATUS.md `## Deferred`), not rethrown.
+     */
+    private function suspendTutorForStrikesQuietly(Lesson $lesson): void
+    {
+        try {
+            ($this->suspendTutorForStrikes)($lesson->tutorProfile);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 }

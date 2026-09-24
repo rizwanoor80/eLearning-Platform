@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * Skips a `reserved` (unpaid) lesson — PRD §4: free either way, no ledger
@@ -47,6 +48,10 @@ class SkipLesson
                 $lesson,
                 $to,
                 function (Lesson $locked) use ($actor, $reason, $isTutor, &$strikeCreated) {
+                    if ($locked->status !== LessonStatus::Reserved) {
+                        throw new CancellationException("Lesson {$locked->id} is not reserved; it cannot be skipped.");
+                    }
+
                     if (app(LedgerService::class)->sum($locked) !== 0) {
                         throw new LedgerException("Lesson {$locked->id} is reserved but already has ledger activity.");
                     }
@@ -72,7 +77,7 @@ class SkipLesson
         });
 
         if ($strikeCreated) {
-            ($this->suspendTutorForStrikes)($lesson->tutorProfile);
+            $this->suspendTutorForStrikesQuietly($lesson);
         }
 
         return $lesson;
@@ -83,5 +88,19 @@ class SkipLesson
         $deadline = $lesson->starts_at->copy()->subHours($lesson->cancel_window_hours);
 
         return now()->greaterThan($deadline);
+    }
+
+    /**
+     * The skip itself has already committed by the time this runs; a failure
+     * here must not surface as if the skip failed. Logged for reconciliation
+     * (CP8 hardening — see STATUS.md `## Deferred`), not rethrown.
+     */
+    private function suspendTutorForStrikesQuietly(Lesson $lesson): void
+    {
+        try {
+            ($this->suspendTutorForStrikes)($lesson->tutorProfile);
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 }

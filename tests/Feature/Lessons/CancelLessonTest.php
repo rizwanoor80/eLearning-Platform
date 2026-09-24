@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Lessons\CancelLesson;
+use App\Actions\Tutor\SuspendTutorForStrikes;
 use App\Enums\LedgerAccount;
 use App\Enums\LessonStatus;
 use App\Enums\PaymentStatus;
@@ -19,6 +20,7 @@ use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Support\Facades\Settings;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 
@@ -184,6 +186,47 @@ it('refuses to cancel an already-cancelled lesson, writing nothing new', functio
     expect(fn () => app(CancelLesson::class)($parent, $lesson->fresh()))->toThrow(LessonTransitionException::class);
 
     expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe($entriesAfterFirstCancel);
+});
+
+it('refuses to cancel a reserved (unpaid) lesson', function () {
+    $tutor = TutorProfile::factory()->approved()->create();
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Reserved)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+        'starts_at' => now()->addHours(25),
+        'ends_at' => now()->addHours(26),
+        'cancel_window_hours' => 24,
+    ]);
+
+    expect(fn () => app(CancelLesson::class)($parent, $lesson))->toThrow(CancellationException::class);
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Reserved)
+        ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe(0);
+});
+
+it('does not let a SuspendTutorForStrikes failure surface as if the cancellation itself failed', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor] = clSetup(23);
+
+    $suspend = Mockery::mock(SuspendTutorForStrikes::class);
+    $suspend->shouldReceive('__invoke')->once()->andThrow(new RuntimeException('boom'));
+
+    $reported = [];
+    app(ExceptionHandler::class)->reportable(function (Throwable $e) use (&$reported) {
+        $reported[] = $e->getMessage();
+
+        return false;
+    });
+
+    $result = (new CancelLesson($suspend))($tutor->user, $lesson);
+
+    expect($result->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($reported)->toContain('boom')
+        ->and(app(LedgerService::class)->sum($lesson))->toBe(0);
+
+    $strike = TutorStrike::query()->where('tutor_profile_id', $tutor->id)->sole();
+    expect($strike->type)->toBe(StrikeType::LateCancel);
 });
 
 // ---- strike-driven suspension (box 6) -------------------------------------------------------

@@ -1,16 +1,20 @@
 <?php
 
 use App\Actions\Lessons\SkipLesson;
+use App\Actions\Tutor\SuspendTutorForStrikes;
+use App\Enums\LedgerAccount;
 use App\Enums\LessonStatus;
 use App\Enums\StrikeType;
 use App\Exceptions\CancellationException;
 use App\Exceptions\LessonTransitionException;
 use App\Models\Learner;
 use App\Models\Lesson;
+use App\Models\Payment;
 use App\Models\TutorProfile;
 use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 
 /**
  * PRD §4: skipping a `reserved` (unpaid, weekly-slot) lesson is free either
@@ -36,6 +40,45 @@ function skSetup(float $hoursBeforeStart = 25): array
 
     return ['lesson' => $lesson->fresh(), 'tutor' => $tutor, 'parent' => $parent];
 }
+
+/**
+ * A `confirmed` lesson, HOLD-ed and paid — the counter-case `SkipLesson` must
+ * reject, since `sum() !== 0` cannot catch it: a HOLD leaves the ledger
+ * balanced (gateway/escrow legs sum to zero), so without an explicit status
+ * guard, skipping a paid lesson would cancel it while stranding the price in
+ * escrow forever.
+ *
+ * @return array{lesson: Lesson, tutor: TutorProfile, parent: User}
+ */
+function skConfirmedSetup(float $hoursBeforeStart = 25): array
+{
+    $tutor = TutorProfile::factory()->approved()->create();
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+
+    $lesson = Lesson::factory()->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+        'starts_at' => now()->addHours($hoursBeforeStart),
+        'ends_at' => now()->addHours($hoursBeforeStart)->addHour(),
+        'cancel_window_hours' => 24,
+    ]);
+
+    Payment::factory()->create(['lesson_id' => $lesson->id, 'payer_user_id' => $parent->id, 'amount' => $lesson->price]);
+    app(LedgerService::class)->hold($lesson);
+
+    return ['lesson' => $lesson->fresh(), 'tutor' => $tutor, 'parent' => $parent];
+}
+
+it('refuses to skip a confirmed (paid) lesson, leaving its escrow untouched', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = skConfirmedSetup(25);
+    $escrowBefore = app(LedgerService::class)->balance($lesson, LedgerAccount::Escrow);
+
+    expect(fn () => app(SkipLesson::class)($parent, $lesson))->toThrow(CancellationException::class);
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and(app(LedgerService::class)->balance($lesson, LedgerAccount::Escrow))->toBe($escrowBefore);
+});
 
 it('is free with no strike when the parent skips a reserved lesson', function () {
     ['lesson' => $lesson, 'parent' => $parent] = skSetup(25);
@@ -94,4 +137,26 @@ it('refuses to skip an already-moved-on lesson', function () {
     app(SkipLesson::class)($parent, $lesson);
 
     expect(fn () => app(SkipLesson::class)($parent, $lesson->fresh()))->toThrow(LessonTransitionException::class);
+});
+
+it('does not let a SuspendTutorForStrikes failure surface as if the skip itself failed', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor] = skSetup(23);
+
+    $suspend = Mockery::mock(SuspendTutorForStrikes::class);
+    $suspend->shouldReceive('__invoke')->once()->andThrow(new RuntimeException('boom'));
+
+    $reported = [];
+    app(ExceptionHandler::class)->reportable(function (Throwable $e) use (&$reported) {
+        $reported[] = $e->getMessage();
+
+        return false;
+    });
+
+    $result = (new SkipLesson($suspend))($tutor->user, $lesson);
+
+    expect($result->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($reported)->toContain('boom');
+
+    $strike = TutorStrike::query()->where('tutor_profile_id', $tutor->id)->sole();
+    expect($strike->type)->toBe(StrikeType::LateCancel);
 });
