@@ -10,6 +10,7 @@ use App\Enums\LessonStatus;
 use App\Enums\LevelTier;
 use App\Enums\RecurringSlotStatus;
 use App\Enums\Role;
+use App\Enums\TutorProfileStatus;
 use App\Exceptions\LearnerDeletionException;
 use App\Mail\Lessons\LessonSkippedMail;
 use App\Mail\RecurringSlots\RecurringSlotCreatedMail;
@@ -736,6 +737,45 @@ it('cuts a non-UTC slot off at the end of its own local day, and gives the tutor
     expect($first->fresh()->status)->toBe(LessonStatus::CancelledByTutor)
         ->and(Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::Reserved)->count())->toBe(0)
         ->and(TutorStrike::query()->where('tutor_profile_id', $setup['tutor']->id)->count())->toBe(0);
+});
+
+it('still reads right when the parent ends the slot before the tutor\'s notice email is sent', function () {
+    ['slot' => $slot, 'parent' => $parent, 'setup' => $setup] = wpSlotWithLessons();
+
+    test()->actingAs($setup['tutor']->user)->post(route('tutor.weekly-slots.end', $slot))->assertRedirect();
+    $lastDay = $slot->fresh()->end_effective_on->toDateString();
+
+    // The parent ends it outright; the queued email then re-reads a slot with no notice date at all.
+    app(EndRecurringSlot::class)($parent, $slot->fresh());
+    $ended = $slot->fresh();
+    expect($ended->end_effective_on)->toBeNull();
+
+    $sent = (new RecurringSlotEndedMail($ended, $parent, Role::Tutor, 2, 0, $lastDay))->render();
+    expect($sent)->toContain('will end after '.CarbonImmutable::parse($lastDay)->format('l, j M Y'));
+
+    $noDate = (new RecurringSlotEndedMail($ended, $parent, Role::Tutor, 2, 0))->render();
+    expect($noDate)->toContain('has been ended, following the notice the tutor gave');
+});
+
+it('carries the tutor\'s last day on the ended event, so the queued email does not have to re-derive it', function () {
+    Mail::fake();
+    ['slot' => $slot, 'setup' => $setup] = wpSlotWithLessons();
+
+    test()->actingAs($setup['tutor']->user)->post(route('tutor.weekly-slots.end', $slot))->assertRedirect();
+    $lastDay = $slot->fresh()->end_effective_on->toDateString();
+
+    Mail::assertQueued(RecurringSlotEndedMail::class, fn ($m) => $m->endedBy === Role::Tutor && $m->lastDay === $lastDay);
+});
+
+it('refuses a store for a tutor who is not bookable with the same generic message', function () {
+    $setup = wpTutor();
+    ['parent' => $parent, 'learner' => $learner] = wpParent($setup['tutor']);
+    $setup['tutor']->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    test()->actingAs($parent)->post(route('weekly-slots.store'), wpForm($setup, $learner))
+        ->assertSessionHasErrors(['slot' => 'That weekly slot cannot be set up.']);
+
+    expect(RecurringSlot::query()->count())->toBe(0);
 });
 
 it('words the ended email for an admin, and uses the earlier of the two end dates for a tutor notice', function () {

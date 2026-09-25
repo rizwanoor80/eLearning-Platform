@@ -99,7 +99,7 @@ class EndRecurringSlot
             ['status' => $slot->status->value, 'end_effective_on' => $effectiveOn->toDateString(), 'notice_days' => $noticeDays, 'cancelled_lessons' => $cancelled, 'note' => $note],
         );
 
-        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role));
+        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role, $slot->effectiveEndDate()?->toDateString()));
 
         return $slot;
     }

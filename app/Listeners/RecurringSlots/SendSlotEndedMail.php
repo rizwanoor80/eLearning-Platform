@@ -29,7 +29,7 @@ class SendSlotEndedMail implements ShouldQueue
 
         foreach ([$this->parentOf($slot), $this->tutorOf($slot)] as $recipient) {
             if ($recipient !== null) {
-                Mail::to($recipient)->send(new RecurringSlotEndedMail($slot, $recipient, $event->endedBy, $event->cancelledLessons, $paidRemaining));
+                Mail::to($recipient)->send(new RecurringSlotEndedMail($slot, $recipient, $event->endedBy, $event->cancelledLessons, $paidRemaining, $event->lastDay));
             }
         }
     }

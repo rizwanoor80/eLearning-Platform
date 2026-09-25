@@ -5,8 +5,11 @@
     <p>
         The weekly lesson slot for {{ $slot->learner->display_name }} with {{ $slot->tutorProfile->displayName() }}
         on {{ $slot->subject->name }} ({{ $slot->scheduleLabel() }})
-        @if ($endedBy === \App\Enums\Role::Tutor)
-            will end after {{ $slot->effectiveEndDate()->format('l, j M Y') }}, following the notice the tutor gave.
+        @php($until = $lastDay ?? $slot->effectiveEndDate()?->toDateString())
+        @if ($endedBy === \App\Enums\Role::Tutor && $until !== null)
+            will end after {{ \Carbon\CarbonImmutable::parse($until)->format('l, j M Y') }}, following the notice the tutor gave.
+        @elseif ($endedBy === \App\Enums\Role::Tutor)
+            has been ended, following the notice the tutor gave.
         @elseif ($endedBy === \App\Enums\Role::Admin)
             was ended by the platform team.
         @else

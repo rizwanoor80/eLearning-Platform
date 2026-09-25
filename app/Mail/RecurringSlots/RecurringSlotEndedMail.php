@@ -16,7 +16,9 @@ use Illuminate\Queue\SerializesModels;
 /**
  * A weekly slot was ended (R99/R102): one email per party in place of a skip email per lesson.
  * `$paidLessonsRemaining` counts the `confirmed` lessons that were not auto-cancelled — they were
- * already paid for and stay until someone cancels them under the normal rules.
+ * already paid for and stay until someone cancels them under the normal rules. `$lastDay` is the
+ * tutor-notice date fixed when the slot was ended, so the email still reads right if the slot is
+ * ended outright before it is sent.
  */
 class RecurringSlotEndedMail extends Mailable implements ShouldQueue
 {
@@ -28,6 +30,7 @@ class RecurringSlotEndedMail extends Mailable implements ShouldQueue
         public Role $endedBy,
         public int $releasedLessons,
         public int $paidLessonsRemaining,
+        public ?string $lastDay = null,
     ) {}
 
     public function envelope(): Envelope
