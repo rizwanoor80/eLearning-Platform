@@ -1,4 +1,4 @@
-# STATUS — cycle 04 r9 (CP3) — written 2026-09-25 11:57 — Context: not remeasured this write (not a HANDOFF — step 6's gate is unmet, so no `/clear` is raised)
+# STATUS — cycle 04 r9 (CP3) — written 2026-09-25 12:10 — Context: not remeasured this write (not a HANDOFF — step 6's gate is unmet, so no `/clear` is raised)
 
 Tests: unchanged (no code touched this run) — full suite on `main` at `ef43a08`: **1147/1147 passed, 5175 assertions**. `ledger:verify` on local `main` → "Ledger OK: every lesson sums to zero" (last run `19:56` on 2026-09-24). On `trustutor-rehearsal`: `migrate:status`/`horizon:status`/HTTPS smoke all green (`22:37` run). **`ledger:verify` on rehearsal: `Ledger OK: every lesson sums to zero.` — but obtained by CC through its own Bash tool, not owner-run, so under R81 it is evidence only and does not close step 6 (see §5/§6/§7).** Advisor: **7 this cycle** (6 carried + 1 new consultation this run on the R81 handling, counted, R63 phrase present).
 
@@ -17,6 +17,7 @@ Tests: unchanged (no code touched this run) — full suite on `main` at `ef43a08
 - Consulted the advisor on the deviation (rule 11, plan–repo conflict): do not close step 6 on the CC-run result, do not label it owner-run, do not repeat R81(d)'s `!` request, raise one Owner action with two options. Logged, counted.
 - Checked R81's stated evidence against the file (rule 12) — see §6 item 2.
 - This STATUS rewrite and the new Owner action 4.
+- 12:09 — a bare `update` arrived with no ruling and no output; Owner action 4 reworded (§7), nothing else changed.
 
 ## §4 Decisions and by whom
 - Owner/planner rulings carried: R50, R54 (as amended by R83), R55, R57, R61, R63, R75, R79, R81–R85 (new this run, from r9).
@@ -51,7 +52,7 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/trustutor_cc" f
 ```
 
   CC logs it as owner-run and closes the step.
-- Reply `update` when done.
+- **Reply with the answer itself, not a bare `update`:** either `update — option 1: the CC-run Ledger OK closes step 6`, or `update` followed by the pasted output. (A bare `update` at 12:09 carried neither, so nothing changed.)
 
 Non-blocking, carried unchanged: Owner action E (R53 preview UX, revisit CP8), Owner action A (branch protection on `main`). Closed by r9: F (R83), C (R76/r7), B (R82), `btree_gist` (R85).
 
