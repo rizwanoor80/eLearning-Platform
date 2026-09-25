@@ -113,9 +113,9 @@ Tasks
 Acceptance
 - [ ] Running `recurring:generate` twice produces no duplicate lessons.
 - [ ] A weekly slot on Tue 17:00 Asia/Karachi generates lessons at the correct UTC times and blocks that slot in `SlotCalculator` for a Dubai parent. _(Blocking half done in 4a: active and paused slots block, ended ones do not, `ends_on`/`end_effective_on` honoured inclusive, `SlotCalculatorTest`; the generation half lands in 4c.)_
-- [ ] Tutor end with 7-day notice: `reserved` lessons beyond day 7 cancelled without strike; a `reserved` lesson at day 3 skipped by tutor → strike only if inside 24h.
-- [ ] Parent end: all `reserved` lessons cancelled free; `confirmed` lessons (seeded via fake gateway) follow §4.
-- [ ] Two parents cannot create active slots on the same tutor weekday/time. _(DB half done in 4a: `recurring_slots_live_unique` covers active and paused, `RecurringSlotSchemaTest`; the clean-message translation lands in 4b.)_
+- [ ] Tutor end with 7-day notice: `reserved` lessons beyond day 7 cancelled without strike; a `reserved` lesson at day 3 skipped by tutor → strike only if inside 24h. _(Built in 4b, PR #17 `496a76d`: `RecurringSlotActionsTest` — reserved lessons past the notice cancelled `cancelled_by_tutor` / `slot_ended` with no `TutorStrike`; a later `SkipLesson` inside the notice strikes only inside 24h. The slot flips to `ended` in 4c's daily run.)_
+- [ ] Parent end: all `reserved` lessons cancelled free; `confirmed` lessons (seeded via fake gateway) follow §4. _(4b, PR #17: the `reserved` half is done and tested — cancelled free as `cancelled_by_parent` / `slot_ended`, no ledger or payment rows, `confirmed` lessons untouched. The `confirmed`-follows-§4 half is `CancelLesson`'s existing behaviour (CP3 tests); it is exercised end to end from 4e, when fake-gateway charges exist.)_
+- [ ] Two parents cannot create active slots on the same tutor weekday/time. _(DB half done in 4a: `recurring_slots_live_unique` covers active and paused, `RecurringSlotSchemaTest`; the clean-message translation is done in 4b, PR #17: `CreateRecurringSlot` translates the `QueryException` into "This tutor already has a weekly slot at that day and time.", tested with two parents.)_
 
 ---
 
