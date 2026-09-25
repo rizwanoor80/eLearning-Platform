@@ -162,7 +162,7 @@ it('shows the test-card page with two named cards and no card-number or CVC fiel
             ->missing('number')->missing('cvc'));
 
     expect(file_get_contents(resource_path('js/pages/payment-methods/Create.vue')))
-        ->toContain('Test mode')
+        ->toContain('<TestModeBanner')
         ->not->toMatch('/cvc|cvv|card-number|type="number"/i');
 });
 

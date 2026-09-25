@@ -10,6 +10,7 @@ use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Subject;
 use App\Models\TutorProfile;
+use App\Providers\PaymentGatewayServiceProvider;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -30,6 +31,7 @@ class ListRecurringSlots extends ListRecords
         return [
             Action::make('create')
                 ->label('Set up weekly slot')
+                ->modalDescription(PaymentGatewayServiceProvider::fakeGatewayAllowed() ? 'Test mode — no real card is charged.' : null)
                 ->schema([
                     Select::make('learner_id')
                         ->label('Learner')

@@ -22,9 +22,10 @@ class ChargeRecurringLessons extends Command
      * `charge_attempts` / `next_charge_at` move only when an attempt's result is recorded — see
      * `ChargeReservedLesson`. One lesson that throws is reported and the rest still run.
      *
-     * No `PaymentGateway` is bound outside tests until CP5 (invariant 16, the 3c decision): the
-     * command then charges nothing, says so and exits 0, but still cancels lessons whose start has
-     * passed, because that never touches a gateway.
+     * `PaymentGateway` is bound only on `local`, `testing` and `rehearsal` until CP5 (R107,
+     * ADR-016). Where it is not bound (production above all) the command charges nothing, says so
+     * and exits 0, but still cancels lessons whose start has passed, because that never touches a
+     * gateway.
      */
     public function handle(ChargeReservedLesson $charge): int
     {
