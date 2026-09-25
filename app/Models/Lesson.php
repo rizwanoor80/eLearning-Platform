@@ -178,6 +178,24 @@ class Lesson extends Model
     }
 
     /**
+     * The weekly slot that generated this lesson, if any.
+     *
+     * @return BelongsTo<RecurringSlot, $this>
+     */
+    public function recurringSlot(): BelongsTo
+    {
+        return $this->belongsTo(RecurringSlot::class);
+    }
+
+    /**
+     * @return BelongsTo<PaymentMethod, $this>
+     */
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class);
+    }
+
+    /**
      * @return HasMany<LedgerEntry, $this>
      */
     public function ledgerEntries(): HasMany

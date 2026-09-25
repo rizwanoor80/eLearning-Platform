@@ -100,8 +100,8 @@ Acceptance
 
 ---
 
-## CP4 — Recurring weekly slots (no money yet)
-**Goal:** parent can set up, skip, and end a weekly slot; tutor can end with notice; occurrences generate on a rolling horizon as `reserved`. Charging comes in CP5. **Backend dev reviews.**
+## CP4 — Recurring weekly slots (money on the fake gateway only)
+**Goal:** parent can set up, skip, and end a weekly slot; tutor can end with notice; occurrences generate on a rolling horizon as `reserved`; and, on the fake gateway only, each `reserved` occurrence is auto-charged from the saved card with retries, cancellation on the final failure, slot pause and counter reset (pulled forward from CP5, cycle 05 R88). Real gateway capture, the registry, payouts and the rest of CP5 stay in CP5. **Backend dev reviews.**
 
 Tasks
 - `recurring_slots` model + `CreateRecurringSlot` action (validates weekday/time against tutor availability and existing slots, requires a learner who has completed a trial with this tutor OR admin override, requires a saved card — stubbed in this CP).
@@ -112,10 +112,10 @@ Tasks
 
 Acceptance
 - [ ] Running `recurring:generate` twice produces no duplicate lessons.
-- [ ] A weekly slot on Tue 17:00 Asia/Karachi generates lessons at the correct UTC times and blocks that slot in `SlotCalculator` for a Dubai parent.
+- [ ] A weekly slot on Tue 17:00 Asia/Karachi generates lessons at the correct UTC times and blocks that slot in `SlotCalculator` for a Dubai parent. _(Blocking half done in 4a: active and paused slots block, ended ones do not, `ends_on`/`end_effective_on` honoured inclusive, `SlotCalculatorTest`; the generation half lands in 4c.)_
 - [ ] Tutor end with 7-day notice: `reserved` lessons beyond day 7 cancelled without strike; a `reserved` lesson at day 3 skipped by tutor → strike only if inside 24h.
 - [ ] Parent end: all `reserved` lessons cancelled free; `confirmed` lessons (seeded via fake gateway) follow §4.
-- [ ] Two parents cannot create active slots on the same tutor weekday/time.
+- [ ] Two parents cannot create active slots on the same tutor weekday/time. _(DB half done in 4a: `recurring_slots_live_unique` covers active and paused, `RecurringSlotSchemaTest`; the clean-message translation lands in 4b.)_
 
 ---
 

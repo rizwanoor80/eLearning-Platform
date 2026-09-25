@@ -2,18 +2,22 @@
 
 use App\Enums\CurriculumCode;
 use App\Enums\LevelTier;
+use App\Enums\RecurringSlotStatus;
 use App\Enums\Role;
 use App\Models\ContentBlock;
 use App\Models\Curriculum;
 use App\Models\DocumentType;
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\PaymentMethod;
 use App\Models\PriceBand;
+use App\Models\RecurringSlot;
 use App\Models\Subject;
 use App\Models\User;
 use App\Models\YearGroup;
 use App\Support\Money;
 use Database\Seeders\AdminUserSeeder;
+use Database\Seeders\DemoRecurringSlotSeeder;
 use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
@@ -82,3 +86,24 @@ it('refuses to seed the admin user when the credentials are missing', function (
 
     (new AdminUserSeeder)->run();
 })->throws(RuntimeException::class);
+
+it('does not seed the demo weekly slot outside the local environment', function () {
+    $this->seed();
+
+    expect(User::query()->where('email', DemoRecurringSlotSeeder::PARENT_EMAIL)->exists())->toBeFalse()
+        ->and(PaymentMethod::query()->count())->toBe(0)
+        ->and(RecurringSlot::query()->count())->toBe(0);
+});
+
+it('seeds one demo weekly slot with a fake card, once, when the demo seeder is called directly', function () {
+    $this->seed();
+    $this->seed(DemoRecurringSlotSeeder::class);
+    $this->seed(DemoRecurringSlotSeeder::class);
+
+    $slot = RecurringSlot::query()->with('learner', 'tutorProfile')->sole();
+
+    expect(PaymentMethod::query()->count())->toBe(1)
+        ->and($slot->status)->toBe(RecurringSlotStatus::Active)
+        ->and($slot->learner->account_user_id)->toBe(PaymentMethod::query()->sole()->account_user_id)
+        ->and($slot->price->toFils())->toBe($slot->tutorProfile->hourly_rate->toFils());
+});

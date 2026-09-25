@@ -4,7 +4,6 @@ namespace App\Services\Scheduling;
 
 use App\Enums\AvailabilityExceptionType;
 use App\Enums\LessonStatus;
-use App\Enums\RecurringSlotStatus;
 use App\Models\AvailabilityException;
 use App\Models\AvailabilityRule;
 use App\Models\Lesson;
@@ -107,12 +106,13 @@ class SlotCalculator
         }
 
         foreach ($recurringSlots as $slot) {
-            if ($slot->status !== RecurringSlotStatus::Active) {
+            // A paused slot keeps blocking its weekday/time (R97); an ended one frees it.
+            if (! in_array($slot->status, RecurringSlot::holdingStatuses(), true)) {
                 continue;
             }
 
             $from = $slot->starts_on->toDateString();
-            $until = $slot->ends_on?->toDateString();
+            $until = $slot->effectiveEndDate()?->toDateString();
 
             foreach ($this->datesAround($windowStart, $windowEnd, $slot->timezone) as $date) {
                 if ($date < $from || ($until !== null && $date > $until)) {
@@ -208,7 +208,7 @@ class SlotCalculator
             ->get()->groupBy('tutor_profile_id');
         $weekly = RecurringSlot::query()
             ->whereIn('tutor_profile_id', $ids)
-            ->where('status', RecurringSlotStatus::Active)
+            ->whereIn('status', RecurringSlot::holdingStatuses())
             ->get()->groupBy('tutor_profile_id');
 
         $result = [];

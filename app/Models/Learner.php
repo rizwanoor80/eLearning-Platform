@@ -73,6 +73,14 @@ class Learner extends Model
     }
 
     /**
+     * @return HasMany<RecurringSlot, $this>
+     */
+    public function recurringSlots(): HasMany
+    {
+        return $this->hasMany(RecurringSlot::class);
+    }
+
+    /**
      * @return BelongsTo<YearGroup, $this>
      */
     public function yearGroup(): BelongsTo

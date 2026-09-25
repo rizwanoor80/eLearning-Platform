@@ -126,13 +126,12 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
     redo finished work, never silently do something else.
 12. Read back and diff every file after writing it. Cite file:line or quoted output for every
     claim about behaviour. Own mistakes in plain words.
-13. One cycle per session. Run every step and gate of the cycle without asking for a clear. Only
-    at the cycle's END: write STATUS.md with §5 "context handoff", log a HANDOFF entry with the
-    context size and the number of compactions this session, and raise "Owner action N: `/clear`
-    this session, then reply `update`". Raise it only when PLAN.md, STATUS.md and CYCLE-LOG carry
-    what is done, what is next and what was ruled out — if they do not, write that first. A halt
-    for an owner GO is not a clear; wait, and resume on the next `update`. You cannot clear
-    yourself; the owner does it.
+13. Never stop only to clear. Offer a clear only at a halt that already needs the owner (GO,
+    question, Deploy, blocker, or END with nothing further authorised): write STATUS.md as a
+    handoff (§5: done, next, ruled out), log HANDOFF with context size and compactions, and end
+    the Owner action with the exact reply, as "then `/clear` this session and reply
+    `update — <answer>`". Otherwise run every authorised step without asking for a clear. You
+    cannot clear yourself; the owner does it.
 14. 200k context only; the 1M window is never enabled except by an owner ruling for one cycle.
     Auto-compaction inside a cycle is normal and expected — it fires around 180k, you carry on.
     Never ask for a clear because compaction is approaching, and never stop work because it fired.

@@ -94,6 +94,16 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail, Pas
     }
 
     /**
+     * The account's saved card — one in v1.
+     *
+     * @return HasOne<PaymentMethod, $this>
+     */
+    public function paymentMethod(): HasOne
+    {
+        return $this->hasOne(PaymentMethod::class, 'account_user_id');
+    }
+
+    /**
      * The verification email goes out from the settings sender and is queued
      * (Laravel's stock notification is neither).
      */
