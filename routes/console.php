@@ -16,6 +16,11 @@ Schedule::command('tutors:check-permits')->dailyAt('06:00')->onOneServer()->with
 // "unpaid" predicate.
 Schedule::command('lessons:expire-unpaid')->everyMinute()->onOneServer()->withoutOverlapping();
 
+// Weekly-slot generation (CP4 4c, R98): extends each active slot to the horizon and ends slots past
+// their end date. Idempotent by itself (generated_until, insertOrIgnore, the (slot, starts_at)
+// unique index); onOneServer + withoutOverlapping only stop a second worker starting.
+Schedule::command('recurring:generate')->dailyAt('05:00')->onOneServer()->withoutOverlapping();
+
 // 24h/1h pre-lesson reminders (CP3 step 5, PRD line 160). The per-row
 // `reminder_*_sent_at IS NULL` claim inside the command is the actual
 // idempotency guard; onOneServer + withoutOverlapping only stop a second
