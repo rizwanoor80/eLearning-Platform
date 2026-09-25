@@ -19,6 +19,9 @@ enum ChargeOutcome: string
     /** The lesson's start passed while it was uncharged: cancelled without counting against the slot. */
     case Missed = 'missed';
 
+    /** The tutor was no longer bookable when the lesson fell due: cancelled uncharged, no strike (R104). */
+    case TutorUnavailable = 'tutor_unavailable';
+
     /** Nothing to do (not due, already handled, slot not active, or no gateway is configured). */
     case Skipped = 'skipped';
 

@@ -54,11 +54,12 @@ class ChargeRecurringLessons extends Command
             });
 
         $this->info(sprintf(
-            'Charged %d, retry scheduled %d, cancelled %d, missed %d, skipped %d, needs review %d, %d lesson(s) errored.',
+            'Charged %d, retry scheduled %d, cancelled %d, missed %d, tutor unavailable %d, skipped %d, needs review %d, %d lesson(s) errored.',
             $counts[ChargeOutcome::Charged->value],
             $counts[ChargeOutcome::RetryScheduled->value],
             $counts[ChargeOutcome::Cancelled->value],
             $counts[ChargeOutcome::Missed->value],
+            $counts[ChargeOutcome::TutorUnavailable->value],
             $counts[ChargeOutcome::Skipped->value],
             $counts[ChargeOutcome::NeedsReview->value],
             $failed,

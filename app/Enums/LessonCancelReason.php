@@ -32,6 +32,15 @@ enum LessonCancelReason: string
     case ChargeWindowMissed = 'charge_window_missed';
 
     /**
+     * A weekly lesson fell due for charging while its tutor was no longer `bookable()` (suspended,
+     * permit lapsed, account deleted) — R104: cancelled as `cancelled_by_tutor` with no actor, never
+     * charged, no strike, and the slot stays active. It keeps its `(recurring_slot_id, starts_at)`
+     * key, so a reinstated tutor's next generation run does not recreate that week. Being a machine
+     * value also keeps the generic free-skip email quiet.
+     */
+    case TutorUnavailable = 'tutor_unavailable';
+
+    /**
      * Whether typed text collides with a machine value. `lessons_recurring_slot_starts_at_unique`
      * frees a key by reading `cancel_reason`, so a person's own note must never be able to equal
      * one; any future typed-reason input must refuse it.

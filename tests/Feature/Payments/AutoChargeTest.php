@@ -12,6 +12,7 @@ use App\Enums\PaymentMethodStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\RecurringSlotPauseReason;
 use App\Enums\RecurringSlotStatus;
+use App\Enums\TutorProfileStatus;
 use App\Events\Lessons\LessonStatusChanged;
 use App\Exceptions\PaymentCaptureException;
 use App\Exceptions\RecurringSlotException;
@@ -22,6 +23,7 @@ use App\Mail\Lessons\LessonSkippedMail;
 use App\Mail\Payments\WeeklyLessonCancelledForPaymentMail;
 use App\Mail\Payments\WeeklyLessonChargedMail;
 use App\Mail\Payments\WeeklyLessonChargeFailedMail;
+use App\Mail\Payments\WeeklyLessonTutorUnavailableMail;
 use App\Mail\RecurringSlots\RecurringSlotPausedAdminMail;
 use App\Mail\RecurringSlots\RecurringSlotPausedMail;
 use App\Models\Learner;
@@ -31,6 +33,7 @@ use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
+use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
@@ -40,8 +43,10 @@ use App\Services\Payments\PaymentGateway;
 use App\Services\Payments\SavedCard;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Mail;
 
@@ -390,7 +395,9 @@ it('renders the missed-window wording only for a charge_window_missed cancellati
     $missed = (new WeeklyLessonCancelledForPaymentMail($lesson->forceFill(['cancel_reason' => LessonCancelReason::ChargeWindowMissed->value]), $parent))->render();
     $failed = (new WeeklyLessonCancelledForPaymentMail($lesson->forceFill(['cancel_reason' => null]), $parent))->render();
 
+    // A pending attempt may exist for a missed lesson, so the missed-window email never claims nothing was paid.
     expect($missed)->toContain('could not be charged in time')
+        ->and($missed)->not->toContain('Nothing was paid')
         ->and($failed)->toContain('payment could not be taken');
 });
 
@@ -595,10 +602,166 @@ it('reports a lesson whose gateway call blows up, leaves it pending for the next
         ->and(Payment::query()->where('lesson_id', $broken->id)->sole()->gateway_ref)->toContain("lesson:{$broken->id}:attempt:1");
 });
 
-it('registers the command to run hourly', function () {
-    Artisan::call('schedule:list');
+it('is on the hourly schedule, once at a time on one server', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e): bool => str_contains((string) $e->command, 'recurring:charge'));
 
-    expect(Artisan::output())->toContain('recurring:charge');
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('0 * * * *')
+        ->and($event->onOneServer)->toBeTrue()
+        ->and($event->withoutOverlapping)->toBeTrue();
+});
+
+// ── a tutor who is no longer bookable (R104, invariant 5) ───────────────────────────────────
+
+dataset('unbookable tutors', ['suspended', 'permit lapsed', 'account deleted']);
+
+function acMakeUnbookable(TutorProfile $tutor, string $how): void
+{
+    match ($how) {
+        'suspended' => $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save(),
+        'permit lapsed' => $tutor->update(['permit_expires_at' => now()->subDay()]),
+        'account deleted' => $tutor->user->delete(),
+    };
+}
+
+it('cancels a due weekly lesson uncharged when its tutor is no longer bookable: no strike, no ledger, both emails, slot untouched', function (string $how) {
+    Mail::fake();
+    ['parent' => $parent, 'tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $lesson = acLesson($slot);
+    acMakeUnbookable($tutor, $how);
+
+    acAt('2026-09-16 12:00:00');
+    $output = acRun();
+    $lesson->refresh();
+
+    expect($lesson->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($lesson->cancel_reason)->toBe(LessonCancelReason::TutorUnavailable->value)
+        ->and($lesson->cancelled_by_user_id)->toBeNull()
+        ->and($lesson->cancelled_at)->not->toBeNull()
+        ->and($lesson->next_charge_at)->toBeNull()
+        ->and($lesson->charge_attempts)->toBe(0)
+        ->and(Payment::query()->count())->toBe(0)
+        ->and(LedgerEntry::query()->count())->toBe(0)
+        ->and(TutorStrike::query()->count())->toBe(0)
+        ->and($slot->fresh()->status)->toBe(RecurringSlotStatus::Active)
+        ->and($slot->fresh()->consecutive_charge_failures)->toBe(0)
+        ->and($output)->toContain('tutor unavailable 1');
+
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, 2);
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, fn ($mail) => $mail->hasTo($parent->email));
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, fn ($mail) => $mail->hasTo($tutor->user->email));
+    // Neither the generic free-skip email nor the payment-failure email fires for it.
+    Mail::assertNotQueued(LessonSkippedMail::class);
+    Mail::assertNotQueued(WeeklyLessonCancelledForPaymentMail::class);
+
+    expect(Artisan::call('ledger:verify'))->toBe(0);
+})->with('unbookable tutors');
+
+it('leaves the lesson of an unbookable tutor alone until it falls due, and cancels it once, not twice', function () {
+    Mail::fake();
+    ['tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $lesson = acLesson($slot);
+    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    acAt('2026-09-16 11:59:00');
+    acRun();
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Reserved);
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+    acRun();
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::CancelledByTutor);
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, 2);
+});
+
+it('cancels for an unbookable tutor even when no gateway is configured, and says so rather than "could not be charged in time"', function () {
+    Mail::fake();
+    app()->forgetInstance(PaymentGateway::class);
+    app()->offsetUnset(PaymentGateway::class);
+
+    ['tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $due = acLesson($slot);
+    $missed = acLesson($slot, '2026-09-14 05:00:00', '2026-09-11 05:00:00');
+    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+
+    expect($due->fresh()->cancel_reason)->toBe(LessonCancelReason::TutorUnavailable->value)
+        ->and($missed->fresh()->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($missed->fresh()->cancel_reason)->toBe(LessonCancelReason::TutorUnavailable->value)
+        ->and(Payment::query()->count())->toBe(0);
+    Mail::assertNotQueued(WeeklyLessonCancelledForPaymentMail::class);
+});
+
+it('charges the next week normally once the tutor is bookable again, because the slot stayed active', function () {
+    ['tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $first = acLesson($slot);
+    $second = acLesson($slot, '2026-09-25 12:00:00');
+    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+    $tutor->forceFill(['status' => TutorProfileStatus::Approved])->save();
+
+    acAt('2026-09-23 12:00:00');
+    acRun();
+
+    expect($first->fresh()->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($second->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and($slot->fresh()->status)->toBe(RecurringSlotStatus::Active);
+});
+
+it('lets an attempt already in flight finish rather than cancelling over a payment the gateway may have taken', function () {
+    ['parent' => $parent, 'tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $lesson = acLesson($slot);
+    Payment::factory()->create(['lesson_id' => $lesson->id, 'attempt_no' => 1, 'payer_user_id' => $parent->id, 'status' => PaymentStatus::Pending, 'gateway_ref' => null]);
+    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+    $lesson->refresh();
+
+    expect($lesson->status)->toBe(LessonStatus::Confirmed)
+        ->and($lesson->cancel_reason)->toBeNull()
+        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Captured);
+    expect(Artisan::call('ledger:verify'))->toBe(0);
+});
+
+it('words the unbookable-tutor email for each reader, and claims nothing was charged only when no live payment exists', function () {
+    ['parent' => $parent, 'tutor' => $tutor, 'slot' => $slot] = acSetup();
+    $lesson = acLesson($slot)->forceFill(['cancel_reason' => LessonCancelReason::TutorUnavailable->value]);
+
+    $forParent = (new WeeklyLessonTutorUnavailableMail($lesson, $parent))->render();
+    $forTutor = (new WeeklyLessonTutorUnavailableMail($lesson, $tutor->user))->render();
+
+    expect($forParent)->toContain('the tutor is not available for it')
+        ->and($forParent)->toContain('Nothing was charged')
+        ->and($forParent)->toContain('still active')
+        ->and($forParent)->not->toContain('suspend')
+        ->and($forParent)->not->toContain('permit')
+        ->and($forTutor)->toContain('not currently bookable')
+        ->and($forTutor)->toContain('not charged')
+        ->and($forTutor)->toContain('not count as a strike');
+
+    Payment::factory()->create(['lesson_id' => $lesson->id, 'status' => PaymentStatus::Pending, 'attempt_no' => 1]);
+
+    expect((new WeeklyLessonTutorUnavailableMail($lesson, $parent))->render())->not->toContain('Nothing was charged')
+        ->and((new WeeklyLessonTutorUnavailableMail($lesson, $tutor->user))->render())->not->toContain('not charged');
+});
+
+it('re-checks the resume policy under the slot lock: a stale model cannot resume a slot an admin has since paused', function () {
+    ['parent' => $parent, 'slot' => $slot, 'card' => $card] = acPausedByPayment();
+    $card->update(['last_failed_at' => null]);
+    $stale = RecurringSlot::query()->findOrFail($slot->id);
+
+    DB::table('recurring_slots')->where('id', $slot->id)->update(['paused_reason' => RecurringSlotPauseReason::Admin->value]);
+
+    expect(fn () => app(ResumeRecurringSlot::class)($parent, $stale))->toThrow(RecurringSlotException::class, 'You cannot resume');
+    expect($slot->fresh()->status)->toBe(RecurringSlotStatus::Paused)
+        ->and($slot->fresh()->paused_reason)->toBe(RecurringSlotPauseReason::Admin);
 });
 
 // ── payments uniqueness (R101) ───────────────────────────────────────────────────────────────

@@ -42,6 +42,12 @@ class ResumeRecurringSlot
                 throw new RecurringSlotException('Only a paused weekly slot can be resumed.');
             }
 
+            // The policy above read a possibly stale model: a parent may resume only a slot the system paused
+            // for failed charges, and an admin may have paused it (or changed why) since. Judge the locked row.
+            if (! Gate::forUser($actor)->allows('resume', $locked)) {
+                throw new RecurringSlotException('You cannot resume this weekly slot.');
+            }
+
             // The slot's own calendar, not UTC: `generated_until` is a date in the slot's timezone, and a
             // slot that has not started yet must not be dragged below the day before `starts_on`.
             $today = CarbonImmutable::now($locked->timezone)->startOfDay();

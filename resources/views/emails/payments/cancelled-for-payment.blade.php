@@ -8,7 +8,7 @@
         {{ $lesson->starts_at->setTimezone($recipient->timezone)->format('l, j M Y \a\t H:i') }}
         ({{ $recipient->timezone }}), has been cancelled
         @if ($lesson->cancel_reason === \App\Enums\LessonCancelReason::ChargeWindowMissed->value)
-            because it could not be charged in time. Nothing was paid and nothing is owed.
+            because it could not be charged in time.
         @else
             because the payment could not be taken. Nothing was paid and nothing is owed.
         @endif
