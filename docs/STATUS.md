@@ -1,44 +1,54 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 13:40 — Context: not measured this write — step 1 (4a) **in progress**
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 13:57 — Context: not measured this write — step 1 (4a) **PR #16 open, awaiting CI on head, then merge under R89**
 
-Tests: not yet run this cycle (last known: `main` at `ef43a08` **1147/1147 passed, 5175 assertions**). `ledger:verify`: not run this cycle. Review verdict: none yet. Advisor: **1 this cycle** (4a design consult; counted; R63 line on the entry).
+Tests: **1170/1170 passed, 5267 assertions** (`composer --no-interaction test`; baseline `main` 1147/5175 — grew by 23). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Review verdict: **no Medium or High open** (fresh subagent, 19 numbered verdicts, CYCLE-LOG REVIEW entry). Advisor: **3 this cycle** (design, mid-build, pre-PR; R63 line on each entry).
 
 ## §1 Git state
-`origin/main` at `405275f` (PLAN r1, docs-only, `[skip ci]`) + the docs commit carrying the START/ADVISOR/DEVIATION/DECISION log entries + this STATUS. Branch `cp/4a-foundation` (from `405275f`) carries `63a55a6` (composer.lock refresh, R103a), not yet pushed.
+`origin/main` at `7621301` + the docs commit carrying this write. PR #16 `cp/4a-foundation` → `main`, head `6223ae4`, MERGEABLE/CLEAN. `git log origin/main..HEAD` on the branch: `6223ae4` DATA_MODEL v1.5 note fixes · `d87a554` drop CancelLesson/SkipLesson reason guard · `ad87005` CP4 4a foundation · `b4e36d9` composer.lock (R103a).
 
 ## §2 Step map (cycle 05 r1 — programme R88)
-1. `cp/4a-foundation` — **in progress.** Done: R103(a) lock fix (`63a55a6`); design consult; row counts. Next: migrations, enums, models, factories, seeder, SlotCalculator, CLAUDE.md rule 13 (R86d), ADR-012, DATA_MODEL v1.5, tests.
-2. `cp/4b-slot-actions` — not started.
+1. `cp/4a-foundation` — **built, pushed, reviewed; PR #16 open.** Next: confirm CI on `6223ae4`, merge under R89, post-merge record and read-only smoke.
+2. `cp/4b-slot-actions` — not started (advisor consult on R99's cancellation-state mapping before the first edit).
 3. `cp/4c-generation` — not started.
 4. `cp/4d-portal` — not started.
 5. `cp/4e-auto-charge` — not started (halt for backend-dev GO, R90).
 6. Programme end and rehearsal deploy — not started.
 
 ## §3 What changed this run
-- `update` received; PLAN cycle 05 r1 committed as `405275f`.
-- `composer.lock` drift diagnosed: content-hash and platform php (`^8.3`→`^8.4`) only, no package moved; fixed with `composer update --lock` (background task exit 0), committed alone as `63a55a6`; `composer validate` valid.
-- Row counts local and rehearsal (read-only): `recurring_slots`, `lessons`, `payments` all 0 — no backfill needed.
-- Advisor consult on the 4a design; DEVIATION on R98's lessons key logged (§6 item 1); two DECISIONs logged (`payment_method_id` FK on `lessons`; demo seed local-only).
+- Migrations: `payment_methods` (+ `lessons.payment_method_id` FK), `recurring_slots` extension (learner/curriculum/subject FKs, `price`, pause/end columns, failure counter, `generated_until`, `created_by_user_id`; live-slot unique index), `recurring_slot_skips` and the `lessons` recurring-slot key. Enums, models, factories, `SlotCalculator` (holding statuses, `effectiveEndDate()`), local-only demo seeder.
+- Docs riding in the PR (plan step 1): CLAUDE.md rule 13 (R86d), ADR-012, DATA_MODEL v1.5, CHECKPOINTS CP4 notes.
+- Reverted before push: a reserved-reason guard in `CancelLesson`/`SkipLesson` (outside R89 scope); `isReserved()` stays.
+- FK safety for the step-6 deploy verified: rehearsal `lessons` has 0 rows and nothing in `app/` writes `lessons.payment_method_id`.
 
 ## §4 Decisions and by whom
-- Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103 (this plan).
+- Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103.
 - CC: the `lessons` recurring key excludes `cancel_reason = 'slot_paused'` rows so resume can refill (advisor-confirmed) — §6 item 1.
-- CC: `lessons.payment_method_id` FK added in 4a with `payment_methods`; `payments.payment_method_id` FK goes with 4e's payments migration.
-- CC: demo weekly slot + fake card seeded in a separate local-only seeder, never on rehearsal.
+- CC: `lessons.payment_method_id` FK in 4a with `payment_methods`; `payments.payment_method_id` (column already exists) gets its FK with 4e.
+- CC: demo weekly slot + fake card in a local-only seeder, never on rehearsal.
+- CC: reason-guard revert per advisor and R89 diff scope.
 
 ## §5 Why stopping
-Not stopping — mid-step 4a. This write is a step-boundary record. Programme resume count 0 of 8; R86: no stop only to clear.
+Not stopping — step-boundary record. Programme resume count 0 of 8; R86: no stop only to clear.
 
 ## §6 Mismatches
-1. **R98's literal lessons index vs R99's resume.** R98: `unique (recurring_slot_id, starts_at) WHERE recurring_slot_id IS NOT NULL`. That would make pause-cancelled rows keep their keys and block resume's refill. 4a builds the key with the extra predicate `AND cancel_reason IS DISTINCT FROM 'slot_paused'` (parent skips keep the key). Note for 4b/4c: resume must reset `generated_until` or generation never revisits those dates.
-2. `docs/DATA_MODEL.md` says the `lessons.payment_method_id` FK arrives with `payment_methods` "in CP5"; the plan pulls `payment_methods` into 4a (R100), so the FK moves with it.
+1. **R98's literal lessons index vs R99's resume.** R98: `unique (recurring_slot_id, starts_at) WHERE recurring_slot_id IS NOT NULL`. That would keep pause-cancelled rows' keys and block resume's refill. 4a builds it with `AND cancel_reason IS DISTINCT FROM 'slot_paused'` (parent skips keep the key). For 4b/4c: resume must reset `generated_until`; 4c's generator, if it uses `ON CONFLICT`, must repeat the exact predicate.
+2. `docs/DATA_MODEL.md` said the `lessons.payment_method_id` FK arrives "in CP5"; R100 pulls `payment_methods` into 4a, so the FK moved with it (v1.5 corrected).
+3. **Carried Lows from the 4a review (none affects 4a's schema):**
+   - `SlotCalculator.php:35-36` class docblock still says "active … until `ends_on`" — fix in 4b (code file, so not in a docs pass).
+   - `RecurringSlot::learner()` needs `withTrashed()`; `DeleteLearner` checks lessons only and should guard live slots — 4b.
+   - `RecurringSlotSkip` has no factory — 4c, where it first gets real writes.
+   - Any typed-reason input added in 4b/4d must refuse `LessonCancelReason::isReserved()` values; the cancelled email prints `cancel_reason` verbatim.
+   - 4b must decide when a tutor-ended slot flips to `ended`; until then it stays `active` and `recurring_slots_live_unique` keeps holding its weekday/time after `end_effective_on`.
+   - `$guarded = ['id']` on `RecurringSlot`: 4b actions must never pass request data straight in.
+   - 4b migrations must be dated after `2026_09_26_*`.
+   - Optional tests: `local` actually calls the demo seeder; the NOT NULL loop test asserts nothing about the error message.
 
 ## §7 Next step / Owner actions
-None pending. CC continues 4a.
+None pending. CC confirms CI on `6223ae4`, merges PR #16 under R89, then starts 4b.
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 4a foundation | in progress | `cp/4a-foundation` | — | — | — |
+| 4a foundation | PR open, CI pending | `cp/4a-foundation` | #16 | no Medium+ | pending (R89) |
 | 4b slot actions | not started | `cp/4b-slot-actions` | — | — | — |
 | 4c generation | not started | `cp/4c-generation` | — | — | — |
 | 4d portal | not started | `cp/4d-portal` | — | — | — |
@@ -48,7 +58,7 @@ None pending. CC continues 4a.
 Resume count: **0 of 8**.
 
 ## CP4 carried list (from cycle 04)
-1. ~~`composer.lock` drift~~ — fixed in `63a55a6` (R103a).
+1. ~~`composer.lock` drift~~ — fixed in `b4e36d9` (R103a).
 2. PR #15 finding 14 — stays on the CP8 list unless 4b touches `AnonymizeUser` (R103b).
 3. Owner action A (branch protection) — optional, open. Owner action E — revisit CP8.
 
