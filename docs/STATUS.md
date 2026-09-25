@@ -1,4 +1,4 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 17:14 (machine clock) — Context: not measured this write — 4a, 4b, 4c, 4d **merged** (`c0e2fc3`); 4e next, halting for the backend-dev GO (R90)
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 18:20 (machine clock) — Context: not measured this write — 4a–4d merged; **4e built and pushed, PR #20 open, adversarial review next**, then halt for the backend-dev GO (R90)
 
 Tests: **1272/1272 passed, 6038 assertions** on merged `main` at `c0e2fc3` (also on `cp/4d-portal` at `313c692`) (`composer.bat --no-interaction test`; merged-`main` baseline 1233/5623; +39 tests, all in `tests/Feature/Scheduling/WeeklySlotPortalTest.php`). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Smoke `/`, `/login`, `/admin/login`: 200 ×3. Review verdict (PR #18): two Mediums in the first review and one more in the round-1 re-review — all fixed; round-2 re-review: **no Medium or High open**, Lows carried. Advisor: 3 consults for 4d (all answered); 4 for 4c. 4d review verdict: first review no Medium/High, eight Lows, all fixed in loop 1; re-review one new Low, fixed in loop 2; final delta review: **no Medium or High open** (cap 2 reached).
 
@@ -10,7 +10,7 @@ Tests: **1272/1272 passed, 6038 assertions** on merged `main` at `c0e2fc3` (also
 2. `cp/4b-slot-actions` — **merged** as `496a76d` (CI pass on `3a7632a`); post-merge suite 1208/1208, 5500 assertions, Ledger OK, smoke 200 ×3.
 3. `cp/4c-generation` — **merged** as `dd34988` (CI pass on `39d7cb1`); post-merge suite 1233/1233, 5623 assertions, Ledger OK, smoke 200 ×3.
 4. `cp/4d-portal` — **merged** as `c0e2fc3` (squash, CI pass on `313c692`, R89); post-merge suite 1272/1272, 6038 assertions, Ledger OK, smoke 200 ×3, `npm run build` exit 0, Pint/PHPStan/RTL green.
-5. `cp/4e-auto-charge` — not started (halt for backend-dev GO, R90).
+5. `cp/4e-auto-charge` — built, pushed (`d5f6209`, `c98c390`), PR #20 open; suite 1306/1306, 6223 assertions, Ledger OK; fresh-subagent review pending; then halt for backend-dev GO (R90).
 6. Programme end and rehearsal deploy — not started.
 
 ## §3 What changed this run
@@ -66,7 +66,7 @@ None pending. CC builds 4e on `cp/4e-auto-charge`, then halts for the backend-de
 | 4b slot actions | **merged** | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | `496a76d` (R89) |
 | 4c generation | **merged** | `cp/4c-generation` | #18 | no Medium+ after fix rounds 1–2; Lows carried | `dd34988` (R89) |
 | 4d portal | **merged** | `cp/4d-portal` | #19 | no Medium+ after fix loops 1–2 (Lows fixed) | `c0e2fc3` (R89) |
-| 4e auto-charge | not started (halt: backend-dev GO) | `cp/4e-auto-charge` | — | — | — |
+| 4e auto-charge | built, PR open, review pending (halt: backend-dev GO) | `cp/4e-auto-charge` | #20 | pending | — |
 | Programme end + rehearsal deploy | not started (halt) | — | — | — | — |
 
 Resume count: **0 of 8**.
@@ -97,5 +97,5 @@ Resume count: **0 of 8**.
 - A reconciliation path for a `SuspendTutorForStrikes` failure after the triggering cancel/skip already committed — now built as swallow-and-log in both `CancelLesson`/`SkipLesson`; the reconciliation command itself is still not built, carried forward.
 - PR #14 re-review's 5 PASS WITH NOTE items (stale docblock reference, minor code duplication between `CancelLesson`/`SkipLesson`'s guard pattern, an asymmetric test-coverage gap) — non-blocking, revisit at CP8.
 - PR #15 review finding 14: `AnonymizeUser`'s admin-only check is Action-internal, not behind a route-level Policy/Gate — add an outer authorization layer when an admin UI/Filament resource is wired up around it.
-- `payments.lesson_id` UNIQUE vs. the 3-retry recurring-charge design (R78) — a CP5-plan item, not CP8; listed for the planner's visibility.
+- ~~`payments.lesson_id` UNIQUE vs. the 3-retry recurring-charge design (R78)~~ — resolved in 4e (ADR-013): one row per attempt, `unique (lesson_id, attempt_no)` plus a partial unique index for one live row.
 - `btree_gist` on `trustutor-production` — check when R41's recipe builds it at CP8 (R85).
