@@ -215,3 +215,10 @@ it('reads a slot\'s effective end as the earlier of ends_on and end_effective_on
 it('exposes the holding statuses as active and paused only', function () {
     expect(RecurringSlot::holdingStatuses())->toBe([RecurringSlotStatus::Active, RecurringSlotStatus::Paused]);
 });
+
+it('flags typed text that equals a machine cancel-reason value', function () {
+    expect(LessonCancelReason::isReserved('slot_paused'))->toBeTrue()
+        ->and(LessonCancelReason::isReserved('  slot_paused '))->toBeTrue()
+        ->and(LessonCancelReason::isReserved('change of plans'))->toBeFalse()
+        ->and(LessonCancelReason::isReserved(null))->toBeFalse();
+});

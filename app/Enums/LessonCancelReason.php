@@ -19,7 +19,7 @@ enum LessonCancelReason: string
     /**
      * Whether typed text collides with a machine value. `lessons_recurring_slot_starts_at_unique`
      * frees a key by reading `cancel_reason`, so a person's own note must never be able to equal
-     * one (`CancelLesson` and `SkipLesson` refuse it).
+     * one; any future typed-reason input must refuse it.
      */
     public static function isReserved(?string $text): bool
     {

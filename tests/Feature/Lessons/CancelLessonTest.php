@@ -286,12 +286,3 @@ it('no-ops a strike on an already-suspended tutor: no throw, no second mail', fu
     expect($tutor->fresh()->status)->toBe(TutorProfileStatus::Suspended);
     Mail::assertNotQueued(AdminTutorSuspendedMail::class);
 });
-
-it('refuses a typed reason that equals a machine cancel-reason value', function () {
-    ['lesson' => $lesson, 'parent' => $parent] = clSetup(25);
-
-    expect(fn () => app(CancelLesson::class)($parent, $lesson, ' slot_paused '))->toThrow(CancellationException::class, 'reserved by the system');
-
-    expect($lesson->fresh()->status)->toBe(LessonStatus::Confirmed)
-        ->and($lesson->fresh()->cancel_reason)->toBeNull();
-});
