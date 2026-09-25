@@ -1,4 +1,4 @@
-# STATUS — cycle 05 r4 (CP4+, autonomous programme R88) — written 2026-09-26 02:10 (machine clock; step boundary 4f→7) — Context: not measured this write — **4a–4f merged; step 7 (programme end + rehearsal deploy, R111) starting**
+# STATUS — cycle 05 r4 (CP4+, autonomous programme R88) — written 2026-09-26 02:29 (machine clock; halt at step 7, rehearsal deploy not yet landed) — Context: not measured this write — **4a–4f merged; `rehearsal` branch pushed at `c34979a`; awaiting the deploy (Owner action 1)**
 
 Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (constituent steps, R110; +18 over 1315/6310). `ledger:verify`: **Ledger OK**. Pint, PHPStan (0 errors), RTL, `npm run build`: green; local `/`, `/login`, `/admin/login`: 200. PR #21 review verdict: PASS WITH NOTE (1 Low, doc-only, fixed in-cycle); no Medium or High. Advisor: consulted 3 times this session (4f: design, mid-build, pre-merge; the model line is the R63 "configured, not measured"). Resume count 0 of 8.
 
@@ -36,7 +36,7 @@ Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (constituent
 - Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103.
 
 ## §5 Why stopping
-Not stopping: step-boundary write (4f merged, step 7 next). **Done:** 4f merged under R89; smoke green on `main` at `c34979a`. **Next:** step 7 — programme-end record, then CC deploys rehearsal (R111), then the R91 read-only verification; the programme END is a halt because nothing further is authorised. **Ruled out:** a fix loop for 4f (only a Low doc note, fixed in-cycle); binding the fake gateway on any environment not in the allow-list. Resume count 0 of 8.
+Halting under R111: I pushed `rehearsal` at `c34979a` at 02:12:48 (new branch, fast-forward, no `--force`) and polled the rehearsal server's `/current` every 30 s for 15 minutes; it still runs `e5d31f1` at 02:28:07, so Forge is not yet set to deploy from the `rehearsal` branch (push-to-deploy is OFF, CLAUDE.local.md line 8). **Done:** 4a–4f merged; `main` green at `c34979a` (1333/1333, 6362 assertions, Ledger OK); programme-end record on `main`. **Next:** the owner presses Deploy (or switches the site to the `rehearsal` branch), then CC runs the R91 read-only verification. **Ruled out:** a second push, anything on `trustutor-production`, editing CLAUDE.local.md lines 8 and 27 (no working push-to-deploy proven), running `migrate` or the recurring jobs myself. Resume count 0 of 8.
 
 ## §6 Mismatches
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
@@ -52,7 +52,7 @@ Not stopping: step-boundary write (4f merged, step 7 next). **Done:** 4f merged 
 10. **Review artefact, not a finding:** the reviewer saw no ADR-013..015 on the branch; they are on `main` (`git show origin/main:docs/DECISIONS.md | grep -c "ADR-01[345]"` = 3).
 
 ## §7 Next step / Owner actions
-No owner action open. CC continues with step 7 without stopping (R109): the programme-end record, the R111 rehearsal deploy, the R91 read-only verification, then END.
+Owner action 1: in Forge, open site `rehearsal.trustutor.com` on server `trustutor-rehearsal` and press Deploy. **Which branch it deploys matters:** the site is still on `main` (CLAUDE.local.md line 8), and `main` has only docs commits above the code commit `c34979a`, so a Deploy of `main` is equivalent for the app. To make future deploys automatic, set the site's branch to `rehearsal` and switch push-to-deploy on (a Forge setting only you can change); the `rehearsal` branch already exists at `c34979a`. The deploy runs `migrate --force` (the 4a–4f migrations) itself. Then `/clear` this session and reply `update — deployed`; CC will run the R91 read-only checks (`migrate:status`, `horizon:status`, `schedule:list`, HTTPS 200, `ledger:verify`), amend CLAUDE.local.md lines 8 and 27 only if push-to-deploy is proven, and log END.
 Carried to the CP5-remainder list (R108): the gateway status lookup by idempotency key (in-flight exception, §6 item 2), excluding `Captured` at the R104 guard, skipping the tutor mail for a trashed user; the registry replaces R107's binding (added to CHECKPOINTS CP5 by 4f).
 Listed once at programme END (R103d), needed before the CP5-remainder plan, not for this programme: **D-02** payment gateway driver (must support saved-card charging; PRD §11 default Stripe (UAE), else Tap); **D-04** legal entity that holds the licence and collects funds; **D-09** mail provider. Also for the owner (not blocking): `composer` is not on the Git Bash PATH here and PowerShell's `bash` resolves to WSL, so `composer test` cannot run as one command on this machine; the owner may add Herd's composer to the Git Bash PATH.
 
@@ -67,7 +67,7 @@ CP5-remainder (R88, carried): real gateway driver and the `payment_gateways` reg
 | 4d portal | **merged** | `cp/4d-portal` | #19 | no Medium+ after fix loops 1–2 (Lows fixed) | `c0e2fc3` (R89) |
 | 4e auto-charge | **merged** (owner GO, R108) | `cp/4e-auto-charge` | #20 | first review: 1 Medium + Lows 1, 6, 7, all closed; re-review: 1 Low carried to CP5 | `187c24f` |
 | 4f fake gateway | **merged** | `cp/4f-fake-gateway` | #21 | PASS WITH NOTE: 1 Low (doc-only, fixed in-cycle), no Medium+ | `c34979a` (R89) |
-| Programme end + rehearsal deploy (R111) | starting | `rehearsal` | — | — | — |
+| Programme end + rehearsal deploy (R111) | **halted — Owner action 1** | `rehearsal` at `c34979a` | — | — | not deployed yet (server on `e5d31f1`) |
 
 Resume count: **0 of 8**.
 
