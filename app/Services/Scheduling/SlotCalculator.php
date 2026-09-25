@@ -256,7 +256,11 @@ class SlotCalculator
         return CarbonImmutable::parse($date, $timezone)->dayOfWeek;
     }
 
-    private function local(string $date, string $time, string $timezone): CarbonImmutable
+    /**
+     * The UTC instant of a local wall-clock time. Public so `GenerateSlotLessons` converts a weekly
+     * occurrence exactly as this calculator blocks it (R97) — the two must agree to the second.
+     */
+    public function local(string $date, string $time, string $timezone): CarbonImmutable
     {
         return CarbonImmutable::createFromFormat('Y-m-d H:i', $date.' '.substr($time, 0, 5), $timezone)->utc();
     }
