@@ -17,6 +17,13 @@ enum LessonCancelReason: string
     case SlotPaused = 'slot_paused';
 
     /**
+     * A weekly slot was ended (R99) by the parent, the tutor or an admin: the affected
+     * `reserved` lessons are cancelled free. Unlike a pause, these rows keep their
+     * `(recurring_slot_id, starts_at)` key — an ended slot is never regenerated.
+     */
+    case SlotEnded = 'slot_ended';
+
+    /**
      * Whether typed text collides with a machine value. `lessons_recurring_slot_starts_at_unique`
      * frees a key by reading `cancel_reason`, so a person's own note must never be able to equal
      * one; any future typed-reason input must refuse it.
