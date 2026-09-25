@@ -1,19 +1,20 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 14:04 — Context: not measured this write — 4a **merged** (`6375469`); 4b starting
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 16:20 — Context: not measured this write — 4a merged (`6375469`); 4b PR #17 open, fix round 1 pushed, CI pending
 
-Tests: **1170/1170 passed, 5267 assertions** (`composer --no-interaction test`; baseline `main` 1147/5175 — grew by 23). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Review verdict: **no Medium or High open** (fresh subagent, 19 numbered verdicts, CYCLE-LOG REVIEW entry). Advisor: **3 this cycle** (design, mid-build, pre-PR; R63 line on each entry).
+Tests: **1208/1208 passed, 5500 assertions** on `3a7632a` (`composer.bat --no-interaction test`; 4a baseline 1170/5267 — grew by 38). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Review verdict (PR #17, fresh subagent): **no Medium or High**; Lows 16/18/19 fixed in round 1 of 2, 20/22 doc fixes done, 17 carried to 4d, 21 noted. Advisor: 3 consults this sub-cycle (design, mid-build, pre-PR), all answered.
 
 ## §1 Git state
-`origin/main` at `6375469` (PR #16 squash-merged) + the docs commit carrying this write. Branch `cp/4a-foundation` merged; 4b branch not yet cut.
+`origin/main` at the docs commit carrying this write (on top of `0ef33df`, 4a merged as `6375469`). Branch `cp/4b-slot-actions` at `3a7632a` (two commits ahead of the 4a merge), PR #17 open, mergeable, CI pending.
 
 ## §2 Step map (cycle 05 r1 — programme R88)
 1. `cp/4a-foundation` — **merged** as `6375469`; post-merge suite 1170/1170, 5267 assertions, Ledger OK, smoke 200 ×3.
-2. `cp/4b-slot-actions` — not started (advisor consult on R99's cancellation-state mapping before the first edit).
+2. `cp/4b-slot-actions` — built, reviewed, fix round 1 pushed; PR #17 awaiting CI on `3a7632a`, then merge under R89.
 3. `cp/4c-generation` — not started.
 4. `cp/4d-portal` — not started.
 5. `cp/4e-auto-charge` — not started (halt for backend-dev GO, R90).
 6. Programme end and rehearsal deploy — not started.
 
 ## §3 What changed this run
+- 4b (PR #17): `CreateRecurringSlot`, `EndRecurringSlot` (parent/admin now; tutor with notice, no strike), `PauseRecurringSlot`, `ResumeRecurringSlot`, `CancelSlotReservedLessons`, `RecurringSlotPolicy`, Filament `RecurringSlots` resource (list, view, create-with-override, pause, resume, end; all admin actions audited), `RecurringSlotException`, `LessonCancelReason::SlotEnded`. DATA_MODEL v1.5 gained the slot-end cancellation mapping (on `main`, `0ef33df`).
 - Migrations: `payment_methods` (+ `lessons.payment_method_id` FK), `recurring_slots` extension (learner/curriculum/subject FKs, `price`, pause/end columns, failure counter, `generated_until`, `created_by_user_id`; live-slot unique index), `recurring_slot_skips` and the `lessons` recurring-slot key. Enums, models, factories, `SlotCalculator` (holding statuses, `effectiveEndDate()`), local-only demo seeder.
 - Docs riding in the PR (plan step 1): CLAUDE.md rule 13 (R86d), ADR-012, DATA_MODEL v1.5, CHECKPOINTS CP4 notes.
 - Reverted before push: a reserved-reason guard in `CancelLesson`/`SkipLesson` (outside R89 scope); `isReserved()` stays.
@@ -25,6 +26,9 @@ Tests: **1170/1170 passed, 5267 assertions** (`composer --no-interaction test`; 
 - CC: `lessons.payment_method_id` FK in 4a with `payment_methods`; `payments.payment_method_id` (column already exists) gets its FK with 4e.
 - CC: demo weekly slot + fake card in a local-only seeder, never on rehearsal.
 - CC: reason-guard revert per advisor and R89 diff scope.
+- CC (4b): a tutor's notice end leaves the slot `active`/`paused` with `end_effective_on` set; 4c's daily run flips it to `ended`. Parent/admin end is immediate. Advisor-approved.
+- CC (4b): fixed the review's Low code/test findings inside the fix loop rather than stopping (HOW-WE-WORK rule 6 reading, logged as DECISION; the owner may overrule).
+- CC (4b): `RecurringSlotException` and `LessonCancelReason::SlotEnded` read as inside R89 scope (reviewer concurred); logged as NOTE.
 
 ## §5 Why stopping
 Not stopping — step-boundary record. Programme resume count 0 of 8; R86: no stop only to clear.
@@ -40,16 +44,17 @@ Not stopping — step-boundary record. Programme resume count 0 of 8; R86: no st
    - 4b must decide when a tutor-ended slot flips to `ended`; until then it stays `active` and `recurring_slots_live_unique` keeps holding its weekday/time after `end_effective_on`.
    - `$guarded = ['id']` on `RecurringSlot`: 4b actions must never pass request data straight in.
    - 4b migrations must be dated after `2026_09_26_*`.
+   - **Carried from the 4b review:** (a) 4d — bulk pause/end fires `SendLessonSkippedMail`/`SendLessonCancelledMail` per lesson (2×N mails); suppress by `cancel_reason` in `app/Listeners`, outside 4b's scope. (b) 4c/4e — lock the slot first, then its lessons, and re-check slot status under that lock; 4e must catch a repeat `PaymentFailed` pause (invariant 14). (c) 4c/4d — go by `status` and `end_effective_on`, never `ended_at`, to mean "ended". (d) When availability/timezone editing ships, add an explicit slot-vs-slot check across timezones (`recurring_slots_live_unique` only matches identical `(weekday, start_time, timezone)`). (e) Out of 4b's named areas, still open from 4a: the `SlotCalculator` docblock, `RecurringSlot::learner()` `withTrashed()`, `DeleteLearner` guarding live slots. (f) The PR-checklist box 4 `confirmed`-follows-§4 half is exercised end to end only from 4e.
    - Optional tests: `local` actually calls the demo seeder; the NOT NULL loop test asserts nothing about the error message.
 
 ## §7 Next step / Owner actions
-None pending. CC starts 4b (advisor consult on R99 first).
+None pending. CC merges PR #17 once CI is green on `3a7632a`, then starts 4c.
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
 | 4a foundation | **merged** | `cp/4a-foundation` | #16 | no Medium+ | `6375469` (R89) |
-| 4b slot actions | not started | `cp/4b-slot-actions` | — | — | — |
+| 4b slot actions | PR open, CI pending | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | — |
 | 4c generation | not started | `cp/4c-generation` | — | — | — |
 | 4d portal | not started | `cp/4d-portal` | — | — | — |
 | 4e auto-charge | not started (halt: backend-dev GO) | `cp/4e-auto-charge` | — | — | — |
