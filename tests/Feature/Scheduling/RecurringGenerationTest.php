@@ -30,6 +30,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -249,22 +250,55 @@ it('does not skip an occurrence for a cancelled lesson that freed the tutor slot
         ->and(RecurringSlotSkip::query()->count())->toBe(0);
 });
 
-it('skips every occurrence for a tutor who is not bookable, and from the day a permit lapses', function () {
+it('skips every occurrence for a tutor who is not bookable', function () {
     $suspended = rgSlot();
     $suspended->tutorProfile->forceFill(['status' => TutorProfileStatus::Suspended])->save();
 
+    rgRun();
+
+    expect(Lesson::query()->where('recurring_slot_id', $suspended->id)->count())->toBe(0)
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $suspended->id)->count())->toBe(4)
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $suspended->id)->pluck('reason')->unique()->all())->toBe([RecurringSlotSkipReason::TutorUnavailable]);
+});
+
+it('holds generation at a permit that will lapse, without skips, and carries on if the tutor renews', function () {
+    Mail::fake();
     $lapsing = rgSlot(['weekday' => 3]);
     // Bookable today, permit expires Wednesday 2026-09-30 (UTC midnight, exclusive).
     $lapsing->tutorProfile->forceFill(['permit_expires_at' => '2026-09-30'])->save();
 
     rgRun();
 
-    expect(Lesson::query()->where('recurring_slot_id', $suspended->id)->count())->toBe(0)
-        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $suspended->id)->count())->toBe(4)
-        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $suspended->id)->pluck('reason')->unique()->all())->toBe([RecurringSlotSkipReason::TutorUnavailable])
-        // Wednesdays 09-16 and 09-23 are before the permit expires; 09-30 and 10-07 are not.
-        ->and(rgStarts($lapsing))->toBe(['2026-09-16 12:00', '2026-09-23 12:00'])
-        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $lapsing->id)->count())->toBe(2);
+    // Wednesdays 09-16 and 09-23 are before the permit expires; 09-30 and 10-07 are not — but the
+    // tutor may still renew, so nothing is recorded as skipped and nobody is emailed yet.
+    expect(rgStarts($lapsing))->toBe(['2026-09-16 12:00', '2026-09-23 12:00'])
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $lapsing->id)->count())->toBe(0)
+        ->and($lapsing->fresh()->generated_until->toDateString())->toBe('2026-09-29');
+    Mail::assertNothingQueued();
+
+    // The tutor renews: the next run fills the rest of the horizon, no skips, no gap.
+    $lapsing->tutorProfile->forceFill(['permit_expires_at' => '2027-09-30'])->save();
+    rgRun();
+
+    expect(rgStarts($lapsing))->toBe(['2026-09-16 12:00', '2026-09-23 12:00', '2026-09-30 12:00', '2026-10-07 12:00'])
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $lapsing->id)->count())->toBe(0)
+        ->and($lapsing->fresh()->generated_until->toDateString())->toBe('2026-10-12');
+});
+
+it('records the skips, and mails them, once a permit really has lapsed', function () {
+    Mail::fake();
+    $lapsing = rgSlot(['weekday' => 3]);
+    $lapsing->tutorProfile->forceFill(['permit_expires_at' => '2026-09-30'])->save();
+    rgRun();
+
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 06:00:00', 'UTC'));
+    rgRun();
+
+    // Today is the expiry date: the tutor is no longer bookable, so the horizon is skipped.
+    expect(rgStarts($lapsing))->toBe(['2026-09-16 12:00', '2026-09-23 12:00'])
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $lapsing->id)->pluck('starts_at')->map(fn ($at) => $at->utc()->format('Y-m-d H:i'))->sort()->values()->all())
+        ->toBe(['2026-09-30 12:00', '2026-10-07 12:00', '2026-10-14 12:00', '2026-10-21 12:00', '2026-10-28 12:00']);
+    Mail::assertQueued(RecurringSlotSkippedMail::class, 1);
 });
 
 it('survives a tutor whose user was deleted', function () {
@@ -274,6 +308,15 @@ it('survives a tutor whose user was deleted', function () {
     expect(rgRun())->toBe(0)
         ->and(Lesson::query()->count())->toBe(0)
         ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $slot->id)->count())->toBe(4);
+});
+
+it('reserves nothing for a learner whose parent account was deleted', function () {
+    $slot = rgSlot();
+    $slot->learner->account->delete();
+
+    expect(rgRun())->toBe(0)
+        ->and(Lesson::query()->count())->toBe(0)
+        ->and($slot->fresh()->generated_until->toDateString())->toBe('2026-09-13');
 });
 
 it('leaves a slot alone when its learner was deleted', function () {
@@ -365,8 +408,10 @@ it('is on the daily schedule, once at a time on one server', function () {
 });
 
 it('carries on past a slot that fails and reports it', function () {
-    $good = rgSlot();
+    // The failing slot has the lower id, so it is processed first: a catch outside the loop would leave
+    // the good slot untouched.
     $bad = rgSlot(['weekday' => 3]);
+    $good = rgSlot();
 
     app()->instance(GenerateSlotLessons::class, new class(app(SlotCalculator::class), app(RecordAuditLog::class), $bad->id) extends GenerateSlotLessons
     {
@@ -377,17 +422,23 @@ it('carries on past a slot that fails and reports it', function () {
 
         public function __invoke(RecurringSlot $slot): array
         {
-            if ($slot->id === $this->badId) {
-                throw new RuntimeException('boom');
+            if ($slot->id !== $this->badId) {
+                return parent::__invoke($slot);
             }
 
-            return parent::__invoke($slot);
+            // Fail after the slot's own work, inside its transaction: everything it wrote must roll back.
+            return DB::transaction(function () use ($slot): array {
+                parent::__invoke($slot);
+
+                throw new RuntimeException('boom');
+            });
         }
     });
 
     expect(rgRun())->toBe(1)
         ->and(rgStarts($good))->not->toBeEmpty()
-        ->and(Lesson::query()->where('recurring_slot_id', $bad->id)->count())->toBe(0);
+        ->and(Lesson::query()->where('recurring_slot_id', $bad->id)->count())->toBe(0)
+        ->and($bad->fresh()->generated_until->toDateString())->toBe('2026-09-13');
 });
 
 it('renders the skip email in the parent\'s timezone with a reason per date', function () {

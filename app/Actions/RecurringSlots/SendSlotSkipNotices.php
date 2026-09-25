@@ -8,6 +8,7 @@ use App\Models\RecurringSlot;
 use App\Models\RecurringSlotSkip;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 /**
  * Emails each account once about the occurrences `recurring:generate` skipped (R98). One email per
@@ -28,36 +29,47 @@ class SendSlotSkipNotices
         RecurringSlotSkip::query()->whereNull('notified_at')->distinct()->orderBy('recurring_slot_id')
             ->pluck('recurring_slot_id')
             ->each(function (int $slotId) use (&$sent): void {
-                $sent += DB::transaction(function () use ($slotId): int {
-                    $skips = RecurringSlotSkip::query()
-                        ->where('recurring_slot_id', $slotId)
-                        ->whereNull('notified_at')
-                        ->orderBy('starts_at')
-                        ->lockForUpdate()
-                        ->get();
-
-                    if ($skips->isEmpty()) {
-                        return 0;
-                    }
-
-                    RecurringSlotSkip::query()->whereKey($skips->modelKeys())->update(['notified_at' => now()]);
-
-                    $slot = RecurringSlot::query()->find($slotId);
-                    $learner = $slot === null ? null : Learner::query()->withTrashed()->find($slot->learner_id);
-                    $account = $learner?->account;
-
-                    // Nobody left to tell (a removed learner or account): the rows are settled, not retried daily.
-                    // The email names the learner, and `RecurringSlot::learner()` does not load a removed one.
-                    if ($slot === null || $learner === null || $learner->trashed() || $account === null || $account->trashed()) {
-                        return 0;
-                    }
-
-                    Mail::to($account)->send(new RecurringSlotSkippedMail($slot, $account, $skips));
-
-                    return 1;
-                });
+                // One slot's failure (a queue push, say) rolls back only its own rows, which are retried on
+                // the next run; the other slots' notices still go out.
+                try {
+                    $sent += $this->notify($slotId);
+                } catch (Throwable $e) {
+                    report($e);
+                }
             });
 
         return $sent;
+    }
+
+    private function notify(int $slotId): int
+    {
+        return DB::transaction(function () use ($slotId): int {
+            $skips = RecurringSlotSkip::query()
+                ->where('recurring_slot_id', $slotId)
+                ->whereNull('notified_at')
+                ->orderBy('starts_at')
+                ->lockForUpdate()
+                ->get();
+
+            if ($skips->isEmpty()) {
+                return 0;
+            }
+
+            RecurringSlotSkip::query()->whereKey($skips->modelKeys())->update(['notified_at' => now()]);
+
+            $slot = RecurringSlot::query()->find($slotId);
+            $learner = $slot === null ? null : Learner::query()->withTrashed()->find($slot->learner_id);
+            $account = $learner?->account;
+
+            // Nobody left to tell (a removed learner or account): the rows are settled, not retried daily.
+            // The email names the learner, and `RecurringSlot::learner()` does not load a removed one.
+            if ($slot === null || $learner === null || $learner->trashed() || $account === null || $account->trashed()) {
+                return 0;
+            }
+
+            Mail::to($account)->send(new RecurringSlotSkippedMail($slot, $account, $skips));
+
+            return 1;
+        });
     }
 }

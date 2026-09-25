@@ -66,7 +66,8 @@ class GenerateSlotLessons
 
             $learner = Learner::query()->withTrashed()->find($locked->learner_id);
 
-            if ($learner === null || $learner->trashed()) {
+            // Nobody left to book for (a removed learner, or an anonymised parent account): nothing is reserved.
+            if ($learner === null || $learner->trashed() || $learner->account === null || $learner->account->trashed()) {
                 return ['created' => 0, 'skipped' => 0, 'ended' => false];
             }
 
@@ -90,9 +91,10 @@ class GenerateSlotLessons
 
             $counts = $this->walk($locked, $learner, $from, $last, $now);
 
-            $locked->forceFill(['generated_until' => $last])->save();
+            // Never backwards: a permit boundary can leave the walk short of where an earlier run got to.
+            $locked->forceFill(['generated_until' => max($locked->generated_until->toDateString(), $counts['until'])])->save();
 
-            return $counts + ['ended' => false];
+            return ['created' => $counts['created'], 'skipped' => $counts['skipped'], 'ended' => false];
         });
     }
 
@@ -119,7 +121,7 @@ class GenerateSlotLessons
     }
 
     /**
-     * @return array{created: int, skipped: int}
+     * @return array{created: int, skipped: int, until: string} `until` is the last local date fully covered
      */
     private function walk(RecurringSlot $slot, Learner $learner, string $from, string $last, CarbonImmutable $now): array
     {
@@ -139,6 +141,7 @@ class GenerateSlotLessons
         $chargeLeadHours = (int) Settings::get('recurring_charge_lead_hours');
 
         $starts = [];
+        $until = $last;
 
         for ($date = CarbonImmutable::parse($from, $slot->timezone); $date->toDateString() <= $last; $date = $date->addDay()) {
             if ($date->dayOfWeek !== $slot->weekday) {
@@ -147,13 +150,22 @@ class GenerateSlotLessons
 
             $start = $this->calculator->local($date->toDateString(), $slot->start_time, $slot->timezone);
 
+            // A permit that will lapse inside the horizon is not a skip yet — the tutor may renew before
+            // then. Generation stops the day before it and picks up again on a later run; the skips
+            // (and the email) are written only once the tutor really is unbookable.
+            if ($bookable && $permitCutoff !== null && $start >= $permitCutoff) {
+                $until = $date->subDay()->toDateString();
+
+                break;
+            }
+
             if ($start > $now) {
                 $starts[] = $start;
             }
         }
 
         if ($starts === []) {
-            return ['created' => 0, 'skipped' => 0];
+            return ['created' => 0, 'skipped' => 0, 'until' => $until];
         }
 
         $rangeStart = $starts[0];
@@ -219,7 +231,7 @@ class GenerateSlotLessons
             }
         }
 
-        return ['created' => $created, 'skipped' => $skipped];
+        return ['created' => $created, 'skipped' => $skipped, 'until' => $until];
     }
 
     /**
