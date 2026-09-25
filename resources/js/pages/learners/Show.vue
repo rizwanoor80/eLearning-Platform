@@ -16,7 +16,7 @@ defineProps<{
         price: string;
         ends_on: string | null;
         end_effective_on: string | null;
-        ended_by_tutor: boolean;
+        tutor_notice: boolean;
     }>;
     lessons: Array<{ id: number; starts_at: string; status: string; subject: string | null; tutor: string; cancel_kind: 'skip' | null }>;
     eligible_tutors: Array<{ id: number; name: string }>;
@@ -60,7 +60,7 @@ function skip(id: number) {
                         <span class="font-medium">{{ slot.subject ?? 'Lesson' }} with {{ slot.tutor }}</span>
                         <span class="text-muted-foreground text-sm">{{ slot.schedule }} · {{ slot.price }}</span>
                         <span v-if="slot.next" class="text-muted-foreground text-sm">Next lesson: {{ slot.next }}</span>
-                        <span v-if="slot.ended_by_tutor && slot.end_effective_on" class="text-sm">
+                        <span v-if="slot.tutor_notice && slot.end_effective_on" class="text-sm">
                             Your tutor has ended this slot; the last day is {{ slot.end_effective_on }}.
                         </span>
                         <span v-else-if="slot.ends_on && slot.status !== 'ended'" class="text-muted-foreground text-sm">Ends on {{ slot.ends_on }}</span>
@@ -70,7 +70,7 @@ function skip(id: number) {
                     </div>
                     <div class="flex items-center gap-2">
                         <Badge variant="outline">{{ slot.status }}</Badge>
-                        <Button v-if="slot.status !== 'ended' && !slot.ended_by_tutor" variant="outline" size="sm" as-child>
+                        <Button v-if="slot.status !== 'ended'" variant="outline" size="sm" as-child>
                             <Link :href="`/weekly-slots/${slot.id}/end`">End</Link>
                         </Button>
                     </div>

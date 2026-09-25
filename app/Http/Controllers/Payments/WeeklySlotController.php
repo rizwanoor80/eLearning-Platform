@@ -85,12 +85,12 @@ class WeeklySlotController extends Controller
         /** @var array{learner_id: int, tutor_id: int, curriculum_id: int, subject_id: int, weekday: int, start_time: string, starts_on: string, ends_on?: string|null} $data */
         $data = $request->validated();
 
-        // Ownership is the action's job (`createFor`); a learner that is not the caller's is refused
-        // exactly like any other rejected setup, without saying whether the id exists.
+        // A learner that is not the caller's (or a tutor that is not bookable) is refused with one generic
+        // message, checked before the action so nothing later says whether the id exists.
         $learner = Learner::query()->withTrashed()->find($data['learner_id']);
         $tutor = TutorProfile::query()->bookable()->find($data['tutor_id']);
 
-        if ($learner === null || $tutor === null) {
+        if ($learner === null || $tutor === null || ! $user->can('createFor', [RecurringSlot::class, $learner])) {
             throw ValidationException::withMessages(['slot' => __('That weekly slot cannot be set up.')]);
         }
 

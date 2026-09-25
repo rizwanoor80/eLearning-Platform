@@ -124,7 +124,7 @@ class LearnerController extends Controller
                 'price' => $slot->price->format(),
                 'ends_on' => $slot->ends_on?->format('j M Y'),
                 'end_effective_on' => $slot->end_effective_on?->format('j M Y'),
-                'ended_by_tutor' => $slot->end_effective_on !== null && $slot->ended_by_user_id !== null,
+                'tutor_notice' => $slot->end_effective_on !== null && $slot->status !== RecurringSlotStatus::Ended,
             ])->all(),
             'lessons' => $lessons->map(fn (Lesson $lesson): array => [
                 'id' => $lesson->id,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ const props = defineProps<{
     learners: Array<{ id: number; display_name: string; trial_completed: boolean }>;
     selected_learner: number | null;
     subjects: Array<{ curriculum_id: number; subject_id: number; label: string }>;
-    options: Array<{ weekday: number; start_time: string; value: string; label: string; next: string | null }>;
+    options: Array<{ weekday: number; start_time: string; value: string; label: string; next: string | null; first_on: string | null }>;
     timezone: string;
     card: { brand: string; last4: string } | null;
     can_add_card: boolean;
@@ -46,6 +46,13 @@ const form = useForm({
 const learner = computed(() => props.learners.find((row) => row.id === Number(learnerId.value)) ?? null);
 const trialMissing = computed(() => learner.value !== null && !learner.value.trial_completed);
 const chosen = computed(() => props.options.find((option) => option.value === slot.value) ?? null);
+// The offered times already respect the booking lead time; start on the option's own first date so the default is never refused.
+watch(chosen, (option) => {
+    if (option?.first_on) {
+        form.starts_on = option.first_on;
+    }
+});
+const startMin = computed(() => chosen.value?.first_on ?? props.min_start);
 const addCardHref = computed(() => `/payment-methods/create?tutor=${props.tutor.id}` + (learnerId.value ? `&learner=${learnerId.value}` : ''));
 
 function submit() {
@@ -123,7 +130,7 @@ function submit() {
 
                 <div class="grid gap-2">
                     <Label for="starts_on">Start date</Label>
-                    <Input id="starts_on" v-model="form.starts_on" type="date" :min="min_start" required />
+                    <Input id="starts_on" v-model="form.starts_on" type="date" :min="startMin" required />
                     <InputError :message="form.errors.starts_on" />
                 </div>
 

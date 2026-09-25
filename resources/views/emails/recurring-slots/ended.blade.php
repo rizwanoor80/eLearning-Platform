@@ -6,11 +6,11 @@
         The weekly lesson slot for {{ $slot->learner->display_name }} with {{ $slot->tutorProfile->displayName() }}
         on {{ $slot->subject->name }} ({{ $slot->scheduleLabel() }})
         @if ($endedBy === \App\Enums\Role::Tutor)
-            will end after {{ $slot->end_effective_on->format('l, j M Y') }}, following the notice the tutor gave.
+            will end after {{ $slot->effectiveEndDate()->format('l, j M Y') }}, following the notice the tutor gave.
         @elseif ($endedBy === \App\Enums\Role::Admin)
             was ended by the platform team.
         @else
-            was ended by the parent.
+            has been ended from the parent's account.
         @endif
     </p>
     <p>

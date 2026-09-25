@@ -451,7 +451,7 @@ it('says a parent-ended slot was ended by the parent, and a tutor-ended one when
     ['slot' => $slot, 'parent' => $parent] = wpSlotWithLessons();
 
     $mail = new RecurringSlotEndedMail($slot, $parent, Role::AccountOwner, 3, 0);
-    expect($mail->render())->toContain('was ended by the parent')->toContain('3 lessons that had not yet been charged');
+    expect($mail->render())->toContain('has been ended from the parent\'s account')->toContain('3 lessons that had not yet been charged');
 
     $slot->forceFill(['end_effective_on' => '2026-10-05'])->save();
     $mail = new RecurringSlotEndedMail($slot->fresh(), $parent, Role::Tutor, 1, 0);
@@ -612,4 +612,137 @@ it('finds the next occurrence after an instant, in UTC, honouring the start and 
 
     $starts = new RecurringSlot(['weekday' => 2, 'start_time' => '17:00:00', 'timezone' => 'UTC', 'starts_on' => '2026-10-06']);
     expect($starts->nextOccurrenceAfter(CarbonImmutable::parse('2026-09-14 06:00:00', 'UTC'))->toDateString())->toBe('2026-10-06');
+});
+
+it('keeps the next occurrence on wall-clock time across a daylight-saving change', function () {
+    $slot = new RecurringSlot(['weekday' => 0, 'start_time' => '17:00:00', 'timezone' => 'Europe/London', 'starts_on' => '2026-10-01']);
+
+    // Sunday 18 Oct is still BST (17:00 = 16:00Z); Sunday 25 Oct is GMT (17:00 = 17:00Z).
+    expect($slot->nextOccurrenceAfter(CarbonImmutable::parse('2026-10-14 00:00:00', 'UTC'))->toIso8601String())->toBe('2026-10-18T16:00:00+00:00')
+        ->and($slot->nextOccurrenceAfter(CarbonImmutable::parse('2026-10-18 16:00:00', 'UTC'))->toIso8601String())->toBe('2026-10-25T17:00:00+00:00');
+});
+
+// --- review fixes: default start date, refusal wording, tutor notice then parent end -------
+
+it('gives each option the local date of its first lesson, so the default start date is never refused', function () {
+    Mail::fake();
+    // Monday 17:00 is 11 hours away at 06:00 Monday, inside the 12-hour lead, so the first lesson is next Monday.
+    $setup = wpTutor('UTC', '17:00:00', '18:00:00', 1);
+    ['parent' => $parent, 'learner' => $learner] = wpParent($setup['tutor']);
+
+    test()->actingAs($parent)->get(route('weekly-slots.create', ['tutor' => $setup['tutor']->id]))
+        ->assertInertia(fn ($page) => $page->where('options.0.value', '1|17:00')
+            ->where('options.0.first_on', '2026-09-21')
+            ->where('min_start', '2026-09-14'));
+
+    // Today's date lands the first lesson inside the lead time; the option's own date does not.
+    test()->actingAs($parent)->post(route('weekly-slots.store'), wpForm($setup, $learner, ['weekday' => 1, 'start_time' => '17:00', 'starts_on' => '2026-09-14']))
+        ->assertSessionHasErrors('slot');
+    test()->actingAs($parent)->post(route('weekly-slots.store'), wpForm($setup, $learner, ['weekday' => 1, 'start_time' => '17:00', 'starts_on' => '2026-09-21']))
+        ->assertRedirect(route('learners.show', $learner));
+
+    expect(RecurringSlot::query()->count())->toBe(1);
+});
+
+it('reads first_on in the tutor\'s zone, not the parent\'s or UTC', function () {
+    // Tuesday 02:00 in Karachi is Monday 21:00 UTC; the tutor-zone date is Tuesday the 15th.
+    $setup = wpTutor('Asia/Karachi', '02:00:00', '04:00:00');
+    ['parent' => $parent, 'learner' => $learner] = wpParent($setup['tutor'], timezone: 'America/Los_Angeles');
+
+    test()->actingAs($parent)->get(route('weekly-slots.create', ['tutor' => $setup['tutor']->id]))
+        ->assertInertia(fn ($page) => $page->where('options.0.first_on', '2026-09-15')
+            ->where('options.0.next', 'Mon, 14 Sep 2026, 2:00 PM'));
+
+    test()->actingAs($parent)->post(route('weekly-slots.store'), wpForm($setup, $learner, ['start_time' => '02:00', 'starts_on' => '2026-09-15']))
+        ->assertRedirect(route('learners.show', $learner));
+});
+
+it('refuses every setup that is not the caller\'s with the same generic message', function () {
+    $setup = wpTutor();
+    ['parent' => $parent] = wpParent($setup['tutor']);
+    ['learner' => $stranger] = wpParent($setup['tutor']);
+    ['learner' => $removed] = wpParent($setup['tutor']);
+    $removed->delete();
+
+    $generic = 'That weekly slot cannot be set up.';
+
+    foreach ([$stranger->id, $removed->id, 999999] as $id) {
+        test()->actingAs($parent)->post(route('weekly-slots.store'), wpForm($setup, $stranger, ['learner_id' => $id]))
+            ->assertSessionHasErrors(['slot' => $generic]);
+    }
+
+    expect(RecurringSlot::query()->count())->toBe(0);
+});
+
+it('lets the parent end at once after the tutor gave notice, and drops the notice date', function () {
+    Mail::fake();
+    ['slot' => $slot, 'parent' => $parent, 'learner' => $learner, 'setup' => $setup] = wpSlotWithLessons();
+
+    test()->actingAs($setup['tutor']->user)->post(route('tutor.weekly-slots.end', $slot))->assertRedirect();
+    $releasedByTutor = Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::CancelledByTutor)->count();
+    $stillReserved = Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::Reserved)->count();
+
+    expect($slot->fresh()->end_effective_on)->not->toBeNull()
+        ->and($releasedByTutor)->toBeGreaterThan(0)
+        ->and($stillReserved)->toBeGreaterThan(0);
+
+    // While the notice runs the parent still sees the slot as live, with the notice flagged, and can end it.
+    test()->actingAs($parent)->get(route('learners.show', $learner))
+        ->assertInertia(fn ($page) => $page->where('slots.0.tutor_notice', true)->where('slots.0.status', 'active'));
+
+    test()->actingAs($parent)->post(route('weekly-slots.end', $slot))->assertRedirect(route('learners.show', $learner));
+
+    $slot = $slot->fresh();
+    expect($slot->status)->toBe(RecurringSlotStatus::Ended)
+        ->and($slot->end_effective_on)->toBeNull()
+        ->and($slot->ended_by_user_id)->toBe($parent->id)
+        // The tutor's earlier releases stay theirs; only what was still reserved becomes the parent's.
+        ->and(Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::CancelledByTutor)->count())->toBe($releasedByTutor)
+        ->and(Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::CancelledByParent)->count())->toBe($stillReserved)
+        ->and(Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::Reserved)->count())->toBe(0);
+
+    test()->actingAs($parent)->get(route('learners.show', $learner))
+        ->assertInertia(fn ($page) => $page->where('slots.0.tutor_notice', false)->where('slots.0.status', 'ended'));
+});
+
+it('cuts a non-UTC slot off at the end of its own local day, and gives the tutor no strike', function () {
+    Mail::fake();
+    Settings::set('recurring_tutor_end_notice_days', 0);
+    // Tuesday 02:00 in Karachi = Monday 21:00 UTC, 15 hours away: inside the cancel window too, which is
+    // where a plain tutor cancellation would earn a strike.
+    $setup = wpTutor('Asia/Karachi', '02:00:00', '04:00:00');
+    ['learner' => $learner] = wpParent($setup['tutor']);
+
+    $slot = RecurringSlot::factory()->create([
+        'learner_id' => $learner->id,
+        'tutor_profile_id' => $setup['tutor']->id,
+        'curriculum_id' => $setup['curriculum_id'],
+        'subject_id' => $setup['subject_id'],
+        'weekday' => 2,
+        'start_time' => '02:00:00',
+        'timezone' => 'Asia/Karachi',
+        'starts_on' => '2026-09-14',
+        'generated_until' => '2026-09-13',
+        'price' => 10000,
+    ]);
+    Artisan::call('recurring:generate');
+
+    $first = Lesson::query()->where('recurring_slot_id', $slot->id)->orderBy('starts_at')->first();
+    expect($first->starts_at->toIso8601String())->toBe('2026-09-14T21:00:00+00:00');
+
+    test()->actingAs($setup['tutor']->user)->post(route('tutor.weekly-slots.end', $slot))->assertRedirect();
+
+    // Today in Karachi is Monday the 14th; 21:00Z is already Tuesday there, so it is past the last day.
+    expect($first->fresh()->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and(Lesson::query()->where('recurring_slot_id', $slot->id)->where('status', LessonStatus::Reserved)->count())->toBe(0)
+        ->and(TutorStrike::query()->where('tutor_profile_id', $setup['tutor']->id)->count())->toBe(0);
+});
+
+it('words the ended email for an admin, and uses the earlier of the two end dates for a tutor notice', function () {
+    ['slot' => $slot, 'parent' => $parent] = wpSlotWithLessons();
+
+    expect((new RecurringSlotEndedMail($slot, $parent, Role::Admin, 0, 0))->render())->toContain('was ended by the platform team');
+
+    $slot->forceFill(['ends_on' => '2026-10-01', 'end_effective_on' => '2026-10-05'])->save();
+    expect((new RecurringSlotEndedMail($slot->fresh(), $parent, Role::Tutor, 0, 0))->render())->toContain('will end after Thursday, 1 Oct 2026');
 });

@@ -54,7 +54,7 @@ function end() {
                     <li v-for="lesson in confirmed" :key="lesson.id" class="p-3">
                         {{ lesson.starts_at }}
                         <span class="text-muted-foreground block text-xs">
-                            Cancel it from your dashboard: {{ lesson.cancel_window_hours }} hours or more ahead is refunded in full.
+                            Cancel it from your dashboard: {{ lesson.cancel_window_hours }} hours or more ahead is refunded in full; closer than that is not refunded and the tutor is paid.
                         </span>
                     </li>
                 </ul>

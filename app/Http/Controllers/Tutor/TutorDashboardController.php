@@ -82,7 +82,7 @@ class TutorDashboardController extends Controller
                 'subject' => $slot->subject?->name,
                 'schedule' => $slot->scheduleLabel(),
                 'status' => $slot->status->value,
-                'ending_on' => $slot->ended_by_user_id !== null ? $slot->end_effective_on?->format('D, j M Y') : null,
+                'ending_on' => $slot->end_effective_on?->format('D, j M Y'),
             ])
             ->all();
 

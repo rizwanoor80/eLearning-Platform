@@ -31,7 +31,7 @@ class TutorWeeklySlotController extends Controller
         $slot->loadMissing(['learner', 'subject:id,name']);
 
         $noticeDays = (int) Settings::get('recurring_tutor_end_notice_days');
-        $lastDay = $slot->end_effective_on !== null && $slot->ended_by_user_id !== null
+        $lastDay = $slot->end_effective_on !== null
             ? CarbonImmutable::instance($slot->end_effective_on)
             : CarbonImmutable::now($slot->timezone)->startOfDay()->addDays($noticeDays);
 
@@ -46,7 +46,7 @@ class TutorWeeklySlotController extends Controller
             'weekly_slot' => [
                 'id' => $slot->id,
                 'ended' => $slot->status === RecurringSlotStatus::Ended,
-                'notice_given' => $slot->end_effective_on !== null && $slot->ended_by_user_id !== null,
+                'notice_given' => $slot->end_effective_on !== null,
                 'learner' => $slot->learner->display_name,
                 'subject' => $slot->subject?->name,
                 'schedule' => $slot->scheduleLabel(),

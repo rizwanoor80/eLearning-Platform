@@ -19,7 +19,7 @@ use Carbon\CarbonImmutable;
 class WeeklySlotOptions
 {
     /**
-     * @return list<array{weekday: int, start_time: string, value: string, label: string, next: string|null}>
+     * @return list<array{weekday: int, start_time: string, value: string, label: string, next: string|null, first_on: string|null}>
      */
     public function forTutor(TutorProfile $tutor, string $viewerTimezone): array
     {
@@ -51,15 +51,19 @@ class WeeklySlotOptions
                     'weekday' => $rule->weekday,
                     'start_time' => $time.':00',
                     'timezone' => $rule->timezone,
-                    'starts_on' => $after->toDateString(),
+                    'starts_on' => $after->setTimezone($rule->timezone)->toDateString(),
                 ]);
+
+                $next = $slot->nextOccurrenceAfter($after);
 
                 $options[$value] = [
                     'weekday' => $rule->weekday,
                     'start_time' => $time,
                     'value' => $value,
                     'label' => $slot->scheduleLabel(),
-                    'next' => $slot->nextOccurrenceAfter($after)?->setTimezone($viewerTimezone)->format('D, j M Y, g:i A'),
+                    'next' => $next?->setTimezone($viewerTimezone)->format('D, j M Y, g:i A'),
+                    // The local date (in the tutor's zone) of that first lesson: the `starts_on` the action reads.
+                    'first_on' => $next?->setTimezone($rule->timezone)->toDateString(),
                 ];
             }
         }
