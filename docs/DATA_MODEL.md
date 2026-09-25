@@ -4,7 +4,7 @@ _All money columns are integer fils (AED). All timestamps UTC unless stated. Sof
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
 _v1.3 (cycle 03, rulings R32–R36, ADR-004; describes what shipped): adds `year_groups` — year group becomes a controlled list per curriculum (R33), so `learners` and `tutor_subjects` point at it and keep their old free text only in `*_legacy` columns; `tutor_profiles` gains `submitted_at` and the status lifecycle is one table of allowed edges (R36); `content_blocks` also carries the match-request budget labels (R35); `TutorProfile::displayName()` is the one public name (R32)._
 _v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped): three real schema deviations from v1.3's forward-looking design, plus one implementation-detail note, all called out inline below. `lessons` gains its CP3 columns exactly as v1.3 specified (money frozen at booking, room/completion/cancellation fields); `tutor_strikes` built as speculated. Schema deviation 1 — overlap protection is now two constraints, not one, see "Overlap protection" under `### lessons`. Schema deviation 2 — `payments.lesson_id` is UNIQUE, see `### payments`. Schema deviation 3 — `ledger_entries.account` gains a `gateway` value, the external counter-leg for money entering/leaving escrow, not in v1.3's enum list, see `### ledger_entries` and the corrected Ledger-effect table under `### lessons`. Implementation-detail note — `ledger_entries` enforces append-only with a DB-level `BEFORE UPDATE OR DELETE` trigger, not just application discipline, see `### ledger_entries`; this was always the stated design (the table's v1.3 prose already said "append-only"), so it is not counted as a schema deviation._
-_v1.5 (cycle 05, CP4+ sub-cycle 4a, R92/R95/R98/R99/R100; describes what shipped in 4a — 4e's `payments` changes are added when 4e ships): `recurring_slots` gains its full CP4 column set plus `price` (R95, frozen on the slot); the slot uniqueness index now covers paused slots (R99); `lessons` gains a recurring-key unique index whose predicate deviates from R98's wording (Deviation A below); `recurring_slot_skips` is new (R98); `payment_methods` is described as built, and its FK from `lessons.payment_method_id` lands in 4a rather than 4e (Note B below). Schema deviation A — `lessons_recurring_slot_starts_at_unique` excludes pause-cancelled rows, see `### lessons`. Note B — `payments.payment_method_id` (if the column is added) still goes with 4e._
+_v1.5 (cycle 05, CP4+ sub-cycle 4a, R92/R95/R98/R99/R100; describes what shipped in 4a — 4e's `payments` changes — the `attempt_no` column and uniqueness, and the `payment_method_id` foreign key — are added when 4e ships): `recurring_slots` gains its full CP4 column set plus `price` (R95, frozen on the slot); the slot uniqueness index now covers paused slots (R99); `lessons` gains a recurring-key unique index whose predicate deviates from R98's wording (Deviation A below); `recurring_slot_skips` is new (R98); `payment_methods` is described as built, and its FK from `lessons.payment_method_id` lands in 4a rather than 4e (Note B below). Schema deviation A — `lessons_recurring_slot_starts_at_unique` excludes pause-cancelled rows, see `### lessons`. Note B — the foreign key on `payments.payment_method_id` (the column itself exists since CP3) still goes with 4e._
 
 ## ERD
 
@@ -60,7 +60,7 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 ### payment_methods
 `id, account_user_id (fk → users, unique — one card in v1), gateway, gateway_customer_ref, gateway_token, brand, last4, exp_month, exp_year, status (active|expired|failed, default active), last_failed_at, timestamps`
 - Never store PAN. Token only. The model hides `gateway_token` from serialisation (invariant 15).
-- v1.5 (as built): `lessons.payment_method_id` is a real foreign key to this table (`restrictOnDelete`), added by the same 4a migration that creates the table. `payments.payment_method_id` is added with 4e.
+- v1.5 (as built): `lessons.payment_method_id` is a real foreign key to this table (`restrictOnDelete`), added by the same 4a migration that creates the table. `payments.payment_method_id` already exists as a plain nullable column (CP3); only its foreign key is added with 4e.
 
 ### tutor_profiles
 `id, user_id (fk, unique), headline, bio, intro_video_url, hourly_rate (fils), status (enum: draft|pending_review|changes_requested|approved|rejected|suspended), submitted_at (nullable timestamp — set at every submit for review, backfilled from `created_at` for non-draft rows; the approval queue sorts on it), permit_number, permit_expires_at (date), agreement_accepted_at, agreement_version (int, nullable — the `pages.version` of `tutor_agreement` accepted), bank_name (encrypted), bank_account_name (encrypted), bank_iban (encrypted), bank_swift (encrypted, nullable), bank_verified_at, rating_avg (decimal), rating_count, lessons_completed, late_report_count_90d, strike_count_90d, review_note (admin → tutor), approved_by (fk users), approved_at, timestamps`
@@ -103,12 +103,12 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 ### recurring_slots
 ```
 id, learner_id, tutor_profile_id, curriculum_id, subject_id,
-price (fils, unsigned bigint — agreed once at creation, R95),
+price (fils, bigint — Postgres has no unsigned type and there is no CHECK, so non-negativity is enforced in code, not the DB — agreed once at creation, R95),
 weekday (0–6), start_time (local), timezone,
 starts_on (date), ends_on (date, nullable),
 status (enum: active|paused|ended),
 paused_reason (nullable: payment_failed|admin), ended_by_user_id, ended_at, end_effective_on,
-consecutive_charge_failures (int),
+consecutive_charge_failures (smallint, default 0),
 generated_until (date, NOT NULL),
 created_by_user_id, timestamps
 ```
