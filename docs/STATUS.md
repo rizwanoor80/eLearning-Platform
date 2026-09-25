@@ -1,15 +1,15 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 16:24 (machine clock) — Context: not measured this write — 4a, 4b, 4c **merged** (`dd34988`); 4d **built, verified locally, PR next**
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 17:02 (machine clock) — Context: not measured this write — 4a, 4b, 4c **merged** (`dd34988`); 4d **PR #19 open, fix loops 1–2 done, final review clean, CI pending**
 
-Tests: **1262/1262 passed, 5952 assertions** on `cp/4d-portal` at `f953a15` (`composer.bat --no-interaction test`; merged-`main` baseline 1233/5623; +29 tests, all in `tests/Feature/Scheduling/WeeklySlotPortalTest.php`). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Smoke `/`, `/login`, `/admin/login`: 200 ×3. Review verdict (PR #18): two Mediums in the first review and one more in the round-1 re-review — all fixed; round-2 re-review: **no Medium or High open**, Lows carried. Advisor: 3 consults for 4d (all answered); 4 for 4c. 4d review verdict: pending.
+Tests: **1272/1272 passed, 6038 assertions** on `cp/4d-portal` at `313c692` (`composer.bat --no-interaction test`; merged-`main` baseline 1233/5623; +39 tests, all in `tests/Feature/Scheduling/WeeklySlotPortalTest.php`). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Smoke `/`, `/login`, `/admin/login`: 200 ×3. Review verdict (PR #18): two Mediums in the first review and one more in the round-1 re-review — all fixed; round-2 re-review: **no Medium or High open**, Lows carried. Advisor: 3 consults for 4d (all answered); 4 for 4c. 4d review verdict: first review no Medium/High, eight Lows, all fixed in loop 1; re-review one new Low, fixed in loop 2; final delta review: **no Medium or High open** (cap 2 reached).
 
 ## §1 Git state
-`origin/main` at the docs commit carrying this write (on top of `dd34988`). Branch `cp/4d-portal` at `f953a15` (one commit on `22ef715`, 48 files, +2299/−32), to be pushed and opened as a PR next. 4a–4c merged.
+`origin/main` at the docs commit carrying this write (on top of `dd34988`). Branch `cp/4d-portal` at `313c692` (three commits on `22ef715`: `f953a15`, `8b69d8e`, `313c692`; 47 files), pushed; PR #19 open. 4a–4c merged.
 
 ## §2 Step map (cycle 05 r1 — programme R88)
 1. `cp/4a-foundation` — **merged** as `6375469`; post-merge suite 1170/1170, 5267 assertions, Ledger OK, smoke 200 ×3.
 2. `cp/4b-slot-actions` — **merged** as `496a76d` (CI pass on `3a7632a`); post-merge suite 1208/1208, 5500 assertions, Ledger OK, smoke 200 ×3.
 3. `cp/4c-generation` — **merged** as `dd34988` (CI pass on `39d7cb1`); post-merge suite 1233/1233, 5623 assertions, Ledger OK, smoke 200 ×3.
-4. `cp/4d-portal` — **built and verified locally** (`f953a15`); PR, fresh review and merge under R89 next. `npm run build` exit 0, `ledger:verify` OK.
+4. `cp/4d-portal` — **PR #19 open** (`313c692`); three fresh reviews done, no Medium+ open; merge under R89 once CI is green on the head. `npm run build` exit 0, `ledger:verify` OK.
 5. `cp/4e-auto-charge` — not started (halt for backend-dev GO, R90).
 6. Programme end and rehearsal deploy — not started.
 
@@ -36,7 +36,7 @@ Tests: **1262/1262 passed, 5952 assertions** on `cp/4d-portal` at `f953a15` (`co
 - CC (4b): `RecurringSlotException` and `LessonCancelReason::SlotEnded` read as inside R89 scope (reviewer concurred); logged as NOTE.
 
 ## §5 Why stopping
-Not stopping — step-boundary record after the 4d build, before the push. Programme resume count 0 of 8; R86: no stop only to clear.
+Not stopping — step-boundary record after the 4d fix loops, waiting only on CI for the PR head (`313c692`). Programme resume count 0 of 8; R86: no stop only to clear.
 
 ## §6 Mismatches
 1. **R98's literal lessons index vs R99's resume.** R98: `unique (recurring_slot_id, starts_at) WHERE recurring_slot_id IS NOT NULL`. That would keep pause-cancelled rows' keys and block resume's refill. 4a builds it with `AND cancel_reason IS DISTINCT FROM 'slot_paused'` (parent skips keep the key). For 4b/4c: resume must reset `generated_until`; 4c's generator, if it uses `ON CONFLICT`, must repeat the exact predicate.
@@ -54,8 +54,10 @@ Not stopping — step-boundary record after the 4d build, before the push. Progr
    - **Carried from the 4b review:** (a) 4d — bulk pause/end fires `SendLessonSkippedMail`/`SendLessonCancelledMail` per lesson (2×N mails); suppress by `cancel_reason` in `app/Listeners`, outside 4b's scope. (b) 4c/4e — lock the slot first, then its lessons, and re-check slot status under that lock; 4e must catch a repeat `PaymentFailed` pause (invariant 14). (c) 4c/4d — go by `status` and `end_effective_on`, never `ended_at`, to mean "ended". (d) When availability/timezone editing ships, add an explicit slot-vs-slot check across timezones (`recurring_slots_live_unique` only matches identical `(weekday, start_time, timezone)`). (e) Out of 4b's named areas, still open from 4a: the `SlotCalculator` docblock, `RecurringSlot::learner()` `withTrashed()`, `DeleteLearner` guarding live slots. (f) The PR-checklist box 4 `confirmed`-follows-§4 half is exercised end to end only from 4e.
    - Optional tests: `local` actually calls the demo seeder; the NOT NULL loop test asserts nothing about the error message.
 
+- **Carried from the 4d review (accepted, not fixed):** R102 lists parent and admin for the paused email; 4d sends parent and tutor, 4e adds the admin for `payment_failed`. Clearing `end_effective_on` on an immediate end leaves the admin infolist "Tutor notice ends" empty (history is in the audit log). If a parent ends the slot before a queued tutor-notice email is sent, both parties get two emails and the late one says "will end after <date>". Switching the time choice on the setup form resets a hand-typed start date.
+
 ## §7 Next step / Owner actions
-None pending. CC pushes `cp/4d-portal`, opens the PR, runs the fresh review, and merges under R89.
+None pending. CC merges PR #19 under R89 when CI is green on `313c692`, then runs the post-merge checks and 4e.
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
@@ -63,7 +65,7 @@ None pending. CC pushes `cp/4d-portal`, opens the PR, runs the fresh review, and
 | 4a foundation | **merged** | `cp/4a-foundation` | #16 | no Medium+ | `6375469` (R89) |
 | 4b slot actions | **merged** | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | `496a76d` (R89) |
 | 4c generation | **merged** | `cp/4c-generation` | #18 | no Medium+ after fix rounds 1–2; Lows carried | `dd34988` (R89) |
-| 4d portal | built, PR next | `cp/4d-portal` | — | — | — |
+| 4d portal | PR open, CI pending | `cp/4d-portal` | #19 | no Medium+ after fix loops 1–2 (Lows fixed) | — |
 | 4e auto-charge | not started (halt: backend-dev GO) | `cp/4e-auto-charge` | — | — | — |
 | Programme end + rehearsal deploy | not started (halt) | — | — | — | — |
 
