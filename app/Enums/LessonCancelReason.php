@@ -24,6 +24,14 @@ enum LessonCancelReason: string
     case SlotEnded = 'slot_ended';
 
     /**
+     * A weekly lesson's start time passed while it was still `reserved` and uncharged (the charge job
+     * was not running, or the lesson was generated too late to charge): cancelled as
+     * `cancelled_payment_failed`, but it is the platform's timing, not the parent's card, so it does
+     * not count toward the slot's failure counter. The email wording reads this value.
+     */
+    case ChargeWindowMissed = 'charge_window_missed';
+
+    /**
      * Whether typed text collides with a machine value. `lessons_recurring_slot_starts_at_unique`
      * frees a key by reading `cancel_reason`, so a person's own note must never be able to equal
      * one; any future typed-reason input must refuse it.

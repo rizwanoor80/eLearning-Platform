@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Payments;
 use App\Actions\Payments\SaveTestCard;
 use App\Actions\RecurringSlots\CreateRecurringSlot;
 use App\Actions\RecurringSlots\EndRecurringSlot;
+use App\Actions\RecurringSlots\ResumeRecurringSlot;
 use App\Enums\LessonStatus;
 use App\Enums\RecurringSlotStatus;
 use App\Exceptions\RecurringSlotException;
@@ -163,6 +164,30 @@ class WeeklySlotController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Weekly slot ended.')]);
+
+        return $this->backToLearner($slot);
+    }
+
+    /**
+     * The parent's resume after failed charges (R101): the slot policy allows it only for a slot paused
+     * for `payment_failed`, and the action needs a usable saved card, so this is the "card replaced" step.
+     */
+    public function resume(Request $request, RecurringSlot $slot, ResumeRecurringSlot $resume): RedirectResponse
+    {
+        Gate::authorize('resume', $slot);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $resume($user, $slot);
+        } catch (RecurringSlotException $e) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => $e->getMessage()]);
+
+            return $this->backToLearner($slot);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Weekly slot resumed.')]);
 
         return $this->backToLearner($slot);
     }

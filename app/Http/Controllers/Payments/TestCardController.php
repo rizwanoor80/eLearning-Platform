@@ -6,6 +6,7 @@ use App\Actions\Payments\SaveTestCard;
 use App\Enums\TestCard;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payments\StoreTestCardRequest;
+use App\Models\Learner;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -54,9 +55,15 @@ class TestCardController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Test card saved.')]);
 
         $tutor = $request->integer('tutor');
+        $learner = $request->integer('learner');
 
-        return $tutor > 0
-            ? to_route('weekly-slots.create', array_filter(['learner' => $request->integer('learner') ?: null, 'tutor' => $tutor]))
-            : to_route('learners.index');
+        if ($tutor > 0) {
+            return to_route('weekly-slots.create', array_filter(['learner' => $learner ?: null, 'tutor' => $tutor]));
+        }
+
+        // Replacing the card from a learner's page (a slot paused for failed charges) returns there.
+        $own = $learner > 0 && Learner::query()->whereKey($learner)->where('account_user_id', $user->id)->exists();
+
+        return $own ? to_route('learners.show', $learner) : to_route('learners.index');
     }
 }

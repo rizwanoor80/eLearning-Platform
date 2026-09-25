@@ -24,6 +24,7 @@ class PaymentFactory extends Factory
     {
         return [
             'lesson_id' => Lesson::factory(),
+            'attempt_no' => 1,
             'payer_user_id' => User::factory(),
             'payment_method_id' => null,
             'gateway' => 'fake',

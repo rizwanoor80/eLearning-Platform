@@ -7,7 +7,7 @@ use App\Enums\PaymentMethodStatus;
 use App\Enums\TestCard;
 use App\Models\PaymentMethod;
 use App\Models\User;
-use Illuminate\Support\Str;
+use App\Services\Payments\FakePaymentGateway;
 use RuntimeException;
 
 /**
@@ -17,8 +17,9 @@ use RuntimeException;
  * page picks from two cards and never takes typed digits. CP5 replaces this with the real
  * driver's capture, and it refuses to run in production so it can never store a fake card there.
  *
- * Deliberately not routed through the `PaymentGateway` interface: that binding does not exist
- * outside tests (invariant 16), and 4e adds `saveCard` and `chargeSavedCard` to it together.
+ * Deliberately not resolved through the `PaymentGateway` interface: that binding does not exist
+ * outside tests (invariant 16), and this is a fake-driver page, so it asks the fake driver's
+ * `saveCard` directly. CP5 swaps in the registry's driver.
  */
 class SaveTestCard
 {
@@ -38,16 +39,18 @@ class SaveTestCard
             throw new RuntimeException('Test cards cannot be saved in production.');
         }
 
+        $saved = (new FakePaymentGateway)->saveCard($account, $card->value);
+
         $method = PaymentMethod::query()->updateOrCreate(
             ['account_user_id' => $account->id],
             [
                 'gateway' => 'fake',
-                'gateway_customer_ref' => 'fake_cus_'.Str::random(10),
-                'gateway_token' => $card->tokenPrefix().Str::random(10),
-                'brand' => 'Test card',
-                'last4' => $card->last4(),
-                'exp_month' => 12,
-                'exp_year' => (int) now()->addYears(3)->format('Y'),
+                'gateway_customer_ref' => $saved->gatewayCustomerRef,
+                'gateway_token' => $saved->gatewayToken,
+                'brand' => $saved->brand,
+                'last4' => $saved->last4,
+                'exp_month' => $saved->expMonth,
+                'exp_year' => $saved->expYear,
                 'status' => PaymentMethodStatus::Active,
                 'last_failed_at' => null,
             ],

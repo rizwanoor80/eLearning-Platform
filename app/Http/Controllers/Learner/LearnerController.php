@@ -125,6 +125,7 @@ class LearnerController extends Controller
                 'ends_on' => $slot->ends_on?->format('j M Y'),
                 'end_effective_on' => $slot->end_effective_on?->format('j M Y'),
                 'tutor_notice' => $slot->end_effective_on !== null && $slot->status !== RecurringSlotStatus::Ended,
+                'can_resume' => $user->can('resume', $slot) && $slot->status === RecurringSlotStatus::Paused,
             ])->all(),
             'lessons' => $lessons->map(fn (Lesson $lesson): array => [
                 'id' => $lesson->id,

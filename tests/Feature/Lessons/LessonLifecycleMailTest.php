@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Mail;
  * Both"), queued through the settings sender. Mail stays on the `log` driver
  * (R43), so these assert queuing only, never delivery.
  */
-it('emails both parent and tutor when a reserved lesson is confirmed', function () {
+it('emails the tutor, and not the parent, when a reserved weekly lesson is confirmed (the parent gets the charged email instead)', function () {
     Mail::fake();
 
     $tutor = TutorProfile::factory()->approved()->create();
@@ -45,9 +45,9 @@ it('emails both parent and tutor when a reserved lesson is confirmed', function 
 
     LessonStateMachine::transition($lesson, LessonStatus::Confirmed);
 
-    Mail::assertQueued(LessonConfirmedMail::class, fn ($m) => $m->hasTo($parent->email) && $m->lesson->is($lesson));
+    Mail::assertNotQueued(LessonConfirmedMail::class, fn ($m) => $m->hasTo($parent->email));
     Mail::assertQueued(LessonConfirmedMail::class, fn ($m) => $m->hasTo($tutor->user->email) && $m->lesson->is($lesson));
-    Mail::assertQueued(LessonConfirmedMail::class, 2);
+    Mail::assertQueued(LessonConfirmedMail::class, 1);
 });
 
 it('emails both parent and tutor when a pending-payment lesson is confirmed (trial flow)', function () {

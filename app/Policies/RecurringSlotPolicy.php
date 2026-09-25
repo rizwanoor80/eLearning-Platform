@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\RecurringSlotPauseReason;
 use App\Enums\Role;
 use App\Enums\UserStatus;
 use App\Models\Learner;
@@ -53,9 +54,15 @@ class RecurringSlotPolicy
         return $this->isActiveAdmin($user);
     }
 
+    /**
+     * An admin resumes any paused slot; the parent only one the system paused for failed charges (R101),
+     * after replacing the card (`ResumeRecurringSlot` checks the card). A slot an admin paused stays
+     * the admin's to resume.
+     */
     public function resume(User $user, RecurringSlot $slot): bool
     {
-        return $this->isActiveAdmin($user);
+        return $this->isActiveAdmin($user)
+            || ($this->isParentOf($user, $slot) && $slot->paused_reason === RecurringSlotPauseReason::PaymentFailed);
     }
 
     public function update(User $user, RecurringSlot $slot): bool

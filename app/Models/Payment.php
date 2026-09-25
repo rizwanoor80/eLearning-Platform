@@ -11,13 +11,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * One capture attempt's record for a lesson (DATA_MODEL.md:137). `lesson_id`
- * is unique — a lesson gets at most one payment row in v1, since a failed
- * capture expires the lesson rather than being retried on the same row
- * (R56/BookLesson always creates a fresh lesson to try again).
+ * One charge attempt's record for a lesson (DATA_MODEL.md:137). A booked lesson has one
+ * attempt (a declined capture expires it; R56/BookLesson creates a fresh lesson to try again);
+ * a weekly lesson can have several (R101): `(lesson_id, attempt_no)` is unique, and a partial
+ * unique index allows only one row per lesson whose status is not `failed`.
  *
  * @property int $id
  * @property int $lesson_id
+ * @property int $attempt_no
  * @property int $payer_user_id
  * @property int|null $payment_method_id
  * @property string $gateway

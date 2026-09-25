@@ -17,6 +17,7 @@ use App\Models\Learner;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
@@ -27,6 +28,7 @@ use App\Services\Lessons\LessonStateMachine;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentCaptureResult;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\SavedCard;
 use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
 use App\Support\Money;
@@ -482,6 +484,16 @@ it('expires the lesson and records a failed payment when capture is declined, wr
             return 'fake';
         }
 
+        public function saveCard(User $account, string $selection): SavedCard
+        {
+            throw new LogicException('not used by BookLesson');
+        }
+
+        public function chargeSavedCard(Lesson $lesson, Money $amount, PaymentMethod $method, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used by BookLesson');
+        }
+
         public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
         {
             throw new PaymentCaptureException('card_declined');
@@ -516,6 +528,16 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
         public function driver(): string
         {
             return 'fake';
+        }
+
+        public function saveCard(User $account, string $selection): SavedCard
+        {
+            throw new LogicException('not used by BookLesson');
+        }
+
+        public function chargeSavedCard(Lesson $lesson, Money $amount, PaymentMethod $method, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used by BookLesson');
         }
 
         public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
@@ -629,6 +651,16 @@ it('lets the same slot and trial be rebooked after a declined capture expires th
         public function driver(): string
         {
             return 'fake';
+        }
+
+        public function saveCard(User $account, string $selection): SavedCard
+        {
+            throw new LogicException('not used by BookLesson');
+        }
+
+        public function chargeSavedCard(Lesson $lesson, Money $amount, PaymentMethod $method, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used by BookLesson');
         }
 
         public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
