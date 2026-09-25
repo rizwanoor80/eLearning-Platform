@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import InputError from '@/components/InputError.vue';
+import TestModeBanner from '@/components/TestModeBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -31,9 +32,7 @@ const form = useForm({
     <form class="flex max-w-xl flex-col gap-6 p-4" @submit.prevent="form.post('/payment-methods')">
         <h1 class="text-xl font-semibold">Add a card</h1>
 
-        <p class="rounded-md border border-dashed p-3 text-sm">
-            Test mode — no real card is charged. Choose one of the test cards below; nothing is typed and no card details are stored.
-        </p>
+        <TestModeBanner>Choose one of the test cards below; nothing is typed and no card details are stored.</TestModeBanner>
 
         <p v-if="current" class="text-muted-foreground text-sm">
             Saved card: {{ current.brand }} ending {{ current.last4 }}, expires {{ current.expires }}. Choosing a card below replaces it.

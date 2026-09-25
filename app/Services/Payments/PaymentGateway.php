@@ -10,9 +10,10 @@ use App\Support\Money;
 
 /**
  * Invariant 16: driver and credentials resolve from the `payment_gateways`
- * admin registry (CP5). Until then this interface is not bound in any
- * service provider — only tests bind a driver, so resolving it outside a
- * test fails loudly rather than pretending a gateway exists.
+ * admin registry (CP5). Until then `PaymentGatewayServiceProvider` binds the
+ * fake driver on `local`, `testing` and `rehearsal` only (R107, ADR-016);
+ * everywhere else, `production` above all, the interface stays unbound so
+ * resolving it fails loudly rather than pretending a gateway exists.
  */
 interface PaymentGateway
 {

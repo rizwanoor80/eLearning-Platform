@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
+import TestModeBanner from '@/components/TestModeBanner.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -53,6 +54,7 @@ function resume(id: number) {
 
         <section class="grid gap-3">
             <h2 class="font-medium">Weekly slots</h2>
+            <TestModeBanner />
             <p class="text-muted-foreground text-xs">
                 A standing weekly reservation: each lesson is charged to your saved card shortly before it starts. Times are shown in {{ timezone }}.
             </p>

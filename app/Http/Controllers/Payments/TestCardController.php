@@ -15,9 +15,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * The fake driver's "Add a card" page (R100). It exists only while the fake gateway does: it 404s
- * in production on both routes, has no card-number or CVC field, and CP5 replaces it with the
- * real driver's capture.
+ * The fake driver's "Add a card" page (R100). It exists only while the fake gateway does: both
+ * routes 404 wherever the fake gateway is not bound (production above all), it has no card-number
+ * or CVC field, and CP5 replaces it with the real driver's capture.
  */
 class TestCardController extends Controller
 {

@@ -33,7 +33,7 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
 
     Route::resource('learners', LearnerController::class);
 
-    // R100: the fake driver's add-card page; both routes 404 in production.
+    // R100: the fake driver's add-card page; both routes 404 outside the fake-gateway environments (R107).
     Route::get('payment-methods/create', [TestCardController::class, 'create'])->name('payment-methods.create');
     Route::post('payment-methods', [TestCardController::class, 'store'])->name('payment-methods.store');
 

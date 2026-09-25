@@ -12,8 +12,8 @@ use Illuminate\Support\Str;
 
 /**
  * The only driver until CP5 adds a real one. Captures instantly and always
- * succeeds — bound only from the test side (see the PaymentGateway
- * interface's docblock), never in an app service provider. A saved card's
+ * succeeds — bound by `PaymentGatewayServiceProvider` on `local`, `testing`
+ * and `rehearsal` only (R107, ADR-016), never in production. A saved card's
  * token carries the outcome of `chargeSavedCard` (R100): the "always declines"
  * test card's token prefix is refused, every other token succeeds.
  */

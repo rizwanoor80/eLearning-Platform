@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import TestModeBanner from '@/components/TestModeBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,6 +74,8 @@ function submit() {
     <Head title="Set up a weekly slot" />
 
     <div class="flex max-w-xl flex-col gap-6 p-4">
+        <TestModeBanner />
+
         <div class="grid gap-1">
             <h1 class="text-xl font-semibold">Set up a weekly slot with {{ tutor.name }}</h1>
             <p class="text-muted-foreground text-sm">
