@@ -20,7 +20,9 @@ use App\Models\AuditLog;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
 use App\Models\Learner;
+use App\Models\LedgerEntry;
 use App\Models\Lesson;
+use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\PriceBand;
 use App\Models\RecurringSlot;
@@ -452,7 +454,9 @@ it('ends a slot for the parent at once: reserved lessons cancelled free, confirm
     }
 
     expect($confirmed->fresh()->status)->toBe(LessonStatus::Confirmed)
-        ->and(TutorStrike::query()->count())->toBe(0);
+        ->and(TutorStrike::query()->count())->toBe(0)
+        ->and(LedgerEntry::query()->count())->toBe(0)
+        ->and(Payment::query()->count())->toBe(0);
 
     $audit = AuditLog::query()->where('action', 'recurring_slot.ended')->sole();
     expect($audit->after['cancelled_lessons'])->toBe(2)->and($audit->after['note'])->toBe('moving away');
@@ -544,12 +548,20 @@ it('leaves a lesson that was charged between the query and the lock untouched', 
     $slot = rsSlot($setup['tutor'], $learner);
     $lesson = rsLesson($slot, '2026-09-22 10:00:00');
 
-    // Simulates the race: the row is `confirmed` by the time the bulk cancel locks it.
-    Lesson::allowingStatusWrites(fn () => Lesson::query()->whereKey($lesson->id)->update(['status' => LessonStatus::Confirmed]));
+    // The race: the lesson is `reserved` when the bulk cancel reads it, and is charged (`confirmed`)
+    // before the state machine takes its lock. Flipping it inside `retrieved` fires after the id query
+    // but before the lock, so only the re-check inside the closure can save it.
+    Lesson::retrieved(function (Lesson $loaded) use ($lesson): void {
+        if ($loaded->id === $lesson->id && $loaded->status === LessonStatus::Reserved) {
+            Lesson::allowingStatusWrites(fn () => Lesson::query()->whereKey($lesson->id)->update(['status' => LessonStatus::Confirmed]));
+        }
+    });
 
     $cancelled = app(CancelSlotReservedLessons::class)($slot, LessonStatus::CancelledByParent, $parent, LessonCancelReason::SlotEnded);
 
-    expect($cancelled)->toBe(0)->and($lesson->fresh()->status)->toBe(LessonStatus::Confirmed);
+    expect($cancelled)->toBe(0)
+        ->and($lesson->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and($lesson->fresh()->cancel_reason)->toBeNull();
 });
 
 // ── Pause and resume ──────────────────────────────────────────────────────────────────────
@@ -572,7 +584,9 @@ it('pauses a slot for an admin: reserved lessons cancelled free as slot_paused, 
     expect($reserved->status)->toBe(LessonStatus::CancelledByParent)
         ->and($reserved->cancel_reason)->toBe(LessonCancelReason::SlotPaused->value)
         ->and($reserved->cancelled_by_user_id)->toBe($admin->id)
-        ->and($confirmed->fresh()->status)->toBe(LessonStatus::Confirmed);
+        ->and($confirmed->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and(LedgerEntry::query()->count())->toBe(0)
+        ->and(Payment::query()->count())->toBe(0);
 
     $audit = AuditLog::query()->where('action', 'recurring_slot.paused')->sole();
     expect($audit->actor_user_id)->toBe($admin->id)->and($audit->after['cancelled_lessons'])->toBe(1);
@@ -623,9 +637,26 @@ it('frees the lesson key on pause so a resumed slot can regenerate the dates, an
     expect($slot->status)->toBe(RecurringSlotStatus::Active)
         ->and($slot->paused_reason)->toBeNull()
         ->and($slot->consecutive_charge_failures)->toBe(0)
-        ->and($slot->generated_until->toDateString())->toBe('2026-09-14');
+        ->and($slot->generated_until->toDateString())->toBe('2026-09-21');
 
     expect(AuditLog::query()->where('action', 'recurring_slot.resumed')->sole()->actor_user_id)->toBe($admin->id);
+});
+
+it('resumes on the slot calendar, not UTC, and never below the day before the slot starts', function () {
+    $setup = rsTutor();
+    ['learner' => $learner] = rsParent($setup['tutor']);
+    $admin = rsAdmin();
+
+    // 02:00 UTC Tuesday is still Monday evening in New York: today for that slot is Monday the 15th.
+    $this->travelTo(CarbonImmutable::parse('2026-09-15 02:00:00', 'UTC'));
+    $ny = rsSlot($setup['tutor'], $learner, ['timezone' => 'America/New_York', 'status' => RecurringSlotStatus::Paused, 'paused_reason' => RecurringSlotPauseReason::Admin, 'starts_on' => '2026-09-01']);
+    app(ResumeRecurringSlot::class)($admin, $ny);
+    expect($ny->fresh()->generated_until->toDateString())->toBe('2026-09-14');
+
+    // A slot that has not started yet resumes just below its first day, not below that.
+    $future = rsSlot($setup['tutor'], $learner, ['status' => RecurringSlotStatus::Paused, 'paused_reason' => RecurringSlotPauseReason::Admin, 'starts_on' => '2026-11-03', 'weekday' => 2, 'start_time' => '18:00:00']);
+    app(ResumeRecurringSlot::class)($admin, $future);
+    expect($future->fresh()->generated_until->toDateString())->toBe('2026-11-02');
 });
 
 it('does not free the lesson key when a slot is ended', function () {
