@@ -5,8 +5,8 @@ namespace App\Actions\RecurringSlots;
 use App\Actions\RecordAuditLog;
 use App\Enums\LessonStatus;
 use App\Enums\LessonType;
-use App\Enums\PaymentMethodStatus;
 use App\Enums\RecurringSlotStatus;
+use App\Events\RecurringSlots\RecurringSlotCreated;
 use App\Exceptions\RecurringSlotException;
 use App\Models\AvailabilityRule;
 use App\Models\Learner;
@@ -152,6 +152,8 @@ class CreateRecurringSlot
                     'override_reason' => $override ? trim((string) $overrideReason) : null,
                 ]);
 
+                DB::afterCommit(fn () => RecurringSlotCreated::dispatch($slot));
+
                 return $slot;
             });
         } catch (QueryException $e) {
@@ -165,7 +167,10 @@ class CreateRecurringSlot
         }
     }
 
-    private function hasCompletedTrial(Learner $learner, TutorProfile $tutor): bool
+    /**
+     * The R96 prerequisite, public so the setup page can explain it before the parent fills the form in.
+     */
+    public function hasCompletedTrial(Learner $learner, TutorProfile $tutor): bool
     {
         return Lesson::query()
             ->where('learner_id', $learner->id)
@@ -177,17 +182,10 @@ class CreateRecurringSlot
 
     private function requireUsableCard(Learner $learner): void
     {
-        $card = PaymentMethod::query()
-            ->where('account_user_id', $learner->account_user_id)
-            ->where('status', PaymentMethodStatus::Active)
-            ->first();
+        $card = PaymentMethod::query()->where('account_user_id', $learner->account_user_id)->first();
 
-        // A card is good through the last day of its expiry month.
-        $lastDay = $card === null
-            ? null
-            : CarbonImmutable::create($card->exp_year, $card->exp_month, 1)->endOfMonth()->startOfDay();
-
-        if ($card === null || $lastDay->lessThan(now()->startOfDay())) {
+        // A card is good through the last day of its expiry month (`PaymentMethod::isUsable`).
+        if ($card === null || ! $card->isUsable()) {
             throw new RecurringSlotException('A saved, unexpired card is needed before a weekly slot can be set up.');
         }
     }

@@ -58,6 +58,9 @@ function remove(id: number, name: string) {
                 </div>
                 <div class="flex items-center gap-2">
                     <Button variant="outline" size="sm" as-child>
+                        <Link :href="`/learners/${learner.id}`">Weekly slots</Link>
+                    </Button>
+                    <Button variant="outline" size="sm" as-child>
                         <Link :href="`/learners/${learner.id}/edit`">Edit</Link>
                     </Button>
                     <Button v-if="learner.is_minor" variant="outline" size="sm" @click="remove(learner.id, learner.display_name)">

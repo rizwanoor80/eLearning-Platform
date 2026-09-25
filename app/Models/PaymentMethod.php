@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PaymentMethodStatus;
+use Carbon\CarbonImmutable;
 use Database\Factories\PaymentMethodFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -52,6 +53,16 @@ class PaymentMethod extends Model
             'status' => PaymentMethodStatus::class,
             'last_failed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Chargeable now: `active` and not past the last day of its expiry month.
+     */
+    public function isUsable(): bool
+    {
+        $lastDay = CarbonImmutable::create($this->exp_year, $this->exp_month, 1)->endOfMonth()->startOfDay();
+
+        return $this->status === PaymentMethodStatus::Active && ! $lastDay->lessThan(now()->startOfDay());
     }
 
     /**

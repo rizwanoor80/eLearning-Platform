@@ -6,14 +6,16 @@ use App\Actions\RecordAuditLog;
 use App\Enums\LessonStatus;
 use App\Exceptions\LearnerDeletionException;
 use App\Models\Learner;
+use App\Models\RecurringSlot;
 use App\Models\User;
 
 /**
  * Soft delete. The adult student's own learner can never be removed. Refused
  * (naming the blocking lessons, R54) while any of the learner's lessons is
  * still non-terminal per `LessonStatus::isTerminal()` — money or an
- * obligation is still open on it. A weekly recurring slot has no lessons of
- * its own status to block on; CP4 revisits this guard if that changes.
+ * obligation is still open on it. Also refused while the learner has a weekly slot
+ * that is `active` or `paused` (CP4 4d): the slot keeps generating lessons and
+ * blocking the tutor's time until someone ends it, so it must be ended first.
  *
  * Guarded and audited either way. Called from two places: an admin deleting
  * a learner, and `LearnerController::destroy()` — the account owner's
@@ -41,6 +43,12 @@ class DeleteLearner
             $names = $blocking->map(fn ($lesson) => "#{$lesson->id} ({$lesson->starts_at->toDateTimeString()} UTC)")->implode(', ');
 
             throw new LearnerDeletionException("Cannot delete this learner: still-open lessons {$names}.");
+        }
+
+        $liveSlots = $learner->recurringSlots()->whereIn('status', RecurringSlot::holdingStatuses())->count();
+
+        if ($liveSlots > 0) {
+            throw new LearnerDeletionException('Cannot delete this learner: a weekly slot is still in place. End it first.');
         }
 
         $before = ['display_name' => $learner->display_name];

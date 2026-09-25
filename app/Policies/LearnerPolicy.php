@@ -22,6 +22,11 @@ class LearnerPolicy
         return $user->role === Role::AccountOwner;
     }
 
+    public function view(User $user, Learner $learner): bool
+    {
+        return $this->owns($user, $learner);
+    }
+
     public function update(User $user, Learner $learner): bool
     {
         return $this->owns($user, $learner);

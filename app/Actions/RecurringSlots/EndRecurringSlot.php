@@ -7,6 +7,7 @@ use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
 use App\Enums\RecurringSlotStatus;
 use App\Enums\Role;
+use App\Events\RecurringSlots\RecurringSlotEnded;
 use App\Exceptions\RecurringSlotException;
 use App\Models\RecurringSlot;
 use App\Models\User;
@@ -58,6 +59,8 @@ class EndRecurringSlot
             'status' => RecurringSlotStatus::Ended,
             'ended_by_user_id' => $actor->id,
             'ended_at' => now(),
+            // An immediate end supersedes any tutor notice: `end_effective_on` set means "a tutor gave notice", nothing else.
+            'end_effective_on' => null,
         ])->save();
 
         $cancelled = ($this->cancelLessons)($slot, LessonStatus::CancelledByParent, $actor, LessonCancelReason::SlotEnded);
@@ -66,12 +69,14 @@ class EndRecurringSlot
             ['status' => RecurringSlotStatus::Ended->value, 'cancelled_lessons' => $cancelled, 'note' => $note],
         );
 
+        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role));
+
         return $slot;
     }
 
     private function endWithNotice(User $actor, RecurringSlot $slot, ?string $note): RecurringSlot
     {
-        if ($slot->end_effective_on !== null && $slot->ended_by_user_id !== null) {
+        if ($slot->end_effective_on !== null) {
             throw new RecurringSlotException('Notice has already been given to end this weekly slot.');
         }
 
@@ -93,6 +98,8 @@ class EndRecurringSlot
         ($this->audit)($actor, 'recurring_slot.ended', $slot, $before,
             ['status' => $slot->status->value, 'end_effective_on' => $effectiveOn->toDateString(), 'notice_days' => $noticeDays, 'cancelled_lessons' => $cancelled, 'note' => $note],
         );
+
+        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role, $slot->effectiveEndDate()?->toDateString()));
 
         return $slot;
     }
