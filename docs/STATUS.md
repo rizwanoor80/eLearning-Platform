@@ -54,6 +54,9 @@ Not stopping: step-boundary write (4f merged, step 7 next). **Done:** 4f merged 
 ## §7 Next step / Owner actions
 No owner action open. CC continues with step 7 without stopping (R109): the programme-end record, the R111 rehearsal deploy, the R91 read-only verification, then END.
 Carried to the CP5-remainder list (R108): the gateway status lookup by idempotency key (in-flight exception, §6 item 2), excluding `Captured` at the R104 guard, skipping the tutor mail for a trashed user; the registry replaces R107's binding (added to CHECKPOINTS CP5 by 4f).
+Listed once at programme END (R103d), needed before the CP5-remainder plan, not for this programme: **D-02** payment gateway driver (must support saved-card charging; PRD §11 default Stripe (UAE), else Tap); **D-04** legal entity that holds the licence and collects funds; **D-09** mail provider. Also for the owner (not blocking): `composer` is not on the Git Bash PATH here and PowerShell's `bash` resolves to WSL, so `composer test` cannot run as one command on this machine; the owner may add Herd's composer to the Git Bash PATH.
+
+CP5-remainder (R88, carried): real gateway driver and the `payment_gateways` registry (replacing R107's binding), webhooks and refunds, payouts and the tutor earnings page, receipts, settle/dispute math, the gateway status lookup by idempotency key, and the review Lows listed in §6.
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
