@@ -33,9 +33,9 @@ function scLesson(string $startUtc, LessonStatus $status = LessonStatus::Confirm
     return (new Lesson)->forceFill(['starts_at' => $start, 'ends_at' => $start->addMinutes($minutes), 'status' => $status]);
 }
 
-function scWeekly(int $weekday, string $start, string $tz, string $from, ?string $until = null, RecurringSlotStatus $status = RecurringSlotStatus::Active): RecurringSlot
+function scWeekly(int $weekday, string $start, string $tz, string $from, ?string $until = null, RecurringSlotStatus $status = RecurringSlotStatus::Active, ?string $endEffective = null): RecurringSlot
 {
-    return (new RecurringSlot)->forceFill(['weekday' => $weekday, 'start_time' => $start, 'timezone' => $tz, 'starts_on' => $from, 'ends_on' => $until, 'status' => $status]);
+    return (new RecurringSlot)->forceFill(['weekday' => $weekday, 'start_time' => $start, 'timezone' => $tz, 'starts_on' => $from, 'ends_on' => $until, 'end_effective_on' => $endEffective, 'status' => $status]);
 }
 
 /**
@@ -171,11 +171,17 @@ it('interprets a weekly slot in its own timezone: Tuesday 17:00 Karachi blocks T
     expect(scStarts($result, 'Asia/Dubai'))->toBe(['2026-09-15 17:00']);
 });
 
-it('does not block for a paused or ended weekly slot', function (RecurringSlotStatus $status) {
-    $result = scSlots(['rules' => [scRule(2, '17:00', '18:00')], 'recurring' => [scWeekly(2, '17:00', 'Asia/Dubai', '2026-09-14', null, $status)]]);
+it('blocks for a paused weekly slot: it keeps its place (R97, R99)', function () {
+    $result = scSlots(['rules' => [scRule(2, '17:00', '18:00')], 'max' => 90, 'recurring' => [scWeekly(2, '17:00', 'Asia/Dubai', '2026-09-14', null, RecurringSlotStatus::Paused)]]);
+
+    expect($result)->toBe([]);
+});
+
+it('does not block for an ended weekly slot', function () {
+    $result = scSlots(['rules' => [scRule(2, '17:00', '18:00')], 'recurring' => [scWeekly(2, '17:00', 'Asia/Dubai', '2026-09-14', null, RecurringSlotStatus::Ended)]]);
 
     expect($result)->toHaveCount(1);
-})->with([RecurringSlotStatus::Paused, RecurringSlotStatus::Ended]);
+});
 
 it('does not block before a weekly slot starts_on', function () {
     $result = scSlots([
@@ -195,6 +201,29 @@ it('stops blocking after a weekly slot ends_on', function () {
 
     expect(scStarts($result, 'Asia/Dubai'))->toBe(['2026-09-29 17:00']);
 });
+
+it('stops blocking after a tutor-ended slot end_effective_on, the date itself still blocked', function () {
+    $result = scSlots([
+        'rules' => [scRule(2, '17:00', '18:00')], 'max' => 21,
+        'recurring' => [scWeekly(2, '17:00', 'Asia/Dubai', '2026-09-14', null, RecurringSlotStatus::Active, '2026-09-22')],
+    ]);
+
+    // 09-15 and 09-22 (the effective end date, inclusive) are blocked; 09-29 is offered.
+    expect(scStarts($result, 'Asia/Dubai'))->toBe(['2026-09-29 17:00']);
+});
+
+it('ends at the earlier of ends_on and end_effective_on', function (?string $endsOn, ?string $endEffective, array $expected) {
+    $result = scSlots([
+        'rules' => [scRule(2, '17:00', '18:00')], 'max' => 28,
+        'recurring' => [scWeekly(2, '17:00', 'Asia/Dubai', '2026-09-14', $endsOn, RecurringSlotStatus::Active, $endEffective)],
+    ]);
+
+    expect(scStarts($result, 'Asia/Dubai'))->toBe($expected);
+})->with([
+    'ends_on earlier' => ['2026-09-22', '2026-10-06', ['2026-09-29 17:00', '2026-10-06 17:00']],
+    'end_effective_on earlier' => ['2026-10-06', '2026-09-22', ['2026-09-29 17:00', '2026-10-06 17:00']],
+    'equal' => ['2026-09-22', '2026-09-22', ['2026-09-29 17:00', '2026-10-06 17:00']],
+]);
 
 it('respects booking_min_lead_hours at the boundary', function () {
     // Tuesday 09:00 Dubai = 2026-09-15 05:00 UTC; lead 12h.

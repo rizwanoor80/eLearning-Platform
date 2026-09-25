@@ -160,3 +160,12 @@ it('does not let a SuspendTutorForStrikes failure surface as if the skip itself 
     $strike = TutorStrike::query()->where('tutor_profile_id', $tutor->id)->sole();
     expect($strike->type)->toBe(StrikeType::LateCancel);
 });
+
+it('refuses a typed reason that equals a machine cancel-reason value', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = skSetup(25);
+
+    expect(fn () => app(SkipLesson::class)($parent, $lesson, 'slot_paused'))->toThrow(CancellationException::class, 'reserved by the system');
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Reserved)
+        ->and($lesson->fresh()->cancel_reason)->toBeNull();
+});

@@ -10,7 +10,8 @@ class DatabaseSeeder extends Seeder
     use WithoutModelEvents;
 
     /**
-     * Seed the application's database. No demo tutors/parents yet.
+     * Seed the application's database. The demo weekly slot is local-only: rehearsal and
+     * production must never gain a fake card.
      */
     public function run(): void
     {
@@ -25,5 +26,9 @@ class DatabaseSeeder extends Seeder
             ContentBlockSeeder::class,
             AdminUserSeeder::class,
         ]);
+
+        if (app()->environment('local')) {
+            $this->call(DemoRecurringSlotSeeder::class);
+        }
     }
 }

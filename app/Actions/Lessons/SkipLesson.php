@@ -3,6 +3,7 @@
 namespace App\Actions\Lessons;
 
 use App\Actions\Tutor\SuspendTutorForStrikes;
+use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
 use App\Enums\StrikeType;
 use App\Exceptions\CancellationException;
@@ -33,6 +34,10 @@ class SkipLesson
 
         if (! $isTutor && ! $isParent) {
             throw new CancellationException("Only the lesson's own tutor or parent may skip it.");
+        }
+
+        if (LessonCancelReason::isReserved($reason)) {
+            throw new CancellationException('That reason text is reserved by the system; please word it differently.');
         }
 
         if (now()->greaterThanOrEqualTo($lesson->starts_at)) {

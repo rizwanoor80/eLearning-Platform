@@ -94,13 +94,16 @@ it('offers slots of a tutor who is not bookable — callers apply bookable() the
         ->and(TutorProfile::query()->bookable()->whereKey($tutor->id)->exists())->toBeFalse();
 });
 
-it('stops a paused or ended weekly slot blocking while its reserved lesson still does (R30 #4)', function () {
+it('keeps a paused weekly slot blocking and frees an ended one, while a generated lesson blocks on its own (R30 #4, R97)', function () {
     $tutor = slotLoaderTutor();
     $slot = RecurringSlot::factory()->create(['tutor_profile_id' => $tutor->id, 'weekday' => 2, 'start_time' => '09:00:00', 'starts_on' => '2026-09-14']);
 
     expect(slotLoaderStarts($tutor))->toBe(['2026-09-15 10:00']);
 
     $slot->forceFill(['status' => RecurringSlotStatus::Paused])->save();
+    expect(slotLoaderStarts($tutor))->toBe(['2026-09-15 10:00']);
+
+    $slot->forceFill(['status' => RecurringSlotStatus::Ended])->save();
     expect(slotLoaderStarts($tutor))->toHaveCount(2);
 
     // A lesson generated from the slot (CP4) is a lesson: it blocks on its own.
@@ -144,11 +147,12 @@ it('does not double-book a tutor start time in the database, but a cancelled les
     expect(Lesson::factory()->startingAt($start)->create(['tutor_profile_id' => $tutor->id])->exists)->toBeTrue();
 });
 
-it('allows only one active weekly slot per tutor weekday and time', function () {
+it('allows only one active or paused weekly slot per tutor weekday and time', function () {
     $tutor = TutorProfile::factory()->approved()->create();
     RecurringSlot::factory()->create(['tutor_profile_id' => $tutor->id]);
 
-    expect(fn () => DB::transaction(fn () => RecurringSlot::factory()->create(['tutor_profile_id' => $tutor->id])))->toThrow(QueryException::class);
+    expect(fn () => DB::transaction(fn () => RecurringSlot::factory()->create(['tutor_profile_id' => $tutor->id])))->toThrow(QueryException::class)
+        ->and(fn () => DB::transaction(fn () => RecurringSlot::factory()->paused()->create(['tutor_profile_id' => $tutor->id])))->toThrow(QueryException::class, 'recurring_slots_live_unique');
 
     RecurringSlot::factory()->create(['tutor_profile_id' => $tutor->id, 'status' => RecurringSlotStatus::Ended]); // ended rows do not collide
     expect(RecurringSlot::query()->count())->toBe(2);

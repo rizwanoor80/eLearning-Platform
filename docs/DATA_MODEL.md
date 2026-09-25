@@ -1,9 +1,10 @@
-# DATA MODEL — v1.4
+# DATA MODEL — v1.5
 
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
 _v1.3 (cycle 03, rulings R32–R36, ADR-004; describes what shipped): adds `year_groups` — year group becomes a controlled list per curriculum (R33), so `learners` and `tutor_subjects` point at it and keep their old free text only in `*_legacy` columns; `tutor_profiles` gains `submitted_at` and the status lifecycle is one table of allowed edges (R36); `content_blocks` also carries the match-request budget labels (R35); `TutorProfile::displayName()` is the one public name (R32)._
 _v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped): three real schema deviations from v1.3's forward-looking design, plus one implementation-detail note, all called out inline below. `lessons` gains its CP3 columns exactly as v1.3 specified (money frozen at booking, room/completion/cancellation fields); `tutor_strikes` built as speculated. Schema deviation 1 — overlap protection is now two constraints, not one, see "Overlap protection" under `### lessons`. Schema deviation 2 — `payments.lesson_id` is UNIQUE, see `### payments`. Schema deviation 3 — `ledger_entries.account` gains a `gateway` value, the external counter-leg for money entering/leaving escrow, not in v1.3's enum list, see `### ledger_entries` and the corrected Ledger-effect table under `### lessons`. Implementation-detail note — `ledger_entries` enforces append-only with a DB-level `BEFORE UPDATE OR DELETE` trigger, not just application discipline, see `### ledger_entries`; this was always the stated design (the table's v1.3 prose already said "append-only"), so it is not counted as a schema deviation._
+_v1.5 (cycle 05, CP4+ sub-cycle 4a, R92/R95/R98/R99/R100; describes what shipped in 4a — 4e's `payments` changes are added when 4e ships): `recurring_slots` gains its full CP4 column set plus `price` (R95, frozen on the slot); the slot uniqueness index now covers paused slots (R99); `lessons` gains a recurring-key unique index whose predicate deviates from R98's wording (Deviation A below); `recurring_slot_skips` is new (R98); `payment_methods` is described as built, and its FK from `lessons.payment_method_id` lands in 4a rather than 4e (Note B below). Schema deviation A — `lessons_recurring_slot_starts_at_unique` excludes pause-cancelled rows, see `### lessons`. Note B — `payments.payment_method_id` (if the column is added) still goes with 4e._
 
 ## ERD
 
@@ -25,6 +26,7 @@ erDiagram
     learners ||--o{ recurring_slots : "has"
     tutor_profiles ||--o{ recurring_slots : "delivers"
     recurring_slots ||--o{ lessons : "generates"
+    recurring_slots ||--o{ recurring_slot_skips : "skipped"
     learners ||--o{ lessons : "attends"
     tutor_profiles ||--o{ lessons : "delivers"
     lessons ||--o| progress_reports : "has"
@@ -56,8 +58,9 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 - An adult student has one learner row with `is_minor=false` and `display_name` = their own name.
 
 ### payment_methods
-`id, account_user_id (fk, unique — one card in v1), gateway, gateway_customer_ref, gateway_token, brand, last4, exp_month, exp_year, status (active|expired|failed), last_failed_at, timestamps`
-- Never store PAN. Token only.
+`id, account_user_id (fk → users, unique — one card in v1), gateway, gateway_customer_ref, gateway_token, brand, last4, exp_month, exp_year, status (active|expired|failed, default active), last_failed_at, timestamps`
+- Never store PAN. Token only. The model hides `gateway_token` from serialisation (invariant 15).
+- v1.5 (as built): `lessons.payment_method_id` is a real foreign key to this table (`restrictOnDelete`), added by the same 4a migration that creates the table. `payments.payment_method_id` is added with 4e.
 
 ### tutor_profiles
 `id, user_id (fk, unique), headline, bio, intro_video_url, hourly_rate (fils), status (enum: draft|pending_review|changes_requested|approved|rejected|suspended), submitted_at (nullable timestamp — set at every submit for review, backfilled from `created_at` for non-draft rows; the approval queue sorts on it), permit_number, permit_expires_at (date), agreement_accepted_at, agreement_version (int, nullable — the `pages.version` of `tutor_agreement` accepted), bank_name (encrypted), bank_account_name (encrypted), bank_iban (encrypted), bank_swift (encrypted, nullable), bank_verified_at, rating_avg (decimal), rating_count, lessons_completed, late_report_count_90d, strike_count_90d, review_note (admin → tutor), approved_by (fk users), approved_at, timestamps`
@@ -100,16 +103,26 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 ### recurring_slots
 ```
 id, learner_id, tutor_profile_id, curriculum_id, subject_id,
+price (fils, unsigned bigint — agreed once at creation, R95),
 weekday (0–6), start_time (local), timezone,
 starts_on (date), ends_on (date, nullable),
 status (enum: active|paused|ended),
 paused_reason (nullable: payment_failed|admin), ended_by_user_id, ended_at, end_effective_on,
 consecutive_charge_failures (int),
-generated_until (date),
+generated_until (date, NOT NULL),
 created_by_user_id, timestamps
 ```
-- unique partial index `(tutor_profile_id, weekday, start_time, timezone) WHERE status = 'active'`.
-- An `active` slot blocks that weekday/time in `SlotCalculator` indefinitely, not just up to `generated_until`.
+- **v1.5:** unique partial index `recurring_slots_live_unique` on `(tutor_profile_id, weekday, start_time, timezone) WHERE status IN ('active','paused')` — replaces v1.4's `recurring_slots_active_unique` (`WHERE status = 'active'`), so a paused slot keeps its place and resume can never collide (R99). `ended` slots hold nothing.
+- An `active` or `paused` slot blocks that weekday/time in `SlotCalculator` indefinitely, not just up to `generated_until`; an `ended` slot blocks nothing (R97).
+- **Effective end** of a slot = the earlier of `ends_on` and `end_effective_on`, both inclusive; null = open-ended (`RecurringSlot::effectiveEndDate()`).
+- `price` is the regular price frozen when the slot is created; each generated lesson copies it and freezes its own commission and policy fields at generation (R95, invariants 6 and 11). The 4a migration refuses to run if `recurring_slots` already has rows (there were none, locally or on rehearsal).
+
+### recurring_slot_skips
+```
+id, recurring_slot_id (fk), starts_at (utc), reason (enum: lesson_collision|tutor_blocked|tutor_unavailable),
+notified_at (nullable), timestamps
+```
+- Unique `(recurring_slot_id, starts_at)`. Written by `recurring:generate` (4c) for an occurrence it could not create; `notified_at` makes the parent's email idempotent (R98). New in v1.5.
 
 ### lessons
 ```
@@ -127,6 +140,8 @@ report_due_at, escrow_released_at,
 timestamps
 ```
 - Indexes: `(tutor_profile_id, starts_at)`, `(learner_id, starts_at)`, `(status)`, `(report_due_at)`, `(next_charge_at) WHERE status = 'reserved'`.
+- **v1.5, Deviation A — recurring idempotency key:** `lessons_recurring_slot_starts_at_unique`, `UNIQUE (recurring_slot_id, starts_at) WHERE recurring_slot_id IS NOT NULL AND cancel_reason IS DISTINCT FROM 'slot_paused'` (Postgres `IS DISTINCT FROM`, because `cancel_reason` is nullable text). R98 specified `WHERE recurring_slot_id IS NOT NULL` alone; that would make a pause followed by a resume impossible, because R99 cancels the slot's future `reserved` lessons on pause (as `cancelled_by_parent`, `cancel_reason = 'slot_paused'`) and resume must regenerate the same `(slot, starts_at)` keys. Excluding pause-cancelled rows frees exactly those keys; every other row — including a parent's skip cancellation — keeps its key, so generation still cannot recreate a skipped or cancelled occurrence. Resume must therefore reset `generated_until` (4b/4c).
+- `payment_method_id` is now a foreign key to `payment_methods` (see there). `cancel_reason` is free text, so the index must not trust a typed note: `CancelLesson` and `SkipLesson` refuse any reason equal to a `LessonCancelReason` value (`LessonCancelReason::isReserved()`), and only the platform writes `slot_paused` (4b).
 - Unique partial index `(learner_id, tutor_profile_id) WHERE type = 'trial' AND status NOT IN (freeing states)` — one trial per pair. "Freeing states" is the same set as the overlap-protection predicate below (`LessonStatus::freeingSlotValues()`: expired, both cancellations, cancelled-payment-failed, refunded), not just the `cancelled_*` values — a v1.4 correction, the original v1.3 wording said "cancelled states".
 - **Overlap protection, v1.4 — two constraints, not one (deviation from v1.3):** the CP2 unique partial index `lessons_tutor_slot_unique` on `(tutor_profile_id, starts_at) WHERE status NOT IN (freeing states)` only catches two lessons sharing the exact same `starts_at`. It cannot catch a tutor whose availability sits on different grid offsets (e.g. one rule at :00, another at :30) producing two bookable slots that genuinely overlap without sharing a `starts_at`. 3c adds `lessons_tutor_no_overlap`, an additive `EXCLUDE USING gist (tutor_profile_id WITH =, tsrange(starts_at, ends_at, '[)') WITH &&) WHERE (status NOT IN (freeing states))` (requires `CREATE EXTENSION btree_gist`; `tsrange` not `tstzrange` because casting a `timestamp without time zone` column to `timestamptz` inside a GiST index expression is STABLE, not IMMUTABLE, which Postgres refuses). Both constraints stand; `BookLesson` catches either violation transactionally and translates it to a `BookingException` naming which one fired.
 
