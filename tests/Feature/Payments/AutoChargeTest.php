@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\Lessons\CancelLesson;
 use App\Actions\RecurringSlots\ChargeReservedLesson;
+use App\Actions\RecurringSlots\EndRecurringSlot;
 use App\Actions\RecurringSlots\PauseRecurringSlot;
 use App\Actions\RecurringSlots\ResumeRecurringSlot;
 use App\Enums\ChargeOutcome;
@@ -14,7 +16,9 @@ use App\Events\Lessons\LessonStatusChanged;
 use App\Exceptions\PaymentCaptureException;
 use App\Exceptions\RecurringSlotException;
 use App\Listeners\Lessons\SendLessonConfirmedMail;
+use App\Mail\Lessons\LessonCancelledMail;
 use App\Mail\Lessons\LessonConfirmedMail;
+use App\Mail\Lessons\LessonSkippedMail;
 use App\Mail\Payments\WeeklyLessonCancelledForPaymentMail;
 use App\Mail\Payments\WeeklyLessonChargedMail;
 use App\Mail\Payments\WeeklyLessonChargeFailedMail;
@@ -208,7 +212,40 @@ it('retries a declined card at T-36h and T-24h, then cancels the lesson with no 
     Mail::assertQueued(WeeklyLessonCancelledForPaymentMail::class, fn ($mail) => $mail->hasTo($parent->email));
     Mail::assertQueued(WeeklyLessonCancelledForPaymentMail::class, fn ($mail) => $mail->hasTo($tutor->user->email));
     Mail::assertQueued(WeeklyLessonCancelledForPaymentMail::class, 2);
+    // No generic cancelled or skipped email piles on top of the weekly one.
+    Mail::assertNotQueued(LessonCancelledMail::class);
+    Mail::assertNotQueued(LessonSkippedMail::class);
     expect(Artisan::call('ledger:verify'))->toBe(0);
+});
+
+it('leaves an auto-charged lesson to the §4 cancellation rules when the parent then ends the slot: refund outside the window, release inside it', function () {
+    ['parent' => $parent, 'slot' => $slot] = acSetup();
+    $outside = acLesson($slot, '2026-09-18 12:00:00', '2026-09-16 12:00:00');
+    $inside = acLesson($slot, '2026-09-19 12:00:00', '2026-09-16 12:00:00');
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+
+    expect($outside->fresh()->status)->toBe(LessonStatus::Confirmed)->and($inside->fresh()->status)->toBe(LessonStatus::Confirmed);
+
+    // Ending the slot leaves charged lessons alone.
+    app(EndRecurringSlot::class)($parent, $slot);
+    expect($outside->fresh()->status)->toBe(LessonStatus::Confirmed)->and($inside->fresh()->status)->toBe(LessonStatus::Confirmed);
+
+    // Outside the frozen 24h window: full refund, and the captured attempt is the payment marked refunded.
+    app(CancelLesson::class)($parent, $outside);
+    $outside->refresh();
+    expect($outside->status)->toBe(LessonStatus::Refunded)
+        ->and($outside->payment->status)->toBe(PaymentStatus::Refunded)
+        ->and(app(LedgerService::class)->sum($outside))->toBe(0);
+
+    // Inside the window (starts in under 24h): the money is released to the tutor.
+    acAt('2026-09-18 13:00:00');
+    app(CancelLesson::class)($parent, $inside);
+    $inside->refresh();
+    expect($inside->status)->toBe(LessonStatus::CompletedReported)
+        ->and(app(LedgerService::class)->sum($inside))->toBe(0)
+        ->and(Artisan::call('ledger:verify'))->toBe(0);
 });
 
 it('never charges a learner or emails one: every charge email goes to the account holder', function () {
