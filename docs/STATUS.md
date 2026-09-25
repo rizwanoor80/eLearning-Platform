@@ -1,13 +1,13 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 16:20 — Context: not measured this write — 4a merged (`6375469`); 4b PR #17 open, fix round 1 pushed, CI pending
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 16:55 — Context: not measured this write — 4a, 4b **merged** (`496a76d`); 4c starting
 
-Tests: **1208/1208 passed, 5500 assertions** on `3a7632a` (`composer.bat --no-interaction test`; 4a baseline 1170/5267 — grew by 38). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Review verdict (PR #17, fresh subagent): **no Medium or High**; Lows 16/18/19 fixed in round 1 of 2, 20/22 doc fixes done, 17 carried to 4d, 21 noted. Advisor: 3 consults this sub-cycle (design, mid-build, pre-PR), all answered.
+Tests: **1208/1208 passed, 5500 assertions** on merged `main` (`composer.bat --no-interaction test`; 4a baseline 1170/5267). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Smoke `/`, `/login`, `/admin/login`: 200 ×3. Review verdict (PR #17): **no Medium or High**; Lows fixed in round 1 of 2. Advisor: 3 consults for 4b (all answered).
 
 ## §1 Git state
-`origin/main` at the docs commit carrying this write (on top of `0ef33df`, 4a merged as `6375469`). Branch `cp/4b-slot-actions` at `3a7632a` (two commits ahead of the 4a merge), PR #17 open, mergeable, CI pending.
+`origin/main` at the docs commit carrying this write (on top of `496a76d`, PR #17 squash-merged). Branches `cp/4a-foundation` and `cp/4b-slot-actions` merged; 4c branch not yet cut.
 
 ## §2 Step map (cycle 05 r1 — programme R88)
 1. `cp/4a-foundation` — **merged** as `6375469`; post-merge suite 1170/1170, 5267 assertions, Ledger OK, smoke 200 ×3.
-2. `cp/4b-slot-actions` — built, reviewed, fix round 1 pushed; PR #17 awaiting CI on `3a7632a`, then merge under R89.
+2. `cp/4b-slot-actions` — **merged** as `496a76d` (CI pass on `3a7632a`); post-merge suite 1208/1208, 5500 assertions, Ledger OK, smoke 200 ×3.
 3. `cp/4c-generation` — not started.
 4. `cp/4d-portal` — not started.
 5. `cp/4e-auto-charge` — not started (halt for backend-dev GO, R90).
@@ -48,13 +48,13 @@ Not stopping — step-boundary record. Programme resume count 0 of 8; R86: no st
    - Optional tests: `local` actually calls the demo seeder; the NOT NULL loop test asserts nothing about the error message.
 
 ## §7 Next step / Owner actions
-None pending. CC merges PR #17 once CI is green on `3a7632a`, then starts 4c.
+None pending. CC starts 4c (`recurring:generate`, skips table, skip emails, `next_charge_at`, tutor-ended flip).
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
 | 4a foundation | **merged** | `cp/4a-foundation` | #16 | no Medium+ | `6375469` (R89) |
-| 4b slot actions | PR open, CI pending | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | — |
+| 4b slot actions | **merged** | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | `496a76d` (R89) |
 | 4c generation | not started | `cp/4c-generation` | — | — | — |
 | 4d portal | not started | `cp/4d-portal` | — | — | — |
 | 4e auto-charge | not started (halt: backend-dev GO) | `cp/4e-auto-charge` | — | — | — |
