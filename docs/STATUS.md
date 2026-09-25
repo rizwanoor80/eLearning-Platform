@@ -1,12 +1,12 @@
-# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 13:57 — Context: not measured this write — step 1 (4a) **PR #16 open, awaiting CI on head, then merge under R89**
+# STATUS — cycle 05 r1 (CP4+, autonomous programme R88) — written 2026-09-25 14:04 — Context: not measured this write — 4a **merged** (`6375469`); 4b starting
 
 Tests: **1170/1170 passed, 5267 assertions** (`composer --no-interaction test`; baseline `main` 1147/5175 — grew by 23). `ledger:verify`: **Ledger OK**. Pint, phpstan (0 errors), RTL grep, `npm run build`: green. Review verdict: **no Medium or High open** (fresh subagent, 19 numbered verdicts, CYCLE-LOG REVIEW entry). Advisor: **3 this cycle** (design, mid-build, pre-PR; R63 line on each entry).
 
 ## §1 Git state
-`origin/main` at `7621301` + the docs commit carrying this write. PR #16 `cp/4a-foundation` → `main`, head `6223ae4`, MERGEABLE/CLEAN. `git log origin/main..HEAD` on the branch: `6223ae4` DATA_MODEL v1.5 note fixes · `d87a554` drop CancelLesson/SkipLesson reason guard · `ad87005` CP4 4a foundation · `b4e36d9` composer.lock (R103a).
+`origin/main` at `6375469` (PR #16 squash-merged) + the docs commit carrying this write. Branch `cp/4a-foundation` merged; 4b branch not yet cut.
 
 ## §2 Step map (cycle 05 r1 — programme R88)
-1. `cp/4a-foundation` — **built, pushed, reviewed; PR #16 open.** Next: confirm CI on `6223ae4`, merge under R89, post-merge record and read-only smoke.
+1. `cp/4a-foundation` — **merged** as `6375469`; post-merge suite 1170/1170, 5267 assertions, Ledger OK, smoke 200 ×3.
 2. `cp/4b-slot-actions` — not started (advisor consult on R99's cancellation-state mapping before the first edit).
 3. `cp/4c-generation` — not started.
 4. `cp/4d-portal` — not started.
@@ -43,12 +43,12 @@ Not stopping — step-boundary record. Programme resume count 0 of 8; R86: no st
    - Optional tests: `local` actually calls the demo seeder; the NOT NULL loop test asserts nothing about the error message.
 
 ## §7 Next step / Owner actions
-None pending. CC confirms CI on `6223ae4`, merges PR #16 under R89, then starts 4b.
+None pending. CC starts 4b (advisor consult on R99 first).
 
 ## §8 Programme board — CP4+ (R88)
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 4a foundation | PR open, CI pending | `cp/4a-foundation` | #16 | no Medium+ | pending (R89) |
+| 4a foundation | **merged** | `cp/4a-foundation` | #16 | no Medium+ | `6375469` (R89) |
 | 4b slot actions | not started | `cp/4b-slot-actions` | — | — | — |
 | 4c generation | not started | `cp/4c-generation` | — | — | — |
 | 4d portal | not started | `cp/4d-portal` | — | — | — |
