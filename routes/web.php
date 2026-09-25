@@ -41,6 +41,7 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
     Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->name('weekly-slots.store');
     Route::get('weekly-slots/{slot}/end', [WeeklySlotController::class, 'endShow'])->whereNumber('slot')->name('weekly-slots.end.show');
     Route::post('weekly-slots/{slot}/end', [WeeklySlotController::class, 'end'])->whereNumber('slot')->name('weekly-slots.end');
+    Route::post('weekly-slots/{slot}/resume', [WeeklySlotController::class, 'resume'])->whereNumber('slot')->name('weekly-slots.resume');
 
     Route::middleware('feature:match_requests')->group(function () {
         Route::get('match-requests', [MatchRequestController::class, 'index'])->name('match-requests.index');

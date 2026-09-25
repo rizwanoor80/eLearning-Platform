@@ -21,6 +21,12 @@ Schedule::command('lessons:expire-unpaid')->everyMinute()->onOneServer()->withou
 // unique index); onOneServer + withoutOverlapping only stop a second worker starting.
 Schedule::command('recurring:generate')->dailyAt('05:00')->onOneServer()->withoutOverlapping();
 
+// Weekly-lesson auto-charge (CP4 4e, R101): charges each due `reserved` lesson from the saved card,
+// retries at T-36h/T-24h, cancels after the last failure and pauses the slot. Idempotent by itself
+// (payments unique on (lesson_id, attempt_no) and the per-attempt gateway key); onOneServer +
+// withoutOverlapping only stop a second worker starting.
+Schedule::command('recurring:charge')->hourly()->onOneServer()->withoutOverlapping();
+
 // 24h/1h pre-lesson reminders (CP3 step 5, PRD line 160). The per-row
 // `reminder_*_sent_at IS NULL` claim inside the command is the actual
 // idempotency guard; onOneServer + withoutOverlapping only stop a second

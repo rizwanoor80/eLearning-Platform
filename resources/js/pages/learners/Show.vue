@@ -17,6 +17,7 @@ defineProps<{
         ends_on: string | null;
         end_effective_on: string | null;
         tutor_notice: boolean;
+        can_resume: boolean;
     }>;
     lessons: Array<{ id: number; starts_at: string; status: string; subject: string | null; tutor: string; cancel_kind: 'skip' | null }>;
     eligible_tutors: Array<{ id: number; name: string }>;
@@ -34,6 +35,10 @@ defineOptions({
 
 function skip(id: number) {
     router.post(`/lessons/${id}/cancel`);
+}
+
+function resume(id: number) {
+    router.post(`/weekly-slots/${id}/resume`);
 }
 </script>
 
@@ -70,6 +75,12 @@ function skip(id: number) {
                     </div>
                     <div class="flex items-center gap-2">
                         <Badge variant="outline">{{ slot.status }}</Badge>
+                        <template v-if="slot.can_resume">
+                            <Button variant="outline" size="sm" as-child>
+                                <Link :href="`/payment-methods/create?learner=${learner.id}`">Replace card</Link>
+                            </Button>
+                            <Button size="sm" @click="resume(slot.id)">Resume</Button>
+                        </template>
                         <Button v-if="slot.status !== 'ended'" variant="outline" size="sm" as-child>
                             <Link :href="`/weekly-slots/${slot.id}/end`">End</Link>
                         </Button>

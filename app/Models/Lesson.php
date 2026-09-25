@@ -204,14 +204,14 @@ class Lesson extends Model
     }
 
     /**
-     * At most one payment row per lesson in v1 (a failed capture expires the
-     * lesson rather than retrying on the same row — `payments.lesson_id` is
-     * unique).
+     * The lesson's live payment: its latest attempt. A single booking has exactly one row; a weekly
+     * lesson (R101) has one row per charge attempt, failed ones first, and once an attempt is
+     * captured no later one is made — so the highest `attempt_no` is the captured row when there is one.
      *
      * @return HasOne<Payment, $this>
      */
     public function payment(): HasOne
     {
-        return $this->hasOne(Payment::class);
+        return $this->hasOne(Payment::class)->latestOfMany('attempt_no');
     }
 }
