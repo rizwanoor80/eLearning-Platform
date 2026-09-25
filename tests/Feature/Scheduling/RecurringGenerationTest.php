@@ -77,7 +77,9 @@ function rgStarts(RecurringSlot $slot): array
 it('generates the horizon in Karachi time, as reserved regular lessons, and is a no-op the second time', function () {
     $slot = rgSlot();
 
-    expect(rgRun())->toBe(0);
+    expect(rgRun())->toBe(0)
+        // Reserved lessons with no payment and no ledger entries are not an imbalance.
+        ->and(Artisan::call('ledger:verify'))->toBe(0);
 
     // Tuesdays 17:00 PKT (UTC+5) = 12:00Z, from today to today + 4 weeks (2026-10-12).
     $expected = ['2026-09-15 12:00', '2026-09-22 12:00', '2026-09-29 12:00', '2026-10-06 12:00'];
