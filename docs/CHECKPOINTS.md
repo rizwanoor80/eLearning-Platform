@@ -109,6 +109,7 @@ Tasks
 - `EndRecurringSlot` (parent: immediate; tutor: with `recurring_tutor_end_notice_days`), `SkipLesson` for `reserved` occurrences, admin pause/end in Filament.
 - Parent portal: learner page shows weekly slots; tutor calendar shows slots as fixed blocks; "Set up a weekly slot" entry points on tutor profile and learner page (the trial-report CTA is wired in CP6).
 - Emails: slot created / ended / occurrence skipped by collision. _(Parent portal, tutor dashboard blocks, entry points and created/ended/paused emails done in 4d, PR #19 `c0e2fc3`; skip-by-collision email done in 4c.)_
+- Auto-charge on the fake gateway (R100, R101, R102). _(4e, on `cp/4e-auto-charge`: `PaymentGateway::saveCard` / `chargeSavedCard` and the fake driver's outcome by card token; `payments` one row per attempt (ADR-013); `recurring:charge` hourly with retries at T−48h/36h/24h, final `cancelled_payment_failed`, slot pause at two consecutive failures, parent resume after replacing the card; charged / failed / cancelled / paused-for-payment emails; lessons whose start has passed are cancelled `charge_window_missed`. No gateway is bound outside tests until CP5, so nothing is auto-charged on a server yet.)_
 
 Acceptance
 - [x] Running `recurring:generate` twice produces no duplicate lessons. _(4c, PR #18 `dd34988`: `RecurringGenerationTest` — a second run creates nothing and adds no payment or ledger row; a daily-run test over 15 days proves no date is dropped east of UTC; `ledger:verify` asserted over the generated lessons.)_
