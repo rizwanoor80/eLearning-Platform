@@ -152,8 +152,10 @@ class GenerateSlotLessons
 
             // A permit that will lapse inside the horizon is not a skip yet — the tutor may renew before
             // then. Generation stops the day before it and picks up again on a later run; the skips
-            // (and the email) are written only once the tutor really is unbookable.
-            if ($bookable && $permitCutoff !== null && $start >= $permitCutoff) {
+            // (and the email) are written only once the tutor really is unbookable. An occurrence less
+            // than a day away is not held: no further daily run would see it before it starts, and
+            // dropping it silently would lose the date without a skip or an email — it is skipped now.
+            if ($bookable && $permitCutoff !== null && $start >= $permitCutoff && $start > $now->addDay()) {
                 $until = $date->subDay()->toDateString();
 
                 break;

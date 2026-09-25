@@ -285,6 +285,30 @@ it('holds generation at a permit that will lapse, without skips, and carries on 
         ->and($lapsing->fresh()->generated_until->toDateString())->toBe('2026-10-12');
 });
 
+it('records a skip, not a silent loss, for an occurrence on the expiry day that no later run would see', function () {
+    Mail::fake();
+    // Wednesday 08:00 Karachi = 03:00Z, before the daily 05:00Z run on the expiry date itself.
+    $slot = rgSlot(['weekday' => 3, 'start_time' => '08:00']);
+    $slot->tutorProfile->forceFill(['permit_expires_at' => '2026-09-30'])->save();
+
+    // Daily 05:00Z runs from the 15th to the 28th hold the 30th: no skip, no email.
+    for ($day = 15; $day <= 28; $day++) {
+        $this->travelTo(CarbonImmutable::parse(sprintf('2026-09-%02d 05:00:00', $day), 'UTC'));
+        rgRun();
+    }
+    expect(RecurringSlotSkip::query()->where('recurring_slot_id', $slot->id)->count())->toBe(0);
+    Mail::assertNothingQueued();
+
+    // The run on the 29th is the last before 09-30 03:00Z: the date is recorded and mailed now.
+    $this->travelTo(CarbonImmutable::parse('2026-09-29 05:00:00', 'UTC'));
+    rgRun();
+
+    expect(rgStarts($slot))->toBe(['2026-09-16 03:00', '2026-09-23 03:00'])
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $slot->id)->pluck('starts_at')->map(fn ($at) => $at->utc()->format('Y-m-d H:i'))->all())->toBe(['2026-09-30 03:00'])
+        ->and(RecurringSlotSkip::query()->where('recurring_slot_id', $slot->id)->value('reason'))->toBe(RecurringSlotSkipReason::TutorUnavailable);
+    Mail::assertQueued(RecurringSlotSkippedMail::class, 1);
+});
+
 it('records the skips, and mails them, once a permit really has lapsed', function () {
     Mail::fake();
     $lapsing = rgSlot(['weekday' => 3]);
