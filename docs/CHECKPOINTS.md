@@ -108,7 +108,7 @@ Tasks
 - `recurring:generate` nightly job with idempotent `(slot, starts_at)` keys; collision handling (skip + email).
 - `EndRecurringSlot` (parent: immediate; tutor: with `recurring_tutor_end_notice_days`), `SkipLesson` for `reserved` occurrences, admin pause/end in Filament.
 - Parent portal: learner page shows weekly slots; tutor calendar shows slots as fixed blocks; "Set up a weekly slot" entry points on tutor profile and learner page (the trial-report CTA is wired in CP6).
-- Emails: slot created / ended / occurrence skipped by collision.
+- Emails: slot created / ended / occurrence skipped by collision. _(Parent portal, tutor dashboard blocks, entry points and created/ended/paused emails done in 4d, PR #19 `c0e2fc3`; skip-by-collision email done in 4c.)_
 
 Acceptance
 - [x] Running `recurring:generate` twice produces no duplicate lessons. _(4c, PR #18 `dd34988`: `RecurringGenerationTest` — a second run creates nothing and adds no payment or ledger row; a daily-run test over 15 days proves no date is dropped east of UTC; `ledger:verify` asserted over the generated lessons.)_
