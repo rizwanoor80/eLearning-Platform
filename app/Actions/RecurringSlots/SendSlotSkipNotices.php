@@ -58,11 +58,10 @@ class SendSlotSkipNotices
             RecurringSlotSkip::query()->whereKey($skips->modelKeys())->update(['notified_at' => now()]);
 
             $slot = RecurringSlot::query()->find($slotId);
-            $learner = $slot === null ? null : Learner::query()->withTrashed()->find($slot->learner_id);
+            $learner = $slot?->learner;
             $account = $learner?->account;
 
             // Nobody left to tell (a removed learner or account): the rows are settled, not retried daily.
-            // The email names the learner, and `RecurringSlot::learner()` does not load a removed one.
             if ($slot === null || $learner === null || $learner->trashed() || $account === null || $account->trashed()) {
                 return 0;
             }

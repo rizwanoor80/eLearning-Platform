@@ -32,8 +32,9 @@ use Illuminate\Support\Facades\Date;
  *   (the tutor's current user timezone; `forTutors()` passes it).
  * - A slot is offered when `starts_at >= now + lead` and `starts_at <= now + max_days`.
  * - Blocking is interval overlap: a lesson at 10:30 removes both 10:00 and 11:00.
- * - An active recurring slot blocks its weekday/time on every date from
- *   `starts_on` until `ends_on`, however far out (PRD §2.6.7).
+ * - An active or paused recurring slot blocks its weekday/time on every date from
+ *   `starts_on` up to its effective end (`ends_on` or a tutor's `end_effective_on`),
+ *   however far out (PRD §2.6.7, R97); an ended slot blocks nothing.
  */
 class SlotCalculator
 {

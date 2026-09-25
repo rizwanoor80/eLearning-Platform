@@ -7,6 +7,7 @@ use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
 use App\Enums\RecurringSlotStatus;
 use App\Enums\Role;
+use App\Events\RecurringSlots\RecurringSlotEnded;
 use App\Exceptions\RecurringSlotException;
 use App\Models\RecurringSlot;
 use App\Models\User;
@@ -66,6 +67,8 @@ class EndRecurringSlot
             ['status' => RecurringSlotStatus::Ended->value, 'cancelled_lessons' => $cancelled, 'note' => $note],
         );
 
+        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role));
+
         return $slot;
     }
 
@@ -93,6 +96,8 @@ class EndRecurringSlot
         ($this->audit)($actor, 'recurring_slot.ended', $slot, $before,
             ['status' => $slot->status->value, 'end_effective_on' => $effectiveOn->toDateString(), 'notice_days' => $noticeDays, 'cancelled_lessons' => $cancelled, 'note' => $note],
         );
+
+        DB::afterCommit(fn () => RecurringSlotEnded::dispatch($slot, $cancelled, $actor->role));
 
         return $slot;
     }

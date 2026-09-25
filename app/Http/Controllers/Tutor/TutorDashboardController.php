@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tutor;
 use App\Enums\LessonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Lesson;
+use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -28,7 +29,7 @@ class TutorDashboardController extends Controller
         // been there has certainly never had a bookable lesson, so there is
         // nothing to query and nothing to lazily create from a GET request.
         if ($tutorProfile === null) {
-            return Inertia::render('tutor/Dashboard', ['today' => [], 'upcoming' => []]);
+            return Inertia::render('tutor/Dashboard', ['today' => [], 'upcoming' => [], 'slots' => []]);
         }
 
         $localStartOfToday = CarbonImmutable::now()->setTimezone($user->timezone)->startOfDay();
@@ -56,7 +57,36 @@ class TutorDashboardController extends Controller
         return Inertia::render('tutor/Dashboard', [
             'today' => $this->present($today, $user),
             'upcoming' => $this->present($upcoming, $user),
+            'slots' => $this->slots($tutorProfile),
         ]);
+    }
+
+    /**
+     * The tutor's standing weekly slots, shown as fixed blocks (R99): `ending_on` is set once the
+     * tutor has given notice, and the slot then still runs through that date.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function slots(TutorProfile $tutorProfile): array
+    {
+        $slots = RecurringSlot::query()
+            ->where('tutor_profile_id', $tutorProfile->id)
+            ->whereIn('status', RecurringSlot::holdingStatuses())
+            ->with(['learner', 'subject:id,name'])
+            ->orderBy('weekday')
+            ->orderBy('start_time')
+            ->get()
+            ->map(fn (RecurringSlot $slot): array => [
+                'id' => $slot->id,
+                'learner_display_name' => $slot->learner->display_name,
+                'subject' => $slot->subject?->name,
+                'schedule' => $slot->scheduleLabel(),
+                'status' => $slot->status->value,
+                'ending_on' => $slot->ended_by_user_id !== null ? $slot->end_effective_on?->format('D, j M Y') : null,
+            ])
+            ->all();
+
+        return array_values($slots);
     }
 
     /**
@@ -74,6 +104,7 @@ class TutorDashboardController extends Controller
                 'duration_minutes' => $lesson->duration_minutes,
                 'status' => $lesson->status->value,
                 'learner_display_name' => $lesson->learner->display_name,
+                'weekly' => $lesson->recurring_slot_id !== null,
             ];
         }
 

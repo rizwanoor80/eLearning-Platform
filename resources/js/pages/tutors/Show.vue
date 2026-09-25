@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 
@@ -19,6 +19,7 @@ defineProps<{
         reviews?: Array<{ id: number }>;
     };
     timezone: string;
+    can_set_up_weekly: boolean;
 }>();
 </script>
 
@@ -70,6 +71,12 @@ defineProps<{
                 <li v-for="slot in tutor.next_slots" :key="slot.starts_at" class="rounded-md border px-3 py-1">{{ slot.label }}</li>
             </ul>
             <p v-else class="text-muted-foreground text-sm">No open slots right now.</p>
+        </section>
+
+        <section v-if="can_set_up_weekly" class="grid gap-2">
+            <h2 class="font-medium">Weekly lessons</h2>
+            <p class="text-muted-foreground text-sm">Once your trial lesson with {{ tutor.name }} is complete you can reserve a standing weekly slot.</p>
+            <Link :href="`/weekly-slots/create?tutor=${tutor.id}`" class="w-fit text-sm underline underline-offset-4">Set up a weekly slot</Link>
         </section>
 
         <section v-if="tutor.reviews !== undefined" class="grid gap-2">

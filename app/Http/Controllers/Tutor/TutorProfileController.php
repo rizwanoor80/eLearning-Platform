@@ -33,6 +33,7 @@ class TutorProfileController extends Controller
         return Inertia::render('tutors/Show', [
             'tutor' => $presenter->profile($profile, $calculator->forTutor($profile, $timezone), EnsureFeatureEnabled::enabled('reviews')),
             'timezone' => $timezone,
+            'can_set_up_weekly' => $user instanceof User && $user->can('access-parent-area'),
         ]);
     }
 }

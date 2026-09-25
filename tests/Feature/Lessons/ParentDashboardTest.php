@@ -94,5 +94,5 @@ it('never leaks a raw Eloquent model — only the presented keys are exposed', f
 
     test()->actingAs($parent)->get(route('dashboard'))
         ->assertInertia(fn ($page) => $page->has('upcoming.0', fn ($lesson) => $lesson
-            ->hasAll(['id', 'starts_at', 'duration_minutes', 'status', 'subject', 'learner_display_name', 'tutor_display_name', 'price', 'cancel_window_hours', 'cancel_kind'])));
+            ->hasAll(['id', 'starts_at', 'duration_minutes', 'status', 'subject', 'learner_display_name', 'tutor_display_name', 'price', 'weekly', 'cancel_window_hours', 'cancel_kind'])));
 });

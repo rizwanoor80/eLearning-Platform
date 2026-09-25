@@ -13,6 +13,7 @@ type UpcomingLesson = {
     learner_display_name: string;
     tutor_display_name: string;
     price: string;
+    weekly: boolean;
     cancel_window_hours: number;
     cancel_kind: 'skip' | 'cancel' | null;
 };
@@ -85,6 +86,7 @@ function cancel(lesson: UpcomingLesson) {
                     </span>
                 </div>
                 <div class="flex items-center gap-2">
+                    <Badge v-if="lesson.weekly" variant="secondary">weekly</Badge>
                     <Badge variant="outline">{{ lesson.status }}</Badge>
                     <Button v-if="lesson.cancel_kind" variant="outline" size="sm" @click="cancel(lesson)">
                         {{ lesson.cancel_kind === 'skip' ? 'Skip' : 'Cancel' }}

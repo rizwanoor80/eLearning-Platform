@@ -42,6 +42,7 @@ class DashboardController extends Controller
             'learner_display_name' => $lesson->learner->display_name,
             'tutor_display_name' => $lesson->tutorProfile->displayName(),
             'price' => $lesson->price->format(),
+            'weekly' => $lesson->recurring_slot_id !== null,
             'cancel_window_hours' => $lesson->cancel_window_hours,
             'cancel_kind' => match ($lesson->status) {
                 LessonStatus::Reserved => 'skip',

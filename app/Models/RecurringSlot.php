@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RecurringSlotPauseReason;
 use App\Enums\RecurringSlotStatus;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\RecurringSlotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -92,6 +93,54 @@ class RecurringSlot extends Model
     }
 
     /**
+     * "Tuesday 17:00 (Asia/Dubai)": the slot in its own (the tutor's) timezone. A parent in another
+     * zone reads `nextOccurrenceAfter()` instead, because the weekday itself can differ there.
+     */
+    public function scheduleLabel(): string
+    {
+        // 2024-01-07 was a Sunday, so day-of-week 0 = Sunday lines up with `weekday`.
+        $day = CarbonImmutable::create(2024, 1, 7 + $this->weekday)->format('l');
+
+        return sprintf('%s %s (%s)', $day, substr($this->start_time, 0, 5), $this->timezone);
+    }
+
+    /**
+     * The first occurrence strictly after `$after`, honouring `starts_on` and the effective end;
+     * null once the slot has no further occurrence. Each occurrence is built on its own local date,
+     * so it is DST-correct (R97). Callers convert to the viewer's timezone at the edge.
+     */
+    public function nextOccurrenceAfter(CarbonInterface $after): ?CarbonImmutable
+    {
+        $date = CarbonImmutable::instance($after)->setTimezone($this->timezone)->startOfDay();
+        $first = CarbonImmutable::createFromFormat('!Y-m-d', $this->starts_on->toDateString(), $this->timezone);
+
+        if ($date->lessThan($first)) {
+            $date = $first;
+        }
+
+        $end = $this->effectiveEndDate();
+
+        // At most two passes are needed to land on the weekday and get past `$after` on the same day.
+        for ($i = 0; $i < 15; $i++) {
+            if ($end !== null && $date->toDateString() > $end->toDateString()) {
+                return null;
+            }
+
+            if ($date->dayOfWeek === $this->weekday) {
+                $start = CarbonImmutable::createFromFormat('!Y-m-d H:i:s', $date->toDateString().' '.$this->start_time, $this->timezone)->utc();
+
+                if ($start->greaterThan($after)) {
+                    return $start;
+                }
+            }
+
+            $date = $date->addDay();
+        }
+
+        return null;
+    }
+
+    /**
      * @return BelongsTo<TutorProfile, $this>
      */
     public function tutorProfile(): BelongsTo
@@ -104,7 +153,9 @@ class RecurringSlot extends Model
      */
     public function learner(): BelongsTo
     {
-        return $this->belongsTo(Learner::class);
+        // A slot outlives a removed learner until it is ended, and its emails and the parent's list
+        // still name them; callers that must not act for a removed learner check `trashed()`.
+        return $this->belongsTo(Learner::class)->withTrashed();
     }
 
     /**

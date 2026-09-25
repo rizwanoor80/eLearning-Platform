@@ -7,11 +7,14 @@ use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Lessons\CancelLessonController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\Payments\TestCardController;
+use App\Http\Controllers\Payments\WeeklySlotController;
 use App\Http\Controllers\Tutor\TutorDashboardController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
+use App\Http\Controllers\Tutor\TutorWeeklySlotController;
 use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
 
@@ -28,7 +31,16 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
     Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
     Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
-    Route::resource('learners', LearnerController::class)->except('show');
+    Route::resource('learners', LearnerController::class);
+
+    // R100: the fake driver's add-card page; both routes 404 in production.
+    Route::get('payment-methods/create', [TestCardController::class, 'create'])->name('payment-methods.create');
+    Route::post('payment-methods', [TestCardController::class, 'store'])->name('payment-methods.store');
+
+    Route::get('weekly-slots/create', [WeeklySlotController::class, 'create'])->name('weekly-slots.create');
+    Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->name('weekly-slots.store');
+    Route::get('weekly-slots/{slot}/end', [WeeklySlotController::class, 'endShow'])->whereNumber('slot')->name('weekly-slots.end.show');
+    Route::post('weekly-slots/{slot}/end', [WeeklySlotController::class, 'end'])->whereNumber('slot')->name('weekly-slots.end');
 
     Route::middleware('feature:match_requests')->group(function () {
         Route::get('match-requests', [MatchRequestController::class, 'index'])->name('match-requests.index');
@@ -47,6 +59,9 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function () {
     Route::get('tutor/dashboard', [TutorDashboardController::class, 'show'])->name('tutor.dashboard');
+
+    Route::get('tutor/weekly-slots/{slot}/end', [TutorWeeklySlotController::class, 'endShow'])->whereNumber('slot')->name('tutor.weekly-slots.end.show');
+    Route::post('tutor/weekly-slots/{slot}/end', [TutorWeeklySlotController::class, 'end'])->whereNumber('slot')->name('tutor.weekly-slots.end');
 
     Route::get('tutor/onboarding', [TutorOnboardingController::class, 'show'])->name('tutor.onboarding');
     Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');

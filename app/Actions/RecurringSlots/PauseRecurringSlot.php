@@ -7,6 +7,7 @@ use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
 use App\Enums\RecurringSlotPauseReason;
 use App\Enums\RecurringSlotStatus;
+use App\Events\RecurringSlots\RecurringSlotPaused;
 use App\Exceptions\RecurringSlotException;
 use App\Models\RecurringSlot;
 use App\Models\User;
@@ -52,6 +53,8 @@ class PauseRecurringSlot
                 ['status' => RecurringSlotStatus::Active->value],
                 ['status' => RecurringSlotStatus::Paused->value, 'paused_reason' => $reason->value, 'cancelled_lessons' => $cancelled, 'note' => $note],
             );
+
+            DB::afterCommit(fn () => RecurringSlotPaused::dispatch($locked, $cancelled));
 
             return $locked;
         });
