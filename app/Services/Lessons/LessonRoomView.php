@@ -78,7 +78,7 @@ final class LessonRoomView
             'other_joined' => $otherJoinedAt !== null,
             'other_role' => $isTutor ? 'student' : 'tutor',
             'no_show_outcome' => $isTutor ? 'pay_tutor' : 'refund_parent',
-            'terminal' => ! in_array($lesson->status, [LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress], true),
+            'terminal' => ! in_array($lesson->status, [LessonStatus::PendingPayment, LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress], true),
         ];
     }
 }

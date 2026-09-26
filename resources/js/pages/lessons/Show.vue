@@ -39,12 +39,12 @@ defineOptions({
 });
 
 // Attendance arrives by webhook while the page is open, so the flags are refreshed in place (Reverb is deferred).
-const { stop } = usePoll(30000, { only: ['lesson'] });
+// A page opened on a closed lesson never starts polling; one that turns closed while open stops (the watch below).
+const { stop } = usePoll(30000, { only: ['lesson'] }, { autoStart: !props.lesson.terminal });
 
 watch(
     () => props.lesson.terminal,
     (terminal) => terminal && stop(),
-    { immediate: true },
 );
 
 // The join token lives only in this component's memory: it is never a prop, never stored, never in the address bar
@@ -119,6 +119,10 @@ const closedMessages: Record<string, string> = {
     refunded: 'This lesson was refunded.',
     no_show_both: 'Nobody joined this lesson, so it was refunded.',
     provider_failure: 'This lesson was refunded because the video service failed.',
+    settled: 'This lesson took place and has been settled.',
+    disputed: 'This lesson is under review.',
+    no_show_student: 'The student did not join, so the tutor was paid for this lesson.',
+    no_show_tutor: 'The tutor did not join, so this lesson was refunded.',
 };
 </script>
 
@@ -146,6 +150,10 @@ const closedMessages: Record<string, string> = {
 
         <p v-else-if="lesson.status === 'reserved'" class="rounded-xl border p-4 text-sm" data-test="reserved">
             This weekly lesson is reserved. It is confirmed, and the room made, once the payment goes through.
+        </p>
+
+        <p v-else-if="lesson.status === 'pending_payment'" class="rounded-xl border p-4 text-sm" data-test="pending-payment">
+            This lesson is waiting for its payment. The room opens once it is confirmed.
         </p>
 
         <template v-else>

@@ -177,6 +177,15 @@ it('shows a closed lesson as closed, with nothing to join', function () {
         ->and($props['can_mark_no_show'])->toBeFalse();
 });
 
+it('keeps a lesson that is awaiting payment open to updates, and shows a disputed one as closed', function () {
+    ['lesson' => $pending, 'parent' => $parentA] = lpLesson(60, room: false, status: LessonStatus::PendingPayment);
+    ['lesson' => $disputed, 'parent' => $parentB] = lpLesson(-90, status: LessonStatus::Disputed);
+
+    expect(lpProps($parentA, $pending)['terminal'])->toBeFalse()
+        ->and(lpProps($parentA, $pending)['can_join'])->toBeFalse()
+        ->and(lpProps($parentB, $disputed)['terminal'])->toBeTrue();
+});
+
 it('shows a reserved weekly lesson as waiting for its payment', function () {
     ['lesson' => $lesson, 'parent' => $parent] = lpLesson(60, room: false, status: LessonStatus::Reserved);
 
