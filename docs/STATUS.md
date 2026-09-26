@@ -1,9 +1,9 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 22:20 (machine clock) — Context: not measured by the tool — **7e reviewed twice, CI green on 1fe3535, self-merging under R123/R124**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 22:50 (machine clock) — Context: not measured by the tool — **7e merged (3cc49f0), 7f next**
 
-Tests: **1556 across three directory chunks (169 + 634 + 753), 1555 passed within their chunks and 1 passed in a paired rerun** (branch `cp/7e-reports` at 1fe3535; the one in-chunk failure is a chunking artefact, `PureFixLowsTest` needs a helper from `Learner/LearnerTest.php`; 1522 at 7d's merge, so +34). Advisor: consulted 18 times this cycle (3 for 7a; 4 for 7b; 4 for 7c; 3 for 7d; 4 for 7e: design, build end, pre-PR, post-review; every entry carries a verbatim line; R63 'configured, not measured'; two 7c entries carry no verbatim quote, disclosed in CYCLE-LOG). Review: 7e round 1 fix first (2 Medium, 2 Low); round 2 MERGE (no Medium or High, Lows only). Resume count 0 of 8.
+Tests: **1556/1556 passed on main at 3cc49f0** in three directory chunks (233 + 643 + 680; the full single run passes the 10-minute line, BLOCKER; Rulings and Learner stay in one chunk because `PureFixLowsTest` uses a helper from `Learner/LearnerTest.php`; 1522 at 7d's merge, so +34). `ledger:verify` OK, `npm run build` exit 0, smoke `/`, `/login`, `/admin/login` 200. Advisor: consulted 18 times this cycle (3 for 7a; 4 for 7b; 4 for 7c; 3 for 7d; 4 for 7e: design, build end, pre-PR, post-review; every entry carries a verbatim line; R63 'configured, not measured'; two 7c entries carry no verbatim quote, disclosed in CYCLE-LOG). Review: 7e round 1 fix first (2 Medium, 2 Low); round 2 MERGE (no Medium or High, Lows only). Resume count 0 of 8.
 
 ## §1 Git state
-`main` = `76b9316` (merge of PR #26) plus docs commits on top; `rehearsal` = `3548a04` (7b, 7c and 7d are not deployed; deploys happen at step 9, R111). PR #27 `cp/7e-reports` is on origin at `1fe3535` (`git log origin/main..HEAD`: `1fe3535 7e fix loop 1: late_report_x3 is history not a strike toward suspension; late-released lessons stay on the report list`; `da03062 7e: progress report, release exactly once, 72h auto-release with late flag`). It is never rebased and never merged with main; docs go to main from main. CI on the head: pass. Branches `cp/7b-video-registry`, `cp/7c-room-lifecycle` and `cp/7d-lesson-page` merged, kept.
+`main` = `3cc49f0` (merge of PR #27, head `1fe3535`) plus this docs commit; `rehearsal` = `3548a04` (7b to 7e are not deployed; deploys happen at step 9, R111). Branches `cp/7b-video-registry`, `cp/7c-room-lifecycle`, `cp/7d-lesson-page` and `cp/7e-reports` merged, kept (never rebased after push).
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
@@ -11,13 +11,13 @@ Tests: **1556 across three directory chunks (169 + 634 + 753), 1555 passed withi
 3. `cp/7b-video-registry` (R122, R125) — **done**: PR #24 merged (8bb50bf, R123), 1434/1434 on main, smoke 200/200/200
 4. `cp/7c-room-lifecycle` — **done**: PR #25 merged (19fe97f, R123), 1500/1500 on main, smoke 200/200/200
 5. `cp/7d-lesson-page` — **done**: PR #26 merged (76b9316, R123), 1522/1522 on main, smoke 200/200/200
-6. `cp/7e-reports` (R124) — **PR #27 reviewed twice, fix loop 1 of 2 done (1fe3535), CI green**; self-merge under R123/R124 next, then the post-merge record (CHECKPOINTS CP6 boxes 3 and 4) and the chunked smoke on main
-7. `cp/7f-trial-cta-timeline` — [not started]
+6. `cp/7e-reports` (R124) — **done**: PR #27 self-merged (3cc49f0, R123/R124) after two reviews and fix loop 1; CHECKPOINTS CP6 boxes 3 and 4 ticked; 1556/1556 on main (chunked), `ledger:verify` OK, smoke 200/200/200
+7. `cp/7f-trial-cta-timeline` — [in progress: branch next]
 8. `cp/7g-branding` (R49) — [not started]
 9. Deploy and END — [not started]
 
 ## §3 What changed this run
-**7e — fix loop 1 (`1fe3535`)**
+**7e — merged (PR #27, `3cc49f0`); fix loop 1 (`1fe3535`)**
 - `SuspendTutorForStrikes` no longer counts the `late_report_x3` row (Medium: the review row must not be the third strike of a suspension). `ReviewLateReports` orders same-second flags by id (Medium/Low: flaky test and indeterminate strike `lesson_id`). `lessons/Show.vue`: the report prompt is its own `v-if` before the closed message, chain restored. The tutor dashboard lists auto-released lessons that still take a late report, marked released. Two tests added; PHPStan `Builder` typing fixed.
 - Verification: Pint, PHPStan 0 errors, RTL, `npm run build` exit 0, `vue-tsc` the one known error; chunked suite 169 + 634 + 753 = 1556 (see the header); `ledger:verify` OK on a freshly seeded local database (0 lessons there; the zero-sum proof for every path is the tests' own assertions).
 
@@ -108,7 +108,7 @@ Tests: **1556 across three directory chunks (169 + 634 + 753), 1555 passed withi
 
 
 ## §5 Why stopping
-Not stopping: 7e passed its re-review and CI. Next: self-merge PR #27, post-merge record, chunked smoke on main, then 7f. Nothing here needs the owner (R109). This is the pre-merge write.
+Not stopping: 7e is merged and recorded. Next: 7f (`cp/7f-trial-cta-timeline`). Nothing here needs the owner (R109). This is the post-merge write.
 
 ## §6 Mismatches
 0e. **7e disclosures.** (a) **Advisor timing:** the plan's "mid-build" consult did not happen; the second consult fell at build end and is logged as such (DEVIATION), and a fourth is planned after the review. (b) **Suite duration, BLOCKER:** the full suite passed the 10-minute line twice (654 s, 773 s) and I waited each out; from here it runs in directory chunks under 10 minutes with counts summed (CYCLE-LOG BLOCKER, Owner action 2). (c) **Legacy lessons:** a lesson completed before `auto_release_at` existed is released by the sweep with no late flag, so a tutor cannot file a report on such a lesson afterwards; the first sweep on rehearsal releases every historical `completed` lesson past the fallback, and no allow-listed command counts `completed` lessons (`db:show --counts` gives the `lessons` total; the sweep prints "Released N unreported lesson(s)"). (d) **Strikes — fixed in fix loop 1:** `SuspendTutorForStrikes` now ignores `late_report_x3`. **Round-2 Lows, deferred (all in code, none blocks; R123 allows the merge with Lows open):** (i) a legacy-fallback lesson gets no `report_late_at`, so a report on it is refused for good; (ii) the strike's `lesson_id` is the highest-id lesson among the latest flags, not the triggering one (pass the trigger in); (iii) a `ReviewLateReports` failure after the release committed is only reported, not retried until the tutor's next late flag; (iv) `StoreProgressReportRequest` validates before the controller's `Gate::authorize`, so a signed-in user who guesses a lesson id can learn from the 422s whether it is a trial; (v) `SendReportDueMail` has no claim, so a retried job sends a second prompt; (vi) on a `completed` lesson the report prompt sits beside "A progress report will follow."; (vii) no test for the id tie-break or the `Show.vue` chain, and `ReportDueMail` is never rendered in a test; (viii) the command always returns SUCCESS; a missing `auto_release_hours` setting falls back to 0 h. (e) **SHA correction:** the first 7e VERIFICATION cites `3d21d20`, now `da03062` (a rebase of an unpushed commit). (f) The parent dashboard and the learner timeline do not show reports (7f).
@@ -140,7 +140,7 @@ Not stopping: 7e passed its re-review and CI. Next: self-merge PR #27, post-merg
 ## §7 Next step / Owner actions
 Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for CC and the harness refused my R126 edit. Option 1 (Recommended): you replace the D-02 row's status cell with "**Decided (owner, 2026-09-26, R120): multiple gateways via the registry (§12); Stripe first, provisional on D-04**" and add a row after D-08: `| D-09 | Transactional mail provider | Postmark (ADR-007) | **Decided (owner, 2026-09-26, R120): Postmark**; wiring is a later step, rehearsal stays on the log mailer |`. Non-blocking; reply `update` when done, or say nothing and it stays in §6.
 Owner action 2: **suite runner** — the full suite now takes 654–773 s, past the 10-minute line. Option 1 (Recommended): you rule that the suite may run under `php artisan test --parallel` (needs the paratest dev dependency and one test database per process), because it cuts the run to a fraction with no change to what is tested. Reply `update — 2: option 1` (or option 2: keep single-process runs and I chunk by directory). Non-blocking.
-(Work continues with the 7e merge; this is not a halt.)
+(Work continues with 7f; this is not a halt. Owner action 2 stays open: until it is answered the suite runs in chunks.)
 
 ## §8 Programme board — cycle 07 r1
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
@@ -150,7 +150,7 @@ Owner action 2: **suite runner** — the full suite now takes 654–773 s, past 
 | 7b video registry | done | `cp/7b-video-registry` | #24 | no FAIL; 6 Low carried | self-merged 8bb50bf (R123) |
 | 7c room lifecycle | done | `cp/7c-room-lifecycle` | #25 | 1 Medium fixed (loop 1 of 2); re-review no Medium or High | self-merged 19fe97f (R123) |
 | 7d lesson page | done | `cp/7d-lesson-page` | #26 | 0 Medium or High; 2 Low fixed (loop 1); re-review 2 Low copy notes fixed (loop 2) | self-merged 76b9316 (R123) |
-| 7e reports | reviewed twice, CI green | `cp/7e-reports` | #27 | round 1: 2 Medium, 2 Low, fixed (loop 1); round 2: no Medium or High, Lows deferred | self-merge under R123/R124 next |
+| 7e reports | done | `cp/7e-reports` | #27 | round 1: 2 Medium, 2 Low, fixed (loop 1); round 2: no Medium or High, Lows deferred | self-merged 3cc49f0 (R123/R124) |
 | 7f trial CTA + timeline | not started | — | — | — | — |
 | 7g branding | not started | — | — | — | — |
 
