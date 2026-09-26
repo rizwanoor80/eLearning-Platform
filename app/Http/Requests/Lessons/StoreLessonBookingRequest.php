@@ -31,6 +31,7 @@ class StoreLessonBookingRequest extends FormRequest
             'curriculum_id' => ['required', 'integer'],
             'subject_id' => ['required', 'integer'],
             'starts_at' => ['required', 'string', 'date_format:'.self::STARTS_AT_FORMAT],
+            'quote_token' => ['required', 'string', 'max:64'],
         ];
     }
 }

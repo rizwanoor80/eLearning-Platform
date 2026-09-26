@@ -12,7 +12,7 @@ type SubjectRow = { curriculum_id: number; subject_id: number; label: string };
 const props = defineProps<{
     tutor: { id: number; name: string };
     // Type and price are computed on the server per learner (BookLesson's own rule); the browser only shows them.
-    learners: Array<{ id: number; display_name: string; type: 'trial' | 'regular'; type_label: string; price: string | null; preselect: SubjectRow | null }>;
+    learners: Array<{ id: number; display_name: string; type: 'trial' | 'regular'; type_label: string; price: string | null; quote_token: string; preselect: SubjectRow | null }>;
     selected_learner: number | null;
     subjects: SubjectRow[];
     starts_at: string;
@@ -50,6 +50,7 @@ const form = useForm({
     curriculum_id: '' as number | '',
     subject_id: '' as number | '',
     starts_at: props.starts_at,
+    quote_token: '',
 });
 
 // `slot` is a server-side form error key that is not one of the form's fields.
@@ -64,6 +65,7 @@ function submit() {
         learner_id: learnerId.value,
         curriculum_id: Number(curriculum),
         subject_id: Number(subj),
+        quote_token: learner.value?.quote_token ?? '',
     })).post('/lessons');
 }
 </script>
@@ -128,6 +130,10 @@ function submit() {
 
             <InputError :message="slotError" />
             <InputError :message="form.errors.starts_at" />
+            <InputError :message="form.errors.quote_token" />
+            <InputError :message="form.errors.learner_id" />
+            <InputError :message="form.errors.curriculum_id" />
+            <InputError :message="form.errors.subject_id" />
 
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing || !canSubmit">

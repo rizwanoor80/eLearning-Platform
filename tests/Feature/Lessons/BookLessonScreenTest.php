@@ -28,6 +28,7 @@ use App\Services\Payments\SavedCard;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -90,6 +91,8 @@ function bkParent(string $timezone = 'UTC'): array
  */
 function bkForm(array $setup, Learner $learner, string $startsAt = BK_SLOT, array $extra = []): array
 {
+    $extra += ['quote_token' => bkQuoteToken($setup['tutor'], $learner, $startsAt)];
+
     return array_merge([
         'learner_id' => $learner->id,
         'tutor_id' => $setup['tutor']->id,
@@ -97,6 +100,37 @@ function bkForm(array $setup, Learner $learner, string $startsAt = BK_SLOT, arra
         'subject_id' => $setup['subject_id'],
         'starts_at' => $startsAt,
     ], $extra);
+}
+
+/**
+ * The token the page carries for this learner, read the way the browser does: from the rendered
+ * props of the owner's own GET. 'none' when the page shows no such learner or tutor.
+ */
+function bkQuoteToken(TutorProfile $tutor, Learner $learner, string $startsAt = BK_SLOT): string
+{
+    $owner = User::query()->find($learner->account_user_id);
+
+    if ($owner === null) {
+        return 'none';
+    }
+
+    // Read as the owner, then put the caller's authentication back as it was.
+    $previous = auth()->user();
+    $response = test()->actingAs($owner)->get(bkUrl($tutor, $startsAt));
+
+    if ($previous !== null) {
+        test()->actingAs($previous);
+    } else {
+        app('auth')->forgetGuards();
+    }
+
+    if ($response->status() !== 200) {
+        return 'none';
+    }
+
+    $row = collect($response->inertiaPage()['props']['learners'] ?? [])->firstWhere('id', $learner->id);
+
+    return $row['quote_token'] ?? 'none';
 }
 
 function bkUrl(TutorProfile $tutor, string $startsAt = BK_SLOT): string
@@ -428,7 +462,7 @@ it('refuses an unbookable tutor with an error and creates nothing', function () 
     TutorProfile::query()->whereKey($setup['tutor']->id)->update(['status' => TutorProfileStatus::Suspended]);
 
     $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner))
-        ->assertSessionHasErrors(['slot' => 'This tutor is not currently bookable.']);
+        ->assertSessionHasErrors(['slot' => 'That lesson cannot be booked.']);
 
     expect(Lesson::query()->count())->toBe(0);
 });
@@ -533,4 +567,88 @@ it('has no card form and never sends a type or price from the browser', function
         ->and($form)->toContain('learner_id')->toContain('starts_at')
         ->and($form)->not->toContain('type')->not->toContain('price')
         ->and($page)->toContain("post('/lessons')");
+});
+
+// --- Stale quote (review 1, item 10) ----------------------------------------------------------
+
+it('refuses a confirm whose shown type or price is stale, because the trial was booked in another tab', function () {
+    Mail::fake();
+    $setup = bkTutor();
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    // Two tabs open on the same learner: both were drawn showing the discounted trial.
+    $tabA = bkForm($setup, $learner, BK_SLOT);
+    $tabB = bkForm($setup, $learner, BK_SLOT_2);
+
+    $this->actingAs($parent)->post(route('lessons.store'), $tabA)->assertSessionHasNoErrors();
+    expect(Lesson::query()->count())->toBe(1);
+
+    $this->actingAs($parent)->post(route('lessons.store'), $tabB)
+        ->assertSessionHasErrors(['slot' => 'The type or price of this lesson has changed. Please review it and confirm again.']);
+
+    // Nothing was charged at the full rate; the next page shows the regular quote and books at it.
+    expect(Lesson::query()->count())->toBe(1);
+
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, BK_SLOT_2))->assertSessionHasNoErrors();
+    expect(Lesson::query()->orderByDesc('starts_at')->first()->price->toFils())->toBe(10000);
+});
+
+it('refuses a confirm when the tutor changed their rate or the trial discount after the page was drawn', function () {
+    $setup = bkTutor();
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    $form = bkForm($setup, $learner);
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['hourly_rate' => 12000]);
+
+    $this->actingAs($parent)->post(route('lessons.store'), $form)->assertSessionHasErrors('slot');
+    expect(Lesson::query()->count())->toBe(0);
+
+    $form = bkForm($setup, $learner);
+    Settings::set('trial_discount_pct', 10);
+
+    $this->actingAs($parent)->post(route('lessons.store'), $form)->assertSessionHasErrors('slot');
+    expect(Lesson::query()->count())->toBe(0);
+});
+
+it('refuses a missing, garbage or another learner\'s token, and the token is not a readable type or price', function () {
+    $setup = bkTutor();
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+    ['learner' => $other] = bkParent();
+
+    $this->actingAs($parent)->post(route('lessons.store'), Arr::except(bkForm($setup, $learner), 'quote_token'))
+        ->assertSessionHasErrors('quote_token');
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, BK_SLOT, ['quote_token' => 'garbage']))
+        ->assertSessionHasErrors('slot');
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, BK_SLOT, ['quote_token' => bkQuoteToken($setup['tutor'], $other)]))
+        ->assertSessionHasErrors('slot');
+
+    $token = bkQuoteToken($setup['tutor'], $learner);
+
+    expect(Lesson::query()->count())->toBe(0)
+        ->and($token)->toMatch('/^[0-9a-f]{64}$/')
+        ->and($token)->not->toContain('trial')->not->toContain('10000');
+});
+
+it('gives the same refusal for a tutor that does not exist and one that is not bookable', function () {
+    $setup = bkTutor();
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, BK_SLOT, ['tutor_id' => 999999]))
+        ->assertSessionHasErrors(['slot' => 'That lesson cannot be booked.']);
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['status' => TutorProfileStatus::PendingReview]);
+
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner))
+        ->assertSessionHasErrors(['slot' => 'That lesson cannot be booked.']);
+});
+
+it('flashes the confirmation toast after a booking', function () {
+    Mail::fake();
+    $setup = bkTutor();
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner))
+        ->assertRedirect(route('learners.show', $learner))
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'Lesson confirmed.');
 });

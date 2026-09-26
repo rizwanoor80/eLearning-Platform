@@ -17,6 +17,7 @@ use App\Services\Payments\PaymentGateway;
 use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\RedirectResponse;
@@ -94,13 +95,14 @@ class BookLessonController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        /** @var array{learner_id: int, tutor_id: int, curriculum_id: int, subject_id: int, starts_at: string} $data */
+        /** @var array{learner_id: int, tutor_id: int, curriculum_id: int, subject_id: int, starts_at: string, quote_token: string} $data */
         $data = $request->validated();
 
-        // A learner that is not the caller's is refused with one generic message, checked before the
-        // action so nothing later says whether the id exists. An unbookable tutor is left to `BookLesson`.
+        // A learner that is not the caller's, and a tutor that is not bookable (or does not exist), are
+        // refused with one generic message, checked before the action so nothing later says whether the
+        // id exists. `BookLesson` still re-applies both rules.
         $learner = Learner::query()->withTrashed()->find($data['learner_id']);
-        $tutor = TutorProfile::query()->find($data['tutor_id']);
+        $tutor = TutorProfile::query()->bookable()->find($data['tutor_id']);
 
         if ($learner === null || $tutor === null || ! $user->can('bookFor', [Lesson::class, $learner])) {
             throw ValidationException::withMessages(['slot' => __('That lesson cannot be booked.')]);
@@ -115,6 +117,13 @@ class BookLessonController extends Controller
 
         if ($startsAt === null) {
             throw ValidationException::withMessages(['starts_at' => __('That time is not valid.')]);
+        }
+
+        // What the parent confirmed is what the server would charge right now: the token was made from
+        // the type and price shown. Someone who booked the trial in another tab, or a rate or discount
+        // change since the page was drawn, makes it stale; refuse and let the page show the new quote.
+        if (! hash_equals($this->quoteToken($learner, $tutor), $data['quote_token'])) {
+            throw ValidationException::withMessages(['slot' => __('The type or price of this lesson has changed. Please review it and confirm again.')]);
         }
 
         try {
@@ -140,9 +149,24 @@ class BookLessonController extends Controller
      * `trialPrice()`, otherwise a regular lesson at the hourly rate. Display only — the action
      * decides again at booking time and freezes the price it computes.
      *
-     * @return array{type: string, type_label: string, price: string|null}
+     * @return array{type: string, type_label: string, price: string|null, quote_token: string}
      */
     private function quote(Learner $learner, TutorProfile $tutor): array
+    {
+        [$isTrial, $price] = $this->decide($learner, $tutor);
+
+        return [
+            'type' => $isTrial ? LessonType::Trial->value : LessonType::Regular->value,
+            'type_label' => $isTrial ? __('Trial lesson') : __('Lesson'),
+            'price' => $price?->format((string) Settings::get('currency_code')),
+            'quote_token' => $this->quoteToken($learner, $tutor),
+        ];
+    }
+
+    /**
+     * @return array{0: bool, 1: Money|null} whether the next lesson would be the trial, and its price
+     */
+    private function decide(Learner $learner, TutorProfile $tutor): array
     {
         $isTrial = ! Lesson::query()
             ->where('learner_id', $learner->id)
@@ -150,13 +174,25 @@ class BookLessonController extends Controller
             ->whereNotIn('status', LessonStatus::freeingSlotValues())
             ->exists();
 
-        $price = $isTrial ? $tutor->trialPrice() : $tutor->hourly_rate;
+        return [$isTrial, $isTrial ? $tutor->trialPrice() : $tutor->hourly_rate];
+    }
 
-        return [
-            'type' => $isTrial ? LessonType::Trial->value : LessonType::Regular->value,
-            'type_label' => $isTrial ? __('Trial lesson') : __('Lesson'),
-            'price' => $price?->format((string) Settings::get('currency_code')),
-        ];
+    /**
+     * An opaque, keyed fingerprint of the quote (learner, tutor, type, price in fils, currency). The page
+     * carries it and the form returns it; the browser can neither read a type or price out of it nor
+     * choose one — a wrong or stale token is only ever refused.
+     */
+    private function quoteToken(Learner $learner, TutorProfile $tutor): string
+    {
+        [$isTrial, $price] = $this->decide($learner, $tutor);
+
+        return hash_hmac('sha256', implode('|', [
+            $learner->id,
+            $tutor->id,
+            $isTrial ? LessonType::Trial->value : LessonType::Regular->value,
+            $price?->toFils() ?? 'none',
+            (string) Settings::get('currency_code'),
+        ]), (string) config('app.key'));
     }
 
     private function parseStartsAt(mixed $value): ?CarbonImmutable
