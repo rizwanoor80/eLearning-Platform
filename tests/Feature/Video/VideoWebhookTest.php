@@ -4,6 +4,7 @@ use App\Actions\Video\ActivateVideoProvider;
 use App\Events\Video\VideoWebhookReceived;
 use App\Models\VideoProvider;
 use App\Models\VideoWebhookEvent;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Event;
 
 const FAKE_WEBHOOK_SECRET = 'test-fake-webhook-secret';
@@ -130,7 +131,17 @@ it('refuses an oversized body', function () {
     postWebhook('fake', $body, signedHeaders($body))->assertStatus(413);
 });
 
-it('needs no csrf token or session', function () {
+it('is exempt from request-forgery verification for webhooks/* only', function () {
+    // Laravel skips the forgery check while unit tests run, so a POST cannot prove the exemption;
+    // assert the configured exclusion itself.
+    $excluded = app(PreventRequestForgery::class)->getExcludedPaths();
+
+    expect($excluded)->toContain('webhooks/*')
+        ->and($excluded)->not->toContain('*')
+        ->and($excluded)->not->toContain('login');
+});
+
+it('answers a signed post with no session', function () {
     $body = webhookBody();
 
     postWebhook('fake', $body, signedHeaders($body))->assertOk();
