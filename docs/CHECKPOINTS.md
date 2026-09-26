@@ -97,6 +97,7 @@ Acceptance
 - [x] Parent cancel at 25h → `refunded` path; at 23h → tutor-paid path. Tutor cancel at 23h → strike created. _(3d: `CancelLessonTest.php` — parent-refund, parent-release, tutor-strike and exact-deadline-boundary tests, all `LedgerService::sum()===0`.)_
 - [x] Changing `cancel_window_hours` in settings does not change the outcome for an already-booked lesson. _(3d: `CancelLessonTest.php` "is unaffected by a settings change after booking" on both the parent-refund and tutor-strike boundaries — invariant #11, the window is read from the lesson row, never `Settings::get()`.)_
 - [x] 3 strikes within 90 days → tutor `suspended`, admin emailed. _(3d: `CancelLessonTest.php` "suspends a tutor and emails an admin after 3 strikes within 90 days", with a null-actor audit row and `Mail::assertQueued(AdminTutorSuspendedMail::class, ...)`; a strike older than 90 days does not count; a 3rd strike on an already-suspended tutor is a silent no-op.)_
+- [x] A parent can book a single lesson (trial or regular) from a tutor's profile. _(6a, PR #22, squash `1ede299`: a slot on the profile links to `GET tutors/{tutor}/book`, `POST lessons` calls `BookLesson` unchanged; `BookLessonScreenTest.php` 42 tests cover R114(g), including the stale-price refusal added in fix loop 1.)_
 
 ---
 
