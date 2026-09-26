@@ -7,50 +7,11 @@ use App\Models\VideoWebhookEvent;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Event;
 
-const FAKE_WEBHOOK_SECRET = 'test-fake-webhook-secret';
-
 beforeEach(function () {
     $fake = VideoProvider::query()->where('code', 'fake')->firstOrFail();
     $fake->credentials = ['webhook_secret' => FAKE_WEBHOOK_SECRET];
     $fake->save();
 });
-
-/**
- * @param  array<string, mixed>  $overrides
- */
-function webhookBody(string $id = 'evt-1', array $overrides = []): string
-{
-    return json_encode(array_replace_recursive([
-        'id' => $id,
-        'type' => 'participant.joined',
-        'event_ts' => time(),
-        'payload' => ['room' => 'lesson-42', 'user_id' => 'tutor'],
-    ], $overrides));
-}
-
-/**
- * @return array<string, string>
- */
-function signedHeaders(string $body, ?int $timestamp = null, string $secret = FAKE_WEBHOOK_SECRET): array
-{
-    $timestamp ??= time();
-
-    return [
-        'X-Webhook-Timestamp' => (string) $timestamp,
-        'X-Webhook-Signature' => hash_hmac('sha256', $timestamp.'.'.$body, $secret),
-    ];
-}
-
-function postWebhook(string $code, string $body, array $headers)
-{
-    $server = [];
-
-    foreach ($headers as $name => $value) {
-        $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
-    }
-
-    return test()->call('POST', "/webhooks/video/{$code}", [], [], [], $server + ['CONTENT_TYPE' => 'application/json'], $body);
-}
 
 it('stores a correctly signed event once and dispatches it once', function () {
     Event::fake([VideoWebhookReceived::class]);

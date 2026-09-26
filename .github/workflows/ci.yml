@@ -97,6 +97,11 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
+      # `artisan test --parallel` migrates only its per-process databases, so the base database that the
+      # closing `ledger:verify` step reads must be migrated here (R128).
+      - name: Migrate the CI database
+        run: php artisan migrate --force --no-interaction
+
       - name: Run composer test (Pint, PHPStan, RTL check, Pest)
         run: composer test
 

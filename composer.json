@@ -73,11 +73,12 @@
             "bash scripts/rtl-check.sh"
         ],
         "test": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi",
             "@lint:check",
             "@types:check",
             "@rtl:check",
-            "@php artisan test",
+            "@php artisan test --parallel",
             "@php artisan ledger:verify --no-interaction"
         ],
         "post-autoload-dump": [
