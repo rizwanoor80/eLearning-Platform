@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
 
-defineProps<{
+const props = defineProps<{
     tutor: {
         id: number;
         name: string;
@@ -21,6 +22,18 @@ defineProps<{
     timezone: string;
     can_set_up_weekly: boolean;
 }>();
+
+// A guest and a parent get bookable slots (a guest is sent to sign in and returned to the booking page);
+// a tutor or an admin sees the times as plain text.
+const page = usePage();
+const canBook = computed(() => !page.props.auth?.user || props.can_set_up_weekly);
+
+// The link carries the slot as a UTC instant, seconds precision, percent-encoded (no bare "+" in a query string).
+function bookHref(startsAt: string): string {
+    const utc = new Date(startsAt).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+    return `/tutors/${props.tutor.id}/book?starts_at=${encodeURIComponent(utc)}`;
+}
 </script>
 
 <template>
@@ -68,7 +81,10 @@ defineProps<{
             <h2 class="font-medium">Next available slots</h2>
             <p class="text-muted-foreground text-xs">Times shown in {{ timezone }}.</p>
             <ul v-if="tutor.next_slots.length" class="flex flex-wrap gap-2 text-sm">
-                <li v-for="slot in tutor.next_slots" :key="slot.starts_at" class="rounded-md border px-3 py-1">{{ slot.label }}</li>
+                <li v-for="slot in tutor.next_slots" :key="slot.starts_at" class="rounded-md border px-3 py-1">
+                    <Link v-if="canBook" :href="bookHref(slot.starts_at)" class="underline-offset-4 hover:underline">{{ slot.label }}</Link>
+                    <template v-else>{{ slot.label }}</template>
+                </li>
             </ul>
             <p v-else class="text-muted-foreground text-sm">No open slots right now.</p>
         </section>
