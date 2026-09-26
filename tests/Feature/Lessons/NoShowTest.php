@@ -19,6 +19,7 @@ use App\Models\TutorProfile;
 use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
+use App\Services\Lessons\LessonSettlement;
 use Illuminate\Support\Carbon;
 
 afterEach(fn () => Carbon::setTestNow());
@@ -185,4 +186,44 @@ it('marks a no-show through the route for the right party and 403s the rest', fu
 
     $this->actingAs($tutor->user)->post(route('lessons.no-show', $lesson))->assertRedirect();
     expect($lesson->fresh()->status)->toBe(LessonStatus::CompletedReported);
+});
+
+// ---- the two-hop outcomes commit as one ----------------------------------------------------------------
+
+it('rolls back the mark, the strike and the ledger when the parent refund fails', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = nsSetup(30, [VideoParticipant::Learner]);
+    $entries = LedgerEntry::query()->where('lesson_id', $lesson->id)->count();
+
+    app()->instance(LessonSettlement::class, new class(app(LedgerService::class)) extends LessonSettlement
+    {
+        public function refundParent(Lesson $locked, ?User $by): void
+        {
+            throw new RuntimeException('ledger down');
+        }
+    });
+
+    expect(fn () => app(MarkNoShow::class)($parent, $lesson))->toThrow(RuntimeException::class);
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::InProgress)
+        ->and(TutorStrike::query()->count())->toBe(0)
+        ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe($entries);
+});
+
+it('rolls back the mark and the tutor pay when the release fails', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor] = nsSetup(20, [VideoParticipant::Tutor]);
+    $entries = LedgerEntry::query()->where('lesson_id', $lesson->id)->count();
+
+    app()->instance(LessonSettlement::class, new class(app(LedgerService::class)) extends LessonSettlement
+    {
+        public function payTutor(Lesson $locked, ?User $by): void
+        {
+            throw new RuntimeException('ledger down');
+        }
+    });
+
+    expect(fn () => app(MarkNoShow::class)($tutor->user, $lesson))->toThrow(RuntimeException::class);
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::InProgress)
+        ->and($lesson->fresh()->escrow_released_at)->toBeNull()
+        ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe($entries);
 });

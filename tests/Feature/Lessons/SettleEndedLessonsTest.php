@@ -2,6 +2,7 @@
 
 use App\Actions\Lessons\MarkProviderFailure;
 use App\Actions\Lessons\RecordAttendance;
+use App\Actions\Lessons\SettleEndedLesson;
 use App\Enums\CurriculumCode;
 use App\Enums\LedgerAccount;
 use App\Enums\LessonStatus;
@@ -21,6 +22,7 @@ use App\Models\TutorProfile;
 use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
+use App\Services\Lessons\LessonSettlement;
 use Illuminate\Support\Carbon;
 use Livewire\Livewire;
 
@@ -237,4 +239,29 @@ it('does not let a parent, a tutor or a suspended admin mark a provider failure 
     }
 
     expect(app(LedgerService::class)->balance($lesson, LedgerAccount::Refund))->toBe(0);
+});
+
+// ---- the two-hop outcomes commit as one ----------------------------------------------------------------
+
+it('leaves an unattended lesson confirmed, with no ledger rows written, when its refund fails', function () {
+    ['lesson' => $lesson] = seSetup(90);
+    $entries = LedgerEntry::query()->where('lesson_id', $lesson->id)->count();
+
+    app()->instance(LessonSettlement::class, new class(app(LedgerService::class)) extends LessonSettlement
+    {
+        public function refundParent(Lesson $locked, ?User $by): void
+        {
+            throw new RuntimeException('gateway ledger down');
+        }
+    });
+
+    expect(fn () => app(SettleEndedLesson::class)($lesson))->toThrow(RuntimeException::class);
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe($entries);
+
+    app()->forgetInstance(LessonSettlement::class);
+    app(SettleEndedLesson::class)($lesson->fresh());
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Refunded);
 });

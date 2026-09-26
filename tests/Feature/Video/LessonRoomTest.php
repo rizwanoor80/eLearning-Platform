@@ -12,6 +12,7 @@ use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\VideoProvider;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -287,4 +288,14 @@ it('mints the token through the lesson\'s own provider after a switch', function
     rmUseFake();
 
     $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk()->assertJson(['token' => 'tok-1', 'url' => 'https://x.daily.co/lesson-'.$lesson->id]);
+});
+
+it('expires the overlap lock of each lifecycle command after ten minutes, not a day', function () {
+    $events = collect(app(Schedule::class)->events())
+        ->filter(fn ($event) => str_contains($event->command, 'lessons:create-rooms')
+            || str_contains($event->command, 'lessons:close-rooms')
+            || str_contains($event->command, 'lessons:settle-ended'));
+
+    expect($events)->toHaveCount(3)
+        ->and($events->every(fn ($event) => $event->withoutOverlapping && $event->expiresAt === 10))->toBeTrue();
 });
