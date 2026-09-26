@@ -505,7 +505,7 @@ it('says the payment did not go through when the gateway declines, and leaves no
 
 // --- Gateway binding (R107) -------------------------------------------------------------------------
 
-it('shows the test-mode banner flag where the fake gateway is bound and not on production, where booking is refused plainly', function () {
+it('shows the test-mode flag where the fake gateway is bound (not on production), and refuses booking plainly when no gateway is bound', function () {
     $setup = bkTutor();
     ['parent' => $parent, 'learner' => $learner] = bkParent();
 
@@ -515,7 +515,7 @@ it('shows the test-mode banner flag where the fake gateway is bound and not on p
 
     $this->actingAs($parent)->get(bkUrl($setup['tutor']))->assertInertia(fn ($page) => $page->where('paymentTestMode', false)->where('can_pay', false));
 
-    // The POST runs with the gateway unbound but the test environment restored, so CSRF handling stays as in every other test.
+    // The POST half tests the unbound-gateway guard in store(): the gateway binding is removed but the environment is put back to testing, so CSRF handling stays as in every other test.
     bkBootAs('testing');
     app()->offsetUnset(PaymentGateway::class);
     $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner))
