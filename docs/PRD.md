@@ -200,13 +200,14 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 | # | Decision | Default if undecided | Status (owner rulings, 2026-09-16) |
 |---|---|---|---|
 | D-01 | Inertia + Vue vs React | Vue | **Confirmed: Vue** |
-| D-02 | Payment gateway driver (must support saved-card charging) | Stripe (UAE) if available; else Tap | Open — the gateway registry (§12) lands in CP5 with Stripe as the first driver; keys are entered in the admin by the owner, never in code; backend dev verifies saved-card charging and that the D-04 entity is eligible |
+| D-02 | Payment gateway driver (must support saved-card charging) | Stripe (UAE) if available; else Tap | **Decided (owner, 2026-09-26, R120): multiple gateways via the registry (§12); Stripe first, provisional on D-04** |
 | D-03 | Video provider | Daily.co | **Confirmed: Daily.co** |
 | D-04 | Legal entity that holds the licence and collects funds | TBD with counsel | Open — settle by the CP5 plan (gateway account, VAT line, tutor agreement all depend on it) |
 | D-05 | Brand name and domain | `project-elearning` placeholder | Open — the brand name becomes a site setting in CP1 (no code change when decided); the domain and sender address still need settling by CP6 so email warm-up precedes the CP8 launch mails |
 | D-06 | Trial discount % | 50% | **Confirmed: 50%** |
 | D-07 | Local dev environment (Horizon needs pcntl/posix, so not native Windows PHP) | WSL2 + Docker Desktop + Laravel Sail (Postgres 16, Redis, Horizon in one compose file, matches Linux production) | Decided (owner, 2026-09-17): Herd Pro native, PHP 8.4, PostgreSQL 18, Redis 7, Herd mail catcher — ADR-001/002 |
 | D-08 | GitHub account and plan (branch protection on a private repo needs Pro or Team) | Private repo under Rizwan's account on GitHub Pro; Rizwan creates the empty repo, Claude Code pushes | **Decided differently: public repo `rizwanoor80/eLearning-Platform` on the Free plan** — branch protection works on public repos; the code is world-readable, so the no-secrets rule is absolute |
+| D-09 | Transactional mail provider | Postmark (ADR-007) | **Decided (owner, 2026-09-26, R120): Postmark**; wiring is a later step, rehearsal stays on the log mailer |
 
 ---
 
