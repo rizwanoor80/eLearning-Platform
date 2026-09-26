@@ -111,7 +111,7 @@ function markNoShow() {
 
 const closedMessages: Record<string, string> = {
     completed: 'This lesson took place. A progress report will follow.',
-    completed_reported: 'This lesson took place and its report has been submitted.',
+    completed_reported: 'This lesson is closed and its outcome is recorded.',
     cancelled_by_parent: 'This lesson was cancelled by the parent.',
     cancelled_by_tutor: 'This lesson was cancelled by the tutor.',
     cancelled_payment_failed: 'This lesson was cancelled because its payment failed.',
@@ -119,7 +119,7 @@ const closedMessages: Record<string, string> = {
     refunded: 'This lesson was refunded.',
     no_show_both: 'Nobody joined this lesson, so it was refunded.',
     provider_failure: 'This lesson was refunded because the video service failed.',
-    settled: 'This lesson took place and has been settled.',
+    settled: 'This lesson is closed and has been settled.',
     disputed: 'This lesson is under review.',
     no_show_student: 'The student did not join, so the tutor was paid for this lesson.',
     no_show_tutor: 'The tutor did not join, so this lesson was refunded.',
