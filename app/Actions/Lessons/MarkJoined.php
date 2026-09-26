@@ -34,6 +34,10 @@ class MarkJoined
             throw new AttendanceException('Attendance for this lesson is recorded automatically.');
         }
 
+        if (now()->greaterThanOrEqualTo($lesson->ends_at)) {
+            throw new AttendanceException('The scheduled time for this lesson is over, so a join can no longer be recorded.');
+        }
+
         return ($this->recordAttendance)($lesson, $participant, now());
     }
 }

@@ -219,3 +219,22 @@ it('names the participant by the login, never by anything the client sends', fun
     $lesson->refresh();
     expect($lesson->learner_joined_at)->not->toBeNull()->and($lesson->tutor_joined_at)->toBeNull();
 });
+
+it('does not count a join at or after the scheduled end, by webhook or by hand', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = atLesson(5);
+
+    Carbon::setTestNow($lesson->ends_at->copy()->addMinutes(5));
+
+    atSend('lesson-'.$lesson->id, 'tutor', at: now()->getTimestamp())->assertOk();
+    $this->actingAs($parent)->post(route('lessons.joined', $lesson))->assertRedirect();
+
+    $lesson->refresh();
+    expect($lesson->status)->toBe(LessonStatus::Confirmed)
+        ->and($lesson->tutor_joined_at)->toBeNull()
+        ->and($lesson->learner_joined_at)->toBeNull();
+
+    // the last second before the end still counts
+    Carbon::setTestNow($lesson->ends_at->copy()->subSecond());
+    $this->actingAs($tutor->user)->post(route('lessons.joined', $lesson))->assertRedirect();
+    expect($lesson->fresh()->tutor_joined_at)->not->toBeNull();
+});

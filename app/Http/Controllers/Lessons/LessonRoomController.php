@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Lesson;
 use App\Models\User;
 use App\Services\Video\VideoProviderException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,7 +32,7 @@ class LessonRoomController extends Controller
 
         try {
             $join = $issueJoinToken($this->user($request), $lesson);
-        } catch (AttendanceException|VideoProviderException $e) {
+        } catch (AttendanceException|VideoProviderException|ConnectionException $e) {
             return response()->json(['message' => $e instanceof AttendanceException ? $e->getMessage() : __('The video room is unavailable right now. Please try again in a moment.')], 422);
         }
 

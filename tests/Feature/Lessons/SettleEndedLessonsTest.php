@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Lessons\MarkNoShow;
 use App\Actions\Lessons\MarkProviderFailure;
 use App\Actions\Lessons\RecordAttendance;
 use App\Actions\Lessons\SettleEndedLesson;
@@ -264,4 +265,19 @@ it('leaves an unattended lesson confirmed, with no ledger rows written, when its
     app(SettleEndedLesson::class)($lesson->fresh());
 
     expect($lesson->fresh()->status)->toBe(LessonStatus::Refunded);
+});
+
+it('still refunds a lesson whose only join came after the scheduled end, and refuses the no-show mark', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor] = seSetup(50);
+
+    Carbon::setTestNow($lesson->ends_at->copy()->addMinutes(5));
+    expect(app(RecordAttendance::class)($lesson->fresh(), VideoParticipant::Tutor, now()))->toBeFalse();
+    expect(fn () => app(MarkNoShow::class)($tutor->user, $lesson->fresh()))->toThrow(AttendanceException::class);
+
+    Carbon::setTestNow($lesson->ends_at->copy()->addMinutes(10));
+    $this->artisan('lessons:settle-ended')->assertSuccessful();
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Refunded)
+        ->and(app(LedgerService::class)->balance($lesson, LedgerAccount::Tutor))->toBe(0)
+        ->and(TutorStrike::query()->count())->toBe(0);
 });

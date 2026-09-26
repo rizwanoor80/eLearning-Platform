@@ -13,6 +13,7 @@ use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\VideoProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -59,7 +60,8 @@ function rmUseFake(): void
 
 /**
  * Daily over a faked HTTP client. Flip `$state['down']` to make room creation and closing fail with a 500
- * (stubs registered first win in Http::fake, so re-faking cannot change an earlier answer).
+ * (stubs registered first win in Http::fake, so re-faking cannot change an earlier answer). Set
+ * `$state['timeout']` to make the token call time out.
  *
  * @param  ArrayObject<string, bool>  $state
  */
@@ -73,7 +75,9 @@ function rmFakeDaily(?ArrayObject $state = null): ArrayObject
         'api.daily.co/v1/rooms' => fn (Request $r) => $state['down']
             ? Http::response(['error' => 'down'], 500)
             : Http::response(['name' => $r['name'], 'url' => 'https://x.daily.co/'.$r['name']]),
-        'api.daily.co/v1/meeting-tokens' => Http::response(['token' => 'tok-1']),
+        'api.daily.co/v1/meeting-tokens' => fn () => ! empty($state['timeout'])
+            ? throw new ConnectionException('timed out')
+            : Http::response(['token' => 'tok-1']),
     ]);
 
     return $state;
@@ -288,6 +292,27 @@ it('mints the token through the lesson\'s own provider after a switch', function
     rmUseFake();
 
     $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk()->assertJson(['token' => 'tok-1', 'url' => 'https://x.daily.co/lesson-'.$lesson->id]);
+});
+
+it('answers a token request with a 422, not a 500, when the provider times out', function () {
+    rmUseDaily();
+    $state = rmFakeDaily();
+    ['lesson' => $lesson, 'parent' => $parent] = rmLesson(5);
+    $this->artisan('lessons:create-rooms');
+    $state['timeout'] = true;
+
+    $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertStatus(422)->assertJsonPath('message', fn ($m) => str_contains($m, 'unavailable'));
+});
+
+it('throttles token requests per user', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = rmLesson(5);
+    $this->artisan('lessons:create-rooms');
+
+    foreach (range(1, 20) as $i) {
+        $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk();
+    }
+
+    $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertStatus(429);
 });
 
 it('expires the overlap lock of each lifecycle command after ten minutes, not a day', function () {
