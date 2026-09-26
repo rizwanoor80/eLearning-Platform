@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\TutorRegisteredUserController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
+use App\Http\Controllers\Lessons\BookLessonController;
 use App\Http\Controllers\Lessons\CancelLessonController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
@@ -29,6 +30,9 @@ Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
+    // R114: the single-booking screen. The GET is the parent's page for one chosen slot; a guest is sent to login and returned here.
+    Route::get('tutors/{tutor}/book', [BookLessonController::class, 'create'])->where('tutor', '[0-9]{1,18}')->name('tutors.book');
+    Route::post('lessons', [BookLessonController::class, 'store'])->name('lessons.store');
     Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
     Route::resource('learners', LearnerController::class);
