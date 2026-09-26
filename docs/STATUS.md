@@ -1,20 +1,19 @@
-# STATUS — cycle 05 r4 (CP4+, autonomous programme R88) — written 2026-09-26 10:05 (machine clock) — Context: not measured this write — **programme END: 4a–4f merged, rehearsal deployed at `c34979a` and verified; nothing further authorised**
+# STATUS — cycle 06 r1 (single-booking screen) — written 2026-09-26 10:22 (machine clock) — Context: not measured by the tool — **step 6a in progress: booking screen being built on cp/6a-booking-screen**
 
-Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (constituent steps, R110; +18 over 1315/6310). `ledger:verify`: **Ledger OK**. Pint, PHPStan (0 errors), RTL, `npm run build`: green; local `/`, `/login`, `/admin/login`: 200. PR #21 review verdict: PASS WITH NOTE (1 Low, doc-only, fixed in-cycle); no Medium or High. Advisor: consulted 0 times this session (docs and read-only server checks, no trigger); the programme's last three were 4f's (design, mid-build, pre-merge; R63 "configured, not measured"). Resume count 0 of 8. Rehearsal verification (2026-09-26 10:02): 0 pending migrations, Horizon running, both schedule entries present, `ledger:verify` OK, `/`, `/login`, `/admin/login` 200, no failed jobs — CYCLE-LOG VERIFICATION.
+Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (baseline; 6a adds R114(g) tests). No 6a code yet. Advisor: consulted 1 time this cycle (6a design; R63 'configured, not measured'; answered). Resume count 0 of 8.
 
 ## §1 Git state
-`origin/main` at the docs commit carrying this write, on top of `07f7f32`, `296739c`, `c34979a` (squash merge of PR #21, R89), `e6459a2` (ADR-016), `ea0f63c`, `187c24f` (PR #20). Branch `rehearsal` exists at `c34979a` (pushed 2026-09-26 02:12, fast-forward, no force; harmless — §6 item 2b). Branches `cp/4e-auto-charge` and `cp/4f-fake-gateway` left in place (no branch deletion, CLAUDE.md). No open PRs; no unpushed commits. Rehearsal server `/current`: `c34979a`.
+`origin/main` carries the cycle 06 r1 PLAN (`91c6ed4`), the START entry (`fcafa4f`) and the advisor-1 entry. Branch `cp/6a-booking-screen` cut from `91c6ed4`, no code commits yet. Rehearsal runs `c34979a`.
 
-## §2 Step map (cycle 05 r1 — programme R88)
-1. `cp/4a-foundation` — **merged** as `6375469`; post-merge suite 1170/1170, 5267 assertions.
-2. `cp/4b-slot-actions` — **merged** as `496a76d`; post-merge suite 1208/1208, 5500 assertions.
-3. `cp/4c-generation` — **merged** as `dd34988`; post-merge suite 1233/1233, 5623 assertions.
-4. `cp/4d-portal` — **merged** as `c0e2fc3` (squash, R89); post-merge suite 1272/1272, 6038 assertions; post-merge record `39b8782`.
-5. `cp/4e-auto-charge` — **merged** as `187c24f` (squash, PR #20) on the owner's GO (R108, recorded as the owner's; the backend developer was not consulted); post-merge suite 1315/1315, 6310 assertions, Ledger OK.
-6. `cp/4f-fake-gateway` (R107) — **merged** as `c34979a` (squash, PR #21, R89); post-merge suite 1333/1333, 6362 assertions, Ledger OK.
-7. Programme end and rehearsal deploy — **done**: the owner pressed Deploy (R111 fallback); R91 verification green (CYCLE-LOG VERIFICATION 2026-09-26 10:02); END logged 10:04.
+## §2 Step map (cycle 06 r1)
+1. `cp/6a-booking-screen` — **in progress** (design advisor consultation 1 of 3 done).
+2. Advisor-model measurement (R115) — pending.
+3. Rehearsal deploy and END (R117) — pending.
 
 ## §3 What changed this run
+- Cycle 06 r1 PLAN committed (`91c6ed4`), START logged (`fcafa4f`), advisor design consultation logged. Design: the profile change lives in `tutors/Show.vue` only (R116 file list).
+
+(Cycle 05 record, carried:)
 - **4f (`cp/4f-fake-gateway`, PR #21, `c34979a`)** — R107, ADR-016: `AppProvidersPaymentGatewayServiceProvider` binds `FakePaymentGateway` to `PaymentGateway` on `local`, `testing` and `rehearsal` only (allow-list; production, staging, a typo or an empty `APP_ENV` stay unbound and fail closed). One predicate, `fakeGatewayAllowed()`, also drives `SaveTestCard::available()` (tightened from "not production", so the fake add-card page also 404s on staging — a DECISION, owner may overrule), the shared Inertia prop `paymentTestMode` and the `TestModeBanner.vue` "Test mode — no real card is charged" banner on the add-card, weekly-slot and learner pages, plus the Filament create-slot modal. Docblock-only edits under `app/Services/Payments/*`. 18 new tests (`GatewayBindingTest`), red shown by dropping `rehearsal`. Docs on `main`: ADR-016 (supersedes ADR-015's "unbound outside tests" clause), CHECKPOINTS 4e line and CP5 registry line.
 - **4e fix loop 1 (`f4cc7f9`, R104/R105)**: `recurring:charge` cancels a due `reserved` weekly lesson whose tutor is not `bookable()` (suspended, permit lapsed, account deleted) as `reserved → cancelled_by_tutor`, new reason `LessonCancelReason::TutorUnavailable` (`tutor_unavailable`), actor null, never charged, no ledger entry, no strike, slot left active (new `ChargeOutcome::TutorUnavailable`, counted in the command summary). Parent and tutor get a new queued `WeeklyLessonTutorUnavailableMail` (parent copy neutral — no suspension or permit reason — says the slot can be kept or ended, and "Nothing was charged" only when no Pending or Captured payment exists; tutor copy says no strike). A lesson with a Pending attempt already in flight is not cancelled (advisor-driven, see §6 item 2). Low 1: the missed-window email no longer says nothing was paid. Low 6: `ResumeRecurringSlot` re-checks the policy on the locked row (stale-model race test). Low 7: a real schedule assertion (`0 * * * *`, `onOneServer`, `withoutOverlapping`). 9 new tests; a test that fails without the change proves R104 (6 of 7 fail with the action change stashed).
 - **4e (`cp/4e-auto-charge`, PR #20)** — R100, R101, R102:
@@ -36,7 +35,7 @@ Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (constituent
 - Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103.
 
 ## §5 Why stopping
-**Programme END with nothing further authorised (context handoff, R86).** **Done:** 4a–4f merged (PRs #16–#21); `main` green at `c34979a` (1333/1333, 6362 assertions, Ledger OK); rehearsal runs `c34979a` with 0 pending migrations, Horizon running, `recurring:generate` (daily) and `recurring:charge` (hourly) scheduled, `ledger:verify` OK, `/`, `/login`, `/admin/login` all 200, no failed jobs, 0 error lines in the last 200 log lines. **Next:** the planner writes the next plan; it needs owner decisions D-02, D-04 and D-09 (§7). **Ruled out:** amending CLAUDE.local.md (push-to-deploy unproven, §6 item 2b), anything on `trustutor-production`, running the recurring jobs by hand, a second `rehearsal` push. Resume count 0 of 8.
+Not stopping: 6a is being built. Nothing needs the owner.
 
 ## §6 Mismatches
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
@@ -53,23 +52,14 @@ Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (constituent
 10. **Review artefact, not a finding:** the reviewer saw no ADR-013..015 on the branch; they are on `main` (`git show origin/main:docs/DECISIONS.md | grep -c "ADR-01[345]"` = 3).
 
 ## §7 Next step / Owner actions
-Owner action 1: ask the planner "where are we?" and then "go ahead" for the next plan. Nothing is needed from Claude Code until a new PLAN.md exists; a bare `update` now only logs a NOTE and rewrites this file. Optionally `/clear` this session first (all state is in PLAN.md, this file and CYCLE-LOG.md), then reply `update` once the new plan is written.
-Owner action 2 (needed before the CP5-remainder plan, not before the next plan): decide **D-02** payment gateway driver (must support saved-card charging; PRD §11 default Stripe (UAE), else Tap — Stripe (Recommended), it is the PRD default), **D-04** the legal entity that holds the licence and collects funds, and **D-09** mail provider, and tell the planner.
-Owner action 3 (optional, non-blocking): in Forge, set the rehearsal site's branch to `rehearsal` and switch push-to-deploy ON if you want CC to deploy rehearsal itself (R111); until that is proven CLAUDE.local.md stays as it is. Also add Herd's `composer` to the Git Bash PATH: PowerShell's `bash` resolves to WSL, so `composer test` runs as its constituent steps (R110). Open and non-blocking as before: branch protection on `main` (A), R53 preview UX (E).
-Carried to the CP5-remainder list (R108): the gateway status lookup by idempotency key (in-flight exception, §6 item 2), excluding `Captured` at the R104 guard, skipping the tutor mail for a trashed user; the registry replaces R107's binding (added to CHECKPOINTS CP5 by 4f).
+No Owner action right now. Carried for the END write: **D-04** legal entity, **D-02** gateway (Stripe (Recommended), PRD §11 default), **D-09** mail provider (Postmark (Recommended), ADR-007), and the UI developer's non-blocking review of PR 6a after the merge. Reply `update` after any halt.
 
-CP5-remainder (R88, carried): real gateway driver and the `payment_gateways` registry (replacing R107's binding), webhooks and refunds, payouts and the tutor earnings page, receipts, settle/dispute math, the gateway status lookup by idempotency key, and the review Lows listed in §6.
-
-## §8 Programme board — CP4+ (R88)
+## §8 Programme board — cycle 06 r1
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 4a foundation | **merged** | `cp/4a-foundation` | #16 | no Medium+ | `6375469` (R89) |
-| 4b slot actions | **merged** | `cp/4b-slot-actions` | #17 | no Medium+; Lows fixed (round 1) | `496a76d` (R89) |
-| 4c generation | **merged** | `cp/4c-generation` | #18 | no Medium+ after fix rounds 1–2; Lows carried | `dd34988` (R89) |
-| 4d portal | **merged** | `cp/4d-portal` | #19 | no Medium+ after fix loops 1–2 (Lows fixed) | `c0e2fc3` (R89) |
-| 4e auto-charge | **merged** (owner GO, R108) | `cp/4e-auto-charge` | #20 | first review: 1 Medium + Lows 1, 6, 7, all closed; re-review: 1 Low carried to CP5 | `187c24f` |
-| 4f fake gateway | **merged** | `cp/4f-fake-gateway` | #21 | PASS WITH NOTE: 1 Low (doc-only, fixed in-cycle), no Medium+ | `c34979a` (R89) |
-| Programme end + rehearsal deploy (R111) | **done** | `rehearsal` at `c34979a` | — | — | rehearsal on `c34979a`, verified 2026-09-26 10:02 (owner-pressed Deploy) |
+| 6a booking screen | in progress | `cp/6a-booking-screen` | — | — | — |
+| 6b advisor model (R115) | pending | — | — | — | — |
+| 6c rehearsal deploy + END (R117) | pending | `rehearsal` | — | — | — |
 
 Resume count: **0 of 8**.
 
