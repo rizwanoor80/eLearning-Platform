@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, usePoll } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -41,9 +41,11 @@ defineOptions({
 // Attendance arrives by webhook while the page is open, so the flags are refreshed in place (Reverb is deferred).
 const { stop } = usePoll(30000, { only: ['lesson'] });
 
-if (props.lesson.terminal) {
-    stop();
-}
+watch(
+    () => props.lesson.terminal,
+    (terminal) => terminal && stop(),
+    { immediate: true },
+);
 
 // The join token lives only in this component's memory: it is never a prop, never stored, never in the address bar
 // of this page. It goes to the provider's own room URL, which is how the provider's prebuilt room takes it.
@@ -90,7 +92,8 @@ async function join() {
 }
 
 function markJoined() {
-    router.post(`/lessons/${props.lesson.id}/joined`, {}, { preserveScroll: true });
+    // preserveState: a redirect back to this page must not remount it, or an open room frame and its token are lost.
+    router.post(`/lessons/${props.lesson.id}/joined`, {}, { preserveScroll: true, preserveState: true });
 }
 
 function markNoShow() {
@@ -103,7 +106,7 @@ function markNoShow() {
         return;
     }
 
-    router.post(`/lessons/${props.lesson.id}/no-show`, {}, { preserveScroll: true });
+    router.post(`/lessons/${props.lesson.id}/no-show`, {}, { preserveScroll: true, preserveState: true });
 }
 
 const closedMessages: Record<string, string> = {
