@@ -252,6 +252,8 @@ it('leaves an unattended lesson confirmed, with no ledger rows written, when its
     {
         public function refundParent(Lesson $locked, ?User $by): void
         {
+            parent::refundParent($locked, $by);
+
             throw new RuntimeException('gateway ledger down');
         }
     });

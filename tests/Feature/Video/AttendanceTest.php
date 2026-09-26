@@ -1,9 +1,11 @@
 <?php
 
+use App\Actions\Lessons\MarkJoined;
 use App\Actions\Video\ActivateVideoProvider;
 use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
 use App\Enums\VideoParticipant;
+use App\Exceptions\AttendanceException;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
@@ -233,8 +235,24 @@ it('does not count a join at or after the scheduled end, by webhook or by hand',
         ->and($lesson->tutor_joined_at)->toBeNull()
         ->and($lesson->learner_joined_at)->toBeNull();
 
+    // a join stamped exactly at the scheduled end is not attendance either
+    Carbon::setTestNow($lesson->ends_at->copy());
+    atSend('lesson-'.$lesson->id, 'tutor', at: now()->getTimestamp())->assertOk();
+    $this->actingAs($parent)->post(route('lessons.joined', $lesson))->assertRedirect();
+    expect($lesson->fresh()->tutor_joined_at)->toBeNull()->and($lesson->fresh()->learner_joined_at)->toBeNull();
+
     // the last second before the end still counts
     Carbon::setTestNow($lesson->ends_at->copy()->subSecond());
     $this->actingAs($tutor->user)->post(route('lessons.joined', $lesson))->assertRedirect();
     expect($lesson->fresh()->tutor_joined_at)->not->toBeNull();
+});
+
+it('refuses a manual join after the scheduled end on its own, whatever the token window says', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = atLesson(5);
+
+    Carbon::setTestNow($lesson->ends_at->copy()->addMinutes(5));
+
+    // the token window (end + 10) is still open, so only the MarkJoined guard can refuse
+    expect(fn () => app(MarkJoined::class)($parent, $lesson))
+        ->toThrow(AttendanceException::class, 'scheduled time');
 });

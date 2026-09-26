@@ -315,6 +315,30 @@ it('throttles token requests per user', function () {
     $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertStatus(429);
 });
 
+it('counts the token throttle per user, so one user\'s limit does not lock out another', function () {
+    ['lesson' => $lesson, 'parent' => $parent, 'tutor' => $tutor] = rmLesson(5);
+    $this->artisan('lessons:create-rooms');
+
+    foreach (range(1, 21) as $i) {
+        $this->actingAs($parent)->postJson(route('lessons.room', $lesson));
+    }
+    $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertStatus(429);
+
+    $this->actingAs($tutor->user)->postJson(route('lessons.room', $lesson))->assertOk();
+});
+
+it('does not share the token throttle counter with the password route\'s own limiter', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = rmLesson(5);
+    $this->artisan('lessons:create-rooms');
+
+    // 20 token requests would push an unnamed, shared counter past the password route's limit of 6
+    foreach (range(1, 20) as $i) {
+        $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk();
+    }
+
+    $this->actingAs($parent)->putJson(route('user-password.update'), [])->assertUnprocessable();
+});
+
 it('expires the overlap lock of each lifecycle command after ten minutes, not a day', function () {
     $events = collect(app(Schedule::class)->events())
         ->filter(fn ($event) => str_contains($event->command, 'lessons:create-rooms')

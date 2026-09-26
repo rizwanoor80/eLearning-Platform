@@ -88,6 +88,7 @@ function cancel(lesson: UpcomingLesson) {
                 <div class="flex items-center gap-2">
                     <Badge v-if="lesson.weekly" variant="secondary">weekly</Badge>
                     <Badge variant="outline">{{ lesson.status }}</Badge>
+                    <Link :href="`/lessons/${lesson.id}`" class="text-sm underline underline-offset-4">Open</Link>
                     <Button v-if="lesson.cancel_kind" variant="outline" size="sm" @click="cancel(lesson)">
                         {{ lesson.cancel_kind === 'skip' ? 'Skip' : 'Cancel' }}
                     </Button>

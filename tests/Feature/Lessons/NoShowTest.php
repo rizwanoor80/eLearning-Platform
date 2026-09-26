@@ -198,6 +198,8 @@ it('rolls back the mark, the strike and the ledger when the parent refund fails'
     {
         public function refundParent(Lesson $locked, ?User $by): void
         {
+            parent::refundParent($locked, $by);
+
             throw new RuntimeException('ledger down');
         }
     });
@@ -217,6 +219,8 @@ it('rolls back the mark and the tutor pay when the release fails', function () {
     {
         public function payTutor(Lesson $locked, ?User $by): void
         {
+            parent::payTutor($locked, $by);
+
             throw new RuntimeException('ledger down');
         }
     });

@@ -18,7 +18,7 @@ class DashboardController extends Controller
 
         $lessons = Lesson::query()
             ->whereHas('learner', fn ($query) => $query->where('account_user_id', $user->id))
-            ->whereIn('status', [LessonStatus::Reserved, LessonStatus::Confirmed])
+            ->whereIn('status', [LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress])
             ->with(['learner', 'tutorProfile.user', 'subject:id,name'])
             ->orderBy('starts_at')
             ->get();

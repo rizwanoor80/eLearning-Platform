@@ -32,9 +32,10 @@ Route::post('webhooks/video/{code}', VideoWebhookController::class)->where('code
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
 
-// CP6 7c: the lesson room, for the lesson's own tutor or parent. LessonPolicy::attend is the authorisation.
+// CP6 7c/7d: the lesson page and room, for the lesson's own tutor or parent. LessonPolicy::attend is the authorisation.
 Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['lesson' => '[0-9]{1,18}'])->group(function () {
-    Route::post('room', [LessonRoomController::class, 'join'])->middleware('throttle:20,1')->name('lessons.room');
+    Route::get('/', [LessonRoomController::class, 'show'])->name('lessons.show');
+    Route::post('room', [LessonRoomController::class, 'join'])->middleware('throttle:lesson-room')->name('lessons.room');
     Route::post('joined', [LessonRoomController::class, 'joined'])->name('lessons.joined');
     Route::post('no-show', [LessonRoomController::class, 'noShow'])->name('lessons.no-show');
 });

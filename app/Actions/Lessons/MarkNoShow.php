@@ -99,20 +99,53 @@ class MarkNoShow
     }
 
     /**
+     * Why `$actor` cannot mark the other side absent right now, or null when they can. The lesson
+     * page reads this to show the button; the action re-checks the same rule on the locked row, so
+     * the page is a convenience and never the authority.
+     */
+    public static function problemFor(User $actor, Lesson $lesson): ?string
+    {
+        $party = LessonParties::participantFor($lesson, $actor);
+
+        if ($party === null) {
+            return 'Only the tutor or the parent of this lesson may mark a no-show.';
+        }
+
+        if ($lesson->status !== LessonStatus::InProgress) {
+            return 'A no-show can only be marked once one side has joined and the lesson is in progress.';
+        }
+
+        return $party === VideoParticipant::Tutor
+            ? self::markableProblem($lesson, $lesson->student_grace_min, 'tutor_joined_at', 'learner_joined_at', 'The student')
+            : self::markableProblem($lesson, $lesson->tutor_grace_min, 'learner_joined_at', 'tutor_joined_at', 'The tutor');
+    }
+
+    /**
      * @throws AttendanceException
      */
     private function assertMarkable(Lesson $locked, int $graceMinutes, string $present, string $absent, string $absentName): void
     {
-        if ($locked->{$present} === null) {
-            throw new AttendanceException('You have not joined this lesson, so you cannot mark the other party as absent.');
+        $problem = self::markableProblem($locked, $graceMinutes, $present, $absent, $absentName);
+
+        if ($problem !== null) {
+            throw new AttendanceException($problem);
+        }
+    }
+
+    private static function markableProblem(Lesson $lesson, int $graceMinutes, string $present, string $absent, string $absentName): ?string
+    {
+        if ($lesson->{$present} === null) {
+            return 'You have not joined this lesson, so you cannot mark the other party as absent.';
         }
 
-        if ($locked->{$absent} !== null) {
-            throw new AttendanceException("{$absentName} joined this lesson.");
+        if ($lesson->{$absent} !== null) {
+            return "{$absentName} joined this lesson.";
         }
 
-        if (now()->lessThan($locked->starts_at->copy()->addMinutes($graceMinutes))) {
-            throw new AttendanceException("A no-show can be marked {$graceMinutes} minutes after the lesson starts.");
+        if (now()->lessThan($lesson->starts_at->copy()->addMinutes($graceMinutes))) {
+            return "A no-show can be marked {$graceMinutes} minutes after the lesson starts.";
         }
+
+        return null;
     }
 }

@@ -10,6 +10,7 @@ use App\Exceptions\LessonTransitionException;
 use App\Http\Controllers\Controller;
 use App\Models\Lesson;
 use App\Models\User;
+use App\Services\Lessons\LessonRoomView;
 use App\Services\Video\VideoProviderException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -17,15 +18,25 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
+use Inertia\Response;
 
 /**
- * The three room actions a lesson's own tutor or parent can take (CP6 7c): get a join token, say
+ * The lesson page and the three room actions a lesson's own tutor or parent can take (CP6 7c, 7d): get a join token, say
  * "I've joined" (only where the provider sends no attendance webhooks), and mark the other side
  * absent. Each authorises through `LessonPolicy::attend` first, so another parent's lesson is a 403
- * before any rule is looked at. The lesson page that calls these is 7d's.
+ * before any rule is looked at. The page only reflects the rules; each action re-checks them.
  */
 class LessonRoomController extends Controller
 {
+    public function show(Request $request, Lesson $lesson): Response
+    {
+        Gate::authorize('attend', $lesson);
+
+        $lesson->loadMissing(['learner', 'tutorProfile.user', 'subject:id,name']);
+
+        return Inertia::render('lessons/Show', ['lesson' => LessonRoomView::for($lesson, $this->user($request))]);
+    }
+
     public function join(Request $request, Lesson $lesson, IssueJoinToken $issueJoinToken): JsonResponse
     {
         Gate::authorize('attend', $lesson);

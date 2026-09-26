@@ -23,21 +23,44 @@ class MarkJoined
      */
     public function __invoke(User $actor, Lesson $lesson): bool
     {
-        $participant = LessonParties::participantFor($lesson, $actor)
-            ?? throw new AttendanceException('Only the tutor or the parent of this lesson may mark themselves as joined.');
+        $problem = self::problemFor($actor, $lesson);
 
-        IssueJoinToken::assertJoinable($lesson);
+        if ($problem !== null) {
+            throw new AttendanceException($problem);
+        }
+
+        $participant = LessonParties::participantFor($lesson, $actor);
+
+        return ($this->recordAttendance)($lesson, $participant, now());
+    }
+
+    /**
+     * Why `$actor` cannot say "I've joined" right now, or null when they can. The lesson page reads
+     * this to show the button; `__invoke` refuses on the same rule, so the page is a convenience and
+     * never the authority.
+     */
+    public static function problemFor(User $actor, Lesson $lesson): ?string
+    {
+        if (LessonParties::participantFor($lesson, $actor) === null) {
+            return 'Only the tutor or the parent of this lesson may mark themselves as joined.';
+        }
+
+        try {
+            IssueJoinToken::assertJoinable($lesson);
+        } catch (AttendanceException $e) {
+            return $e->getMessage();
+        }
 
         $provider = VideoProvider::query()->where('code', $lesson->room_provider)->first();
 
         if ($provider === null || $provider->supports_attendance_webhooks) {
-            throw new AttendanceException('Attendance for this lesson is recorded automatically.');
+            return 'Attendance for this lesson is recorded automatically.';
         }
 
         if (now()->greaterThanOrEqualTo($lesson->ends_at)) {
-            throw new AttendanceException('The scheduled time for this lesson is over, so a join can no longer be recorded.');
+            return 'The scheduled time for this lesson is over, so a join can no longer be recorded.';
         }
 
-        return ($this->recordAttendance)($lesson, $participant, now());
+        return null;
     }
 }
