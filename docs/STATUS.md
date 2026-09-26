@@ -1,22 +1,30 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 18:02 (machine clock) — Context: not measured by the tool — **7b merged (8bb50bf); 7c starting**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 19:15 (machine clock) — Context: not measured by the tool — **7c merged (19fe97f); 7d starting**
 
-Tests: **1434/1434 passed, 7313 assertions** (main at 8bb50bf, solo run; 1391 before 7b). Advisor: consulted 8 times this cycle so far (3 for 7a; 4 for 7b; 1 for 7c design; all answered; R63 'configured, not measured'). Review: 7b — no FAIL, 6 Low/notes carried forward. Resume count 0 of 8.
+Tests: **1500/1500 passed, 7616 assertions** (main at 19fe97f, solo run, 359.9 s; 1434 before 7c). Advisor: consulted 11 times this cycle so far (3 for 7a; 4 for 7b; 4 for 7c: design, mid-build, dedicated, pre-PR; all answered; R63 'configured, not measured'; two 7c entries carry no verbatim quote, disclosed in CYCLE-LOG). Review: 7c — first review 1 Medium (fixed in fix loop 1 of 2), re-review no Medium or High. Resume count 0 of 8.
 
 ## §1 Git state
-`main` = `8bb50bf` (merge of PR #24) plus docs commits on top; `rehearsal` = `3548a04` (7b is not deployed; deploys happen at step 9, R111). Branch `cp/7b-video-registry` merged, kept. No open PRs.
+`main` = `19fe97f` (merge of PR #25) plus docs commits on top; `rehearsal` = `3548a04` (7b and 7c are not deployed; deploys happen at step 9, R111). Branches `cp/7b-video-registry` and `cp/7c-room-lifecycle` merged, kept. No open PRs.
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
 2. `cp/7a-demo-tutors` (R121) — **done**: PR #23 merged (3548a04, R123), rehearsal deployed, seeder run once, 7 tutors, /tutors, a profile and guest /book (302 to /login) checked.
 3. `cp/7b-video-registry` (R122, R125) — **done**: PR #24 merged (8bb50bf, R123), 1434/1434 on main, smoke 200/200/200
-4. `cp/7c-room-lifecycle` — [in progress: design advisor done]
-5. `cp/7d-lesson-page` — [not started]
+4. `cp/7c-room-lifecycle` — **done**: PR #25 merged (19fe97f, R123), 1500/1500 on main, smoke 200/200/200
+5. `cp/7d-lesson-page` — [starting]
 6. `cp/7e-reports` (R124) — [not started]
 7. `cp/7f-trial-cta-timeline` — [not started]
 8. `cp/7g-branding` (R49) — [not started]
 9. Deploy and END — [not started]
 
 ## §3 What changed this run
+**7c — merged (not yet on rehearsal)**
+- PR #25 self-merged under R123 as `19fe97f` (head `7dba935`; commits `7c7778c`, `70b4795`, `7dba935`): CI green on the head, review 1 found one Medium and two Lows, all fixed in fix loop 1 of 2, re-review found no Medium or High.
+- Built: `lessons:create-rooms` (T−15, provider create-by-name then a conditional UPDATE, once per lesson), `lessons:close-rooms` (end + 10, through the lesson's own provider), `lessons:settle-ended` (both attended → `completed`; nobody attended → `refunded`, no strike), join-token route `lessons/{lesson}/room` (from T−10, minted on request and stored nowhere, throttled 20/min per user, provider timeout answered 422), synchronous `ApplyAttendanceEvent`, manual "I've joined", `MarkNoShow` (tutor marks student after the lesson-row grace: tutor paid in full; parent marks tutor: refund, strike, third strike in 90 days suspends), admin `provider_failure` from a list-only Filament lesson resource, `LessonPolicy::attend`, `RequiresActiveAdmin` trait.
+- Review Medium, fixed: a join at or after the scheduled end is not attendance (`RecordAttendance` on the locked row; `MarkJoined` refuses), so a lesson nobody attended in time is refunded, not paid.
+- Two-hop outcomes (`no_show_both → refunded`, `no_show_student → completed_reported`, `no_show_tutor → refunded`) run in one outer transaction; three rollback tests prove a failing second hop leaves the lesson, strike and ledger untouched.
+- Overlap locks are `withoutOverlapping(10)`, not the 24-hour default (advisor point; test asserts 10).
+- Not changed: `LessonStateMachine.php`, `LedgerService.php`, `app/Services/Payments/*`; no migration; DATA_MODEL unchanged. CHECKPOINTS CP6 acceptance boxes 1 and 2 ticked.
+- Verification: 1492 → 1496 → 1500 solo runs (416, 375, 347 s); on main 1500/1500 (7616 assertions, 359.9 s); `ledger:verify` OK; `npm run build` exit 0; RTL and PHPStan green; local smoke 200/200/200.
 **7b — merged (not yet on rehearsal)**
 - PR #24 self-merged under R123 as `8bb50bf`: CI green on head `2bd999a`, the fresh-subagent review found no FAIL (11 verdicts, all PASS or PASS WITH NOTE), the three wiring files outside the video folders were confirmed as 7b's own by the reviewer.
 - Built: `video_providers` registry with encrypted, write-only credentials; `VideoProviderManager`; Daily and fake drivers; verified, replay-safe, transactional `POST webhooks/video/{code}`; Filament `Video providers` screen; ADR-017 and DATA_MODEL v1.6.
@@ -64,6 +72,7 @@ Tests: **1434/1434 passed, 7313 assertions** (main at 8bb50bf, solo run; 1391 be
 
 
 ## §4 Decisions and by whom
+- CC (7c): fix loop 1 of 2 for the review Medium and two Lows; the other Lows carried to 7d (named throttle limiter, boundary and second-user tests, write-then-throw fakes); the attendance listener is synchronous; `MarkNoShow` requires `in_progress`; `RequiresActiveAdmin` is defence in depth (Filament's persistent Authenticate runs on real Livewire updates), applied to the lesson resource and to `VideoProviderResource` (the planned 7b carry-forward); `MarkProviderFailure` requires an active admin and a note. Self-merge under R123 conditions, all logged.
 - CC (7c design): no-show marking stays manual per PRD §4; the state machine is not edited (R94); join tokens are minted on request and never stored; the attendance listener is synchronous.
 - CC (7b): `supports_attendance_webhooks` does not gate the webhook endpoint; the three wiring files are 7b's own area under R123 (confirmed by the review).
 - CC (cycle 07, step 1): the HOW-WE-WORK version stamp reads 1.3 (R119 lists a changelog line but not the stamp); logged as a DECISION.
@@ -77,12 +86,13 @@ Tests: **1434/1434 passed, 7313 assertions** (main at 8bb50bf, solo run; 1391 be
 
 
 ## §5 Why stopping
-Not stopping: 7b is merged and its record is on main. Next is 7c (step 4). Nothing here needs the owner (R109). This is the step-boundary write.
+Not stopping: 7c is merged and its record is on main. Next is 7d (step 5). Nothing here needs the owner (R109). This is the step-boundary write.
 
 ## §6 Mismatches
 0a. **`in_progress → provider_failure` has no edge** (PRD §4 says "if the video provider is down for the lesson window, admin can mark provider_failure"). 7c limits the admin action to `confirmed` lessons and does not edit the frozen `LessonStateMachine.php` (R94). An outage that begins after one party has joined cannot be marked until the machine gains that edge.
 0b. **A lesson can sit in `in_progress` forever** if only one party joined and nobody marks a no-show (PRD §4 makes marking manual). 7e's 72 h auto-release acts only on `completed`, so it does not see these. Owner action at END.
-1. **Full suite is now over the 10-minute stall line (BLOCKER disclosure, not a halt).** `php artisan test` took 683 s on the 7b head (608 s earlier the same sub-cycle). It completed green. It grows about 10 s per sub-cycle, so raising the stall line for this one command, or splitting the suite, needs a planner/owner ruling before it becomes a permanent breach. Nothing is blocked today.
+0c. **7c open items (for the END Owner actions, none blocks 7d).** (a) **Daily webhook reliance:** attendance comes only from webhooks; if Daily does not deliver them, an attended lesson is refunded as `no_show_both` and the tutor is unpaid. Webhook delivery, and whether `event_ts` is the generation time and survives retries (the join check now uses it and it decides money), must be proven on rehearsal before real lessons run on Daily. (b) Room names `lesson-<id>` have no environment prefix: use one Daily domain per environment. (c) A lesson whose room was never created ends as `no_show_both`, not `provider_failure`. (d) Trusted-proxy configuration is needed before production. (e) The `fake` guard could be an allow-list rather than "not production". (f) The other Filament admin resources rely on panel middleware alone; only lessons and video providers carry `RequiresActiveAdmin`. (g) A party who skipped can still join up to T+59 and mark the other absent; the dispute path is the mitigation. (h) Low review notes carried to 7d: a named throttle limiter (the unnamed `throttle:20,1` shares a counter with `throttle:6,1` on `user-password.update`), an exact-`ends_at` boundary test, a second-user throttle test, rollback fakes that write before throwing, a test isolating the `MarkJoined` guard.
+1. **Suite duration (BLOCKER disclosure from 7b — did not recur).** 7c solo runs took 347 to 416 s and main 359.9 s, all under the 10-minute line; the 683 s 7b run was not repeated. Not filed as an Owner action unless it returns.
 0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
 2. **Open Low from the re-review — carried to CP5 by the owner (R108).** (a) **In-flight exception:** if a run dies after `begin()` committed a Pending row but before the gateway call, and the tutor is suspended before the next run, the next run charges the lesson (Confirmed, HOLD, "charged" mail) — or on a decline counts a failure toward pausing the slot. The alternative (cancel over the Pending row) can strand a payment the gateway took with no ledger entry. The proper fix is a gateway status lookup by idempotency key, which the fake gateway cannot answer; a CP5 carry. (b) Note: a `Captured` payment with a failed hold (`NeedsReview`) leaves the lesson `reserved`, so a later run could cancel it `tutor_unavailable` over money taken; `ledger:verify` flags it and the email drops "Nothing was charged"; optionally exclude Captured at the guard. (c) Notes: the 'account deleted' test proves the scope's `deleted_at` clause only (the real `AnonymizeUser` path cannot reach R104); the tutor mail would go to a trashed user's address (skip when `$tutor->trashed()`); the "keep or end" wording is asserted only as "still active".
@@ -105,7 +115,7 @@ Not stopping: 7b is merged and its record is on main. Next is 7c (step 4). Nothi
 
 ## §7 Next step / Owner actions
 Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for CC and the harness refused my R126 edit. Option 1 (Recommended): you replace the D-02 row's status cell with "**Decided (owner, 2026-09-26, R120): multiple gateways via the registry (§12); Stripe first, provisional on D-04**" and add a row after D-08: `| D-09 | Transactional mail provider | Postmark (ADR-007) | **Decided (owner, 2026-09-26, R120): Postmark**; wiring is a later step, rehearsal stays on the log mailer |`. Non-blocking; reply `update` when done, or say nothing and it stays in §6.
-(Work continues with 7a; this is not a halt.)
+(Work continues with 7d; this is not a halt.)
 
 ## §8 Programme board — cycle 07 r1
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
@@ -113,8 +123,8 @@ Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for
 | step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
 | 7a demo tutors | done, on rehearsal | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | self-merged 3548a04 (R123) |
 | 7b video registry | done | `cp/7b-video-registry` | #24 | no FAIL; 6 Low carried | self-merged 8bb50bf (R123) |
-| 7c room lifecycle | in progress | `cp/7c-room-lifecycle` | — | — | — |
-| 7d lesson page | not started | — | — | — | — |
+| 7c room lifecycle | done | `cp/7c-room-lifecycle` | #25 | 1 Medium fixed (loop 1 of 2); re-review no Medium or High | self-merged 19fe97f (R123) |
+| 7d lesson page | starting | `cp/7d-lesson-page` | — | — | — |
 | 7e reports | not started | — | — | — | — |
 | 7f trial CTA + timeline | not started | — | — | — | — |
 | 7g branding | not started | — | — | — | — |

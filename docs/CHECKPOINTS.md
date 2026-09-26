@@ -161,8 +161,8 @@ Tasks
 - Stretch: embedded tldraw whiteboard on the lesson page.
 
 Acceptance
-- [ ] Room is created exactly once per lesson even if the job runs twice.
-- [ ] Both join → `completed` at end; only tutor joins → student no-show path after grace; only learner joins → tutor no-show path after grace.
+- [x] Room is created exactly once per lesson even if the job runs twice. _(7c, PR #25, main `19fe97f`: `LessonRoomTest.php` "creates exactly one room when the job runs twice" and "records one room when two runs race with the same stale copy of the lesson".)_
+- [x] Both join → `completed` at end; only tutor joins → student no-show path after grace; only learner joins → tutor no-show path after grace. _(7c, PR #25, main `19fe97f`: `SettleEndedLessonsTest.php` "completes a lesson both sides attended…", "refunds a lesson nobody attended…"; `NoShowTest.php` tutor-marks-student and parent-marks-tutor, grace read from the lesson row; `AttendanceTest.php` late-join boundary. Owner-level gap: a one-sided lesson is never auto-resolved, STATUS §6.)_
 - [ ] Trial report without the three trial fields is rejected; regular report with them is rejected.
 - [ ] Submitting a report releases escrow exactly once; second submit is rejected; auto-release after 72h sets the late flag.
 - [ ] Parent receives the report email within one queue cycle; the trial email contains a working weekly-slot link.
