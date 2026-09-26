@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  * What happens to a lesson when its scheduled time is over and nobody has ruled on it (PRD §9, §4):
  *
  *  - `in_progress`, both sides joined, past the scheduled end: `completed`, with the report due
- *    `report_due_hours` after the end. Money stays in escrow until the report or the 72h release (7e).
+ *    `report_due_hours` after the end. Money stays in escrow until the report (`SubmitProgressReport`) or the 72h release (`AutoReleaseLesson`).
  *  - `confirmed`, nobody joined, past the end plus the room's close grace: `no_show_both`, then
  *    `refunded` — full refund, no strike, no tutor pay.
  *
@@ -48,6 +48,8 @@ class SettleEndedLesson
             $locked->forceFill([
                 'completed_at' => now(),
                 'report_due_at' => $locked->ends_at->copy()->addHours((int) Settings::get('report_due_hours')),
+                // Frozen here like the report deadline: a later settings change never moves an existing lesson.
+                'auto_release_at' => $locked->ends_at->copy()->addHours((int) Settings::get('auto_release_hours')),
             ]);
         });
 

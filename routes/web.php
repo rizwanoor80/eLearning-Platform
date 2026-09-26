@@ -7,6 +7,7 @@ use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Lessons\BookLessonController;
 use App\Http\Controllers\Lessons\CancelLessonController;
 use App\Http\Controllers\Lessons\LessonRoomController;
+use App\Http\Controllers\Lessons\ProgressReportController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
@@ -38,6 +39,9 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
     Route::post('room', [LessonRoomController::class, 'join'])->middleware('throttle:lesson-room')->name('lessons.room');
     Route::post('joined', [LessonRoomController::class, 'joined'])->name('lessons.joined');
     Route::post('no-show', [LessonRoomController::class, 'noShow'])->name('lessons.no-show');
+    // CP6 7e: the tutor's report. LessonPolicy::report is the authorisation.
+    Route::get('report', [ProgressReportController::class, 'create'])->name('lessons.report.create');
+    Route::post('report', [ProgressReportController::class, 'store'])->name('lessons.report.store');
 });
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {

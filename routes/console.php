@@ -42,3 +42,8 @@ Schedule::command('lessons:send-reminders')->everyMinute()->onOneServer()->witho
 Schedule::command('lessons:create-rooms')->everyMinute()->onOneServer()->withoutOverlapping(10);
 Schedule::command('lessons:close-rooms')->everyMinute()->onOneServer()->withoutOverlapping(10);
 Schedule::command('lessons:settle-ended')->everyMinute()->onOneServer()->withoutOverlapping(10);
+
+// Release of a lesson's escrow when its tutor never filed the report (CP6 7e, PRD §2.7): 72 h after the
+// lesson ends. Exactly-once is the state machine's `completed -> completed_reported` edge on the locked
+// row, shared with the report itself, so a run racing a submit, or a second run, moves nothing twice.
+Schedule::command('lessons:auto-release-reports')->everyFiveMinutes()->onOneServer()->withoutOverlapping(10);

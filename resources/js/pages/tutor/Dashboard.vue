@@ -21,7 +21,17 @@ type WeeklySlot = {
     ending_on: string | null;
 };
 
+type ReportDue = {
+    id: number;
+    starts_at: string;
+    learner_display_name: string;
+    is_trial: boolean;
+    due_by: string | null;
+    auto_release_by: string | null;
+};
+
 const props = defineProps<{
+    reportsDue: ReportDue[];
     today: ScheduledLesson[];
     upcoming: ScheduledLesson[];
     slots: WeeklySlot[];
@@ -43,6 +53,27 @@ defineOptions({
     <Head title="Dashboard" />
 
     <div class="flex flex-col gap-6 p-4">
+        <div v-if="props.reportsDue.length > 0" data-test="reports-due">
+            <h1 class="mb-3 text-xl font-semibold">Reports due</h1>
+            <ul class="divide-y rounded-xl border">
+                <li v-for="lesson in props.reportsDue" :key="lesson.id" class="flex items-center justify-between gap-4 p-4">
+                    <div class="grid gap-1">
+                        <span class="font-medium">{{ lesson.learner_display_name }}</span>
+                        <span class="text-muted-foreground text-sm">
+                            {{ lesson.starts_at }}<template v-if="lesson.due_by"> · due {{ lesson.due_by }}</template>
+                        </span>
+                        <span v-if="lesson.auto_release_by" class="text-muted-foreground text-sm">
+                            Released without a report on {{ lesson.auto_release_by }}, and flagged as late.
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Badge v-if="lesson.is_trial" variant="secondary">trial</Badge>
+                        <Link :href="`/lessons/${lesson.id}/report`" class="text-sm underline underline-offset-4">Write the report</Link>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
         <div>
             <h1 class="mb-3 text-xl font-semibold">Weekly slots</h1>
             <p v-if="props.slots.length === 0" class="text-muted-foreground text-sm">

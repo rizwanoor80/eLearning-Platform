@@ -57,6 +57,8 @@ use LogicException;
  * @property string|null $cancel_reason
  * @property Carbon|null $report_due_at
  * @property Carbon|null $escrow_released_at
+ * @property Carbon|null $auto_release_at
+ * @property Carbon|null $report_late_at
  * @property Carbon|null $reminder_24h_sent_at
  * @property Carbon|null $reminder_1h_sent_at
  * @property Carbon|null $created_at
@@ -129,6 +131,8 @@ class Lesson extends Model
             'cancelled_at' => 'datetime',
             'report_due_at' => 'datetime',
             'escrow_released_at' => 'datetime',
+            'auto_release_at' => 'datetime',
+            'report_late_at' => 'datetime',
             'reminder_24h_sent_at' => 'datetime',
             'reminder_1h_sent_at' => 'datetime',
         ];
@@ -140,6 +144,14 @@ class Lesson extends Model
     public function tutorProfile(): BelongsTo
     {
         return $this->belongsTo(TutorProfile::class);
+    }
+
+    /**
+     * @return HasOne<ProgressReport, $this>
+     */
+    public function progressReport(): HasOne
+    {
+        return $this->hasOne(ProgressReport::class);
     }
 
     /**
