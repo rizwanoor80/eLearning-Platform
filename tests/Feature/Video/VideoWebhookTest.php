@@ -165,7 +165,7 @@ it('verifies a daily event with the base64 secret scheme even when daily is not 
     expect(VideoWebhookEvent::query()->where('provider_code', 'daily')->sole()->participant)->toBe('learner');
 
     $bad = ['X-Webhook-Timestamp' => (string) $timestamp, 'X-Webhook-Signature' => hash_hmac('sha256', $timestamp.'.'.$body, $secret)];
-    postWebhook('daily', webhookBody('evt-other'), $bad)->assertStatus(401);
+    postWebhook('daily', $body, $bad)->assertStatus(401);
 });
 
 it('still verifies the fake provider after another provider becomes active', function () {
@@ -203,6 +203,18 @@ it('has no fake endpoint in production even when the fake row holds a secret', f
     } finally {
         app()->detectEnvironment(fn () => 'testing');
     }
+
+    expect(VideoWebhookEvent::query()->count())->toBe(0);
+});
+
+it('rolls the stored row back when the dispatch fails, so the provider retry is not a duplicate', function () {
+    Event::listen(VideoWebhookReceived::class, function () {
+        throw new RuntimeException('queue down');
+    });
+    $body = webhookBody('evt-retry');
+
+    $this->withoutExceptionHandling();
+    expect(fn () => postWebhook('fake', $body, signedHeaders($body)))->toThrow(RuntimeException::class);
 
     expect(VideoWebhookEvent::query()->count())->toBe(0);
 });

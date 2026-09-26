@@ -12,6 +12,7 @@ use App\Services\Video\VideoProviderManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 
 /**
  * `POST webhooks/video/{code}`: provider attendance webhooks. No session, no CSRF (the signature is
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\Date;
  *
  * Order matters: reject before storing. An unknown code or a row without credentials is 404, a bad
  * or stale signature is 401, a verified event is stored once (unique on provider + event id) and
- * only then dispatched — a replay answers 200 and does nothing.
+ * only then dispatched, both inside one transaction — a replay answers 200 and does nothing.
  */
 class VideoWebhookController extends Controller
 {
@@ -67,24 +68,31 @@ class VideoWebhookController extends Controller
             return response()->json(['status' => 'ignored']);
         }
 
-        $stored = VideoWebhookEvent::query()->insertOrIgnore([
-            'provider_code' => $row->code,
-            'event_id' => $attendance->id,
-            'type' => $attendance->type->value,
-            'room_name' => $attendance->roomName,
-            'participant' => $attendance->participant?->value,
-            'occurred_at' => $attendance->occurredAt,
-            'received_at' => Date::now(),
-        ]);
+        // Store and dispatch in one transaction: if the dispatch throws (a queue outage), the row is
+        // rolled back and the 500 makes the provider retry, so a stored event is never lost undelivered.
+        // Listeners of this event must therefore not be `afterCommit`.
+        $status = DB::transaction(function () use ($row, $attendance): string {
+            $stored = VideoWebhookEvent::query()->insertOrIgnore([
+                'provider_code' => $row->code,
+                'event_id' => $attendance->id,
+                'type' => $attendance->type->value,
+                'room_name' => $attendance->roomName,
+                'participant' => $attendance->participant?->value,
+                'occurred_at' => $attendance->occurredAt,
+                'received_at' => Date::now(),
+            ]);
 
-        if ($stored === 0) {
-            return response()->json(['status' => 'duplicate']);
-        }
+            if ($stored === 0) {
+                return 'duplicate';
+            }
 
-        VideoWebhookReceived::dispatch(
-            VideoWebhookEvent::query()->where('provider_code', $row->code)->where('event_id', $attendance->id)->firstOrFail(),
-        );
+            VideoWebhookReceived::dispatch(
+                VideoWebhookEvent::query()->where('provider_code', $row->code)->where('event_id', $attendance->id)->firstOrFail(),
+            );
 
-        return response()->json(['status' => 'received']);
+            return 'received';
+        });
+
+        return response()->json(['status' => $status]);
     }
 }
