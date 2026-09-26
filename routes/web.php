@@ -16,6 +16,7 @@ use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
 use App\Http\Controllers\Tutor\TutorWeeklySlotController;
+use App\Http\Controllers\Webhooks\VideoWebhookController;
 use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
 
@@ -24,6 +25,8 @@ Route::get('/', HomeController::class)->name('home');
 foreach (PublicPages::all() as $path => $page) {
     Route::get($path, PageController::class)->defaults('slug', $page['slug'])->name('pages.'.$page['slug']);
 }
+
+Route::post('webhooks/video/{code}', VideoWebhookController::class)->where('code', '[a-z]{2,16}')->middleware('throttle:video-webhooks')->name('webhooks.video');
 
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
