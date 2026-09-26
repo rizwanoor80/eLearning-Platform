@@ -1,15 +1,18 @@
 <?php
 
 use App\Enums\CurriculumCode;
+use App\Enums\LevelTier;
 use App\Enums\Role;
 use App\Enums\SettingGroup;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
 use App\Models\Learner;
+use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
+use App\Models\YearGroup;
 use App\Services\Scheduling\SlotCalculator;
 use App\Services\Tutors\TutorRateBands;
 use App\Support\Facades\Settings;
@@ -56,8 +59,10 @@ it('creates at least six approved, bookable demo tutors across GCSE, IB and CBSE
         ->and($codes->contains(CurriculumCode::IbMyp) || $codes->contains(CurriculumCode::IbDp))->toBeTrue();
 });
 
-it('uses fictional example.test emails, never signs in, and gives every tutor a profile, subjects and rules', function () {
+it('uses fictional example.test emails and gives every tutor a profile, subjects and rules', function () {
     $this->seed(DemoTutorSeeder::class);
+
+    expect(TutorProfile::query()->count())->toBe(7);
 
     foreach (TutorProfile::query()->with(['user', 'tutorSubjects', 'availabilityRules'])->get() as $profile) {
         expect($profile->user->email)->toEndWith('@example.test')
@@ -75,6 +80,8 @@ it('keeps every rate inside the band the app itself computes', function () {
 
     $bands = app(TutorRateBands::class);
 
+    expect(TutorProfile::query()->count())->toBe(7);
+
     foreach (TutorProfile::query()->get() as $profile) {
         $band = $bands->bandFor($profile);
         $fils = $profile->hourly_rate->toFils();
@@ -91,6 +98,8 @@ it('gives every permit at least twelve months of validity', function () {
 
     $floor = Date::today()->addMonths(12);
 
+    expect(TutorProfile::query()->count())->toBe(7);
+
     foreach (TutorProfile::query()->get() as $profile) {
         expect($profile->permit_expires_at->gte($floor))->toBeTrue();
     }
@@ -101,6 +110,8 @@ it('offers slots in each of the next eight weeks for every demo tutor', function
     Settings::set('booking_max_days', 60, SettingGroup::Platform);
 
     $now = Date::now();
+
+    expect(TutorProfile::query()->count())->toBe(7);
 
     foreach (TutorProfile::query()->get() as $profile) {
         $weeks = collect(app(SlotCalculator::class)->forTutor($profile, 'UTC', $now, 60))
@@ -211,4 +222,33 @@ it('does not use factories or Faker, which are absent from a --no-dev deploy', f
         ->and($source)->not->toContain('Faker')
         ->and($source)->not->toContain('updateOrCreate')
         ->and($source)->not->toContain('firstOrCreate');
+});
+
+it('aborts with nothing written when an admin has moved a price band away from a demo rate', function () {
+    PriceBand::query()->where('level_tier', LevelTier::Exam2)->update(['min_rate' => 21000, 'max_rate' => 26000]);
+    $before = demoCounts();
+
+    expect(fn () => $this->seed(DemoTutorSeeder::class))->toThrow(RuntimeException::class, 'outside the current');
+
+    expect(demoCounts())->toBe($before);
+});
+
+it('aborts with nothing written when a year group no longer derives the expected tier', function () {
+    YearGroup::query()->where('code', 'y11')->update(['level_tier' => LevelTier::Exam2]);
+    $before = demoCounts();
+
+    expect(fn () => $this->seed(DemoTutorSeeder::class))->toThrow(RuntimeException::class, 'derive tier');
+
+    expect(demoCounts())->toBe($before);
+});
+
+it('pins the weekday convention: a Sunday rule yields Sunday slots in the tutor timezone', function () {
+    $this->seed(DemoTutorSeeder::class);
+
+    $oliver = TutorProfile::query()->whereHas('user', fn ($q) => $q->where('email', 'demo.oliver@example.test'))->firstOrFail();
+    Settings::set('booking_max_days', 30, SettingGroup::Platform);
+    $sundays = collect(app(SlotCalculator::class)->forTutor($oliver, 'Europe/London'))->filter(fn ($slot) => $slot->startsAt->dayOfWeek === 0);
+
+    expect($sundays)->not->toBeEmpty()
+        ->and($sundays->every(fn ($slot) => $slot->startsAt->hour >= 10 && $slot->startsAt->hour < 13))->toBeTrue();
 });

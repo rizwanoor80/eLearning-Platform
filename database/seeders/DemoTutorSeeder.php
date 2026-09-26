@@ -9,12 +9,14 @@ use App\Enums\TutorProfileStatus;
 use App\Enums\UserStatus;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
+use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
 use App\Models\YearGroup;
 use App\Services\Tutors\TutorRateBands;
+use App\Support\YearGroups\YearGroupTiers;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -132,10 +134,33 @@ class DemoTutorSeeder extends Seeder
         $curriculum = Curriculum::query()->where('code', $tutor['curriculum']->value)->first()
             ?? throw new RuntimeException("Curriculum {$tutor['curriculum']->value} is missing; run the base seeders first.");
 
+        $from = $this->yearGroup($curriculum, $tutor['from']);
+        $to = $this->yearGroup($curriculum, $tutor['to']);
+
+        // R33: the tier is derived from the year groups, never typed. A rehearsal admin's edit to a
+        // year group must abort the run here, before anything is written.
+        $tier = YearGroupTiers::derive($from, $to);
+
+        if ($tier !== $tutor['tier']) {
+            throw new RuntimeException("Demo tutor {$tutor['email']}: year groups {$tutor['from']}-{$tutor['to']} derive tier ".($tier->value ?? 'none').", expected {$tutor['tier']->value}.");
+        }
+
+        $band = PriceBand::query()
+            ->where('curriculum_id', $curriculum->id)
+            ->where('level_tier', $tier)
+            ->where('effective_from', '<=', Date::today()->toDateString())
+            ->orderByDesc('effective_from')
+            ->first()
+            ?? throw new RuntimeException("Demo tutor {$tutor['email']}: no current price band for {$curriculum->code->value} {$tier->value}.");
+
+        if ($tutor['rate'] < $band->min_rate->toFils() || $tutor['rate'] > $band->max_rate->toFils()) {
+            throw new RuntimeException("Demo tutor {$tutor['email']}: rate {$tutor['rate']} is outside the current {$curriculum->code->value} {$tier->value} band.");
+        }
+
         return [
             'curriculum' => $curriculum,
-            'from' => $this->yearGroup($curriculum, $tutor['from']),
-            'to' => $this->yearGroup($curriculum, $tutor['to']),
+            'from' => $from,
+            'to' => $to,
             'subjects' => array_map(
                 fn (string $slug): Subject => Subject::query()->where('slug', $slug)->first()
                     ?? throw new RuntimeException("Subject {$slug} is missing; run the base seeders first."),
