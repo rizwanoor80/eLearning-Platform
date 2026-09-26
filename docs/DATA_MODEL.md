@@ -7,6 +7,7 @@ _v1.4 (cycle 04, CP3 3b/3c, R57; describes what shipped): three real schema devi
 _v1.5 (cycle 05, CP4+ sub-cycle 4a, R92/R95/R98/R99/R100; describes what shipped in 4a — 4e's `payments` changes — the `attempt_no` column and uniqueness, and the `payment_method_id` foreign key — are added when 4e ships): `recurring_slots` gains its full CP4 column set plus `price` (R95, frozen on the slot); the slot uniqueness index now covers paused slots (R99); `lessons` gains a recurring-key unique index whose predicate deviates from R98's wording (Deviation A below); `recurring_slot_skips` is new (R98); `payment_methods` is described as built, and its FK from `lessons.payment_method_id` lands in 4a rather than 4e (Note B below). Schema deviation A — `lessons_recurring_slot_starts_at_unique` excludes pause-cancelled rows, see `### lessons`. Note B — the foreign key on `payments.payment_method_id` (the column itself exists since CP3) still goes with 4e._
 
 _v1.6 (cycle 07, CP6 sub-cycle 7b, R122/R125/R126, ADR-017; describes what shipped in 7b): `video_providers` is built as a registry whose two rows (`daily`, `fake`) are inserted by the migration, and `video_webhook_events` is new (verified attendance webhooks, unique on provider and event id, the replay guard). `credentials` is an encrypted array, not encrypted json, keyed by the driver's credential names. The lessons room columns (`room_provider`, `room_id`, `room_created_at`, `room_closed_at`) already existed from CP3._
+_v1.6 addendum (cycle 07, CP6 sub-cycle 7e, R124/R126; describes what shipped in 7e): `progress_reports` is built as specified below, `emailed_at` being the parent-email idempotency claim. `lessons` gains `auto_release_at` (the 72 h deadline, frozen when the lesson completes — a settings change never moves it) and `report_late_at` (set when the platform released escrow because no report came in time; a tutor's late flags are counted from these rows inside a 90-day window, never stored as a number), with an index on `(tutor_profile_id, report_late_at)`. `tutor_strikes.type = late_report_x3` is written once when the third flag lands; it is history plus an admin email, and does not suspend._
 
 ## ERD
 
@@ -138,7 +139,7 @@ payment_method_id (nullable), charge_attempts (int), next_charge_at (nullable),
 room_provider, room_id, tutor_join_url, learner_join_url, room_created_at,
 tutor_joined_at, learner_joined_at, room_closed_at,
 completed_at, cancelled_at, cancelled_by_user_id, cancel_reason,
-report_due_at, escrow_released_at,
+report_due_at, auto_release_at (nullable, frozen at completion), report_late_at (nullable), escrow_released_at,
 timestamps
 ```
 - Indexes: `(tutor_profile_id, starts_at)`, `(learner_id, starts_at)`, `(status)`, `(report_due_at)`, `(next_charge_at) WHERE status = 'reserved'`.
