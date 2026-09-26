@@ -26,6 +26,7 @@ type ReportDue = {
     starts_at: string;
     learner_display_name: string;
     is_trial: boolean;
+    released: boolean;
     due_by: string | null;
     auto_release_by: string | null;
 };
@@ -62,8 +63,11 @@ defineOptions({
                         <span class="text-muted-foreground text-sm">
                             {{ lesson.starts_at }}<template v-if="lesson.due_by"> · due {{ lesson.due_by }}</template>
                         </span>
-                        <span v-if="lesson.auto_release_by" class="text-muted-foreground text-sm">
-                            Released without a report on {{ lesson.auto_release_by }}, and flagged as late.
+                        <span v-if="lesson.released" class="text-muted-foreground text-sm">
+                            Released without a report and flagged as late. You can still file it.
+                        </span>
+                        <span v-else-if="lesson.auto_release_by" class="text-muted-foreground text-sm">
+                            Without a report by {{ lesson.auto_release_by }}, the payment is released and the lesson is flagged as late.
                         </span>
                     </div>
                     <div class="flex items-center gap-2">

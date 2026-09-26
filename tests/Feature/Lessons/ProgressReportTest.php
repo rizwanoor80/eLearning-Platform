@@ -275,6 +275,21 @@ it('lists a tutor\'s completed lessons under reports due on the dashboard, and o
         ->assertInertia(fn (AssertableInertia $page) => $page->has('reportsDue', 0));
 });
 
+it('keeps an auto-released lesson on the dashboard until its late report is filed', function () {
+    Mail::fake();
+    ['lesson' => $lesson, 'tutor' => $tutor] = prSetup();
+    app(AutoReleaseLesson::class)($lesson);
+
+    actingAs($tutor->user)->get(route('tutor.dashboard'))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('reportsDue', 1)
+            ->where('reportsDue.0.id', $lesson->id)->where('reportsDue.0.released', true));
+
+    app(SubmitProgressReport::class)($tutor->user, $lesson->fresh(), prData());
+
+    actingAs($tutor->user)->get(route('tutor.dashboard'))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('reportsDue', 0));
+});
+
 // ---- exactly once against the 72 h sweep ---------------------------------------------------------------
 
 it('releases once when a submit and the sweep land on the same lesson, whichever comes first', function () {

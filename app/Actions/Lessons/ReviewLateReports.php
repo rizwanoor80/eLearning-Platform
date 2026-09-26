@@ -37,6 +37,7 @@ class ReviewLateReports
                 ->where('tutor_profile_id', $locked->id)
                 ->where('report_late_at', '>=', $since)
                 ->orderByDesc('report_late_at')
+                ->orderByDesc('id') // flags landing in the same second still have one latest
                 ->get(['id']);
 
             if ($flags->count() < self::THRESHOLD) {

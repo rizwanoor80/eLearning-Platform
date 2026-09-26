@@ -10,6 +10,7 @@ use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -55,11 +56,17 @@ class TutorDashboardController extends Controller
             ->orderBy('starts_at')
             ->get();
 
-        // Lessons waiting for their report (CP6 7e), oldest first: the payment is released when it is filed,
-        // or by the sweep at the frozen `auto_release_at`.
+        // Lessons waiting for their report (CP6 7e), oldest first: `completed` ones, whose payment is released
+        // when it is filed or by the sweep at the frozen `auto_release_at`, and ones the sweep already released
+        // (`report_late_at`), which still take the report, late.
         $reportsDue = Lesson::query()
             ->where('tutor_profile_id', $tutorProfile->id)
-            ->where('status', LessonStatus::Completed)
+            ->where(fn (Builder $q) => $q
+                ->where('status', LessonStatus::Completed)
+                ->orWhere(fn (Builder $late) => $late
+                    ->where('status', LessonStatus::CompletedReported)
+                    ->whereNotNull('report_late_at')
+                    ->whereDoesntHave('progressReport')))
             ->with(['learner'])
             ->orderBy('ends_at')
             ->get();
@@ -114,6 +121,7 @@ class TutorDashboardController extends Controller
                 'starts_at' => $lesson->starts_at->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
                 'learner_display_name' => $lesson->learner->display_name,
                 'is_trial' => $lesson->type === LessonType::Trial,
+                'released' => $lesson->status !== LessonStatus::Completed,
                 'due_by' => $lesson->report_due_at?->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
                 'auto_release_by' => $lesson->auto_release_at?->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
             ];

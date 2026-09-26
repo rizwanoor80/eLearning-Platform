@@ -5,6 +5,7 @@ use App\Actions\Lessons\MarkProviderFailure;
 use App\Actions\Lessons\RecordAttendance;
 use App\Actions\Lessons\ReviewLateReports;
 use App\Actions\Lessons\SubmitProgressReport;
+use App\Actions\Tutor\SuspendTutorForStrikes;
 use App\Enums\CurriculumCode;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
@@ -220,6 +221,19 @@ it('counts only flags inside the 90-day window, and only this tutor\'s', functio
 
     expect($lesson->fresh()->report_late_at)->not->toBeNull()
         ->and(TutorStrike::query()->where('type', StrikeType::LateReportX3)->count())->toBe(0);
+});
+
+it('does not count the late-report review row toward the three strikes that suspend', function () {
+    $tutor = TutorProfile::factory()->approved()->create();
+    TutorStrike::factory()->count(2)->create(['tutor_profile_id' => $tutor->id]);
+    TutorStrike::factory()->create(['tutor_profile_id' => $tutor->id, 'type' => StrikeType::LateReportX3]);
+
+    app(SuspendTutorForStrikes::class)($tutor);
+    expect($tutor->fresh()->status->value)->toBe('approved');
+
+    TutorStrike::factory()->create(['tutor_profile_id' => $tutor->id]); // a third real strike
+    app(SuspendTutorForStrikes::class)($tutor);
+    expect($tutor->fresh()->status->value)->toBe('suspended');
 });
 
 it('dispatches the review event once, only when the review opens', function () {

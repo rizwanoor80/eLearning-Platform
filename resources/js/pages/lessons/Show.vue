@@ -145,16 +145,16 @@ const closedMessages: Record<string, string> = {
             <Badge variant="outline">{{ statusLabel }}</Badge>
         </div>
 
-        <p v-if="lesson.terminal" class="rounded-xl border p-4 text-sm" data-test="closed">
-            {{ closedMessages[lesson.status] ?? 'This lesson is closed.' }}
-        </p>
-
         <div v-if="lesson.can_report" class="flex flex-wrap items-center gap-3 rounded-xl border p-4" data-test="report-prompt">
-            <p class="text-sm">Your report on this lesson is due. Your payment is released when you submit it.</p>
+            <p class="text-sm">Your report on this lesson is due. It goes to the parent.</p>
             <Button as-child data-test="report-link">
                 <Link :href="`/lessons/${lesson.id}/report`">Write the report</Link>
             </Button>
         </div>
+
+        <p v-if="lesson.terminal" class="rounded-xl border p-4 text-sm" data-test="closed">
+            {{ closedMessages[lesson.status] ?? 'This lesson is closed.' }}
+        </p>
 
         <p v-else-if="lesson.status === 'reserved'" class="rounded-xl border p-4 text-sm" data-test="reserved">
             This weekly lesson is reserved. It is confirmed, and the room made, once the payment goes through.
