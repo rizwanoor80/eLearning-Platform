@@ -264,7 +264,12 @@ it('fails ledger:verify and names the lesson when one does not sum to zero', fun
 it('runs ledger:verify from the composer test script, after Pest', function () {
     $scripts = json_decode(file_get_contents(base_path('composer.json')), true)['scripts']['test'];
 
-    expect(array_search('@php artisan ledger:verify --no-interaction', $scripts, true))->toBeGreaterThan(array_search('@php artisan test', $scripts, true));
+    $pest = array_key_first(array_filter($scripts, fn (string $step) => str_starts_with($step, '@php artisan test')));
+    $verify = array_search('@php artisan ledger:verify --no-interaction', $scripts, true);
+
+    expect($pest)->toBeInt()
+        ->and($verify)->toBeInt()
+        ->and($verify)->toBeGreaterThan($pest);
 });
 
 // ---- money rules (R53) ---------------------------------------------------------------------------
