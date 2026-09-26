@@ -1,13 +1,13 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 15:45 (machine clock) — Context: not measured by the tool — **step 1 done (one deviation); 7a starting**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 16:21 (machine clock) — Context: not measured by the tool — **7a PR #23 open, in review/CI**
 
-Tests: **1375/1375 passed, 6948 assertions** on `main` (baseline; step 1 is docs-only, no code). Advisor: consulted 0 times this cycle so far (first consultation, 7a design, is next; R63 'configured, not measured'). Review: n/a (no PR yet). Resume count 0 of 8.
+Tests: **1391/1391 passed, 7172 assertions** on branch `cp/7a-demo-tutors` (`main` baseline 1375/6948). Advisor: consulted 3 times this cycle so far (7a design, mid-build, pre-PR; all answered; R63 'configured, not measured'). Review: 7a — fresh subagent, no Medium or High, 4 Low notes (3 taken in fix round 1 of 2). Resume count 0 of 8.
 
 ## §1 Git state
-`main` at the docs commit that carries step 1 (on top of `43c9a4f` "PLAN.md cycle 07 r1"); code baseline is still `1ede299`. No feature branch yet. `rehearsal` = `1ede299`. Open PRs: none.
+`main` at the docs commit that carries this STATUS (code baseline still `1ede299`). `cp/7a-demo-tutors` pushed at `a4c51d3` (3 commits ahead of main: 3c10202, ffdff07, a4c51d3). `rehearsal` = `1ede299`. Open PRs: #23 (7a), CI pending at write time.
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
-2. `cp/7a-demo-tutors` (R121) — [in progress]
+2. `cp/7a-demo-tutors` (R121) — **PR #23 open; CI pending; merge, deploy, seeder run and R121 checks still to do**
 3. `cp/7b-video-registry` — [not started]
 4. `cp/7c-room-lifecycle` — [not started]
 5. `cp/7d-lesson-page` — [not started]
@@ -17,6 +17,11 @@ Tests: **1375/1375 passed, 6948 assertions** on `main` (baseline; step 1 is docs
 9. Deploy and END — [not started]
 
 ## §3 What changed this run
+**7a — DemoTutorSeeder (PR #23)**
+- `database/seeders/DemoTutorSeeder.php`: seven fictional tutors ("<First> Demo", `demo.<first>@example.test`) across GCSE (3), CBSE (2), IB MYP (1), IB DP (1); hard-coded data, no factories or Faker (Faker is require-dev); per-tutor transaction; a tutor whose email exists is skipped whole; reference rows, derived tier and price band are checked for all seven tutors before the first insert; each rate re-checked with `TutorRateBands::problemWithRate`; weekly availability rules in the tutor's timezone; permit today + 15 months; unusable random password; no bank data. Not in `DatabaseSeeder`.
+- `tests/Feature/DemoTutorSeederTest.php`: 16 tests (two runs same counts; existing row untouched; unrelated tutors untouched; nothing written on missing subject, moved band or edited year-group tier; eight weeks of slots; guest search lists them; guest `/book` → login; parent gets `slot_available` true; weekday pinned; no factory/Faker in source).
+- Suite 1375 → 1391. Fix round 1 of 2 applied after the review's Low notes.
+
 **Cycle 07 r1, so far**
 - PLAN.md cycle 07 r1 committed as `43c9a4f` before any other work (CYCLE-LOG START).
 - Step 1: `docs/HOW-WE-WORK.md` v1.3 exactly as R119 (a)–(e) lists, plus the version stamp on line 3 (DECISION); ADR-018 (R120) appended to `docs/DECISIONS.md`. Read back and diffed; the diff lines are in the commit. PRD §11 rows D-02 and D-09: refused, see §6 item 0.
@@ -51,7 +56,7 @@ Tests: **1375/1375 passed, 6948 assertions** on `main` (baseline; step 1 is docs
 
 
 ## §5 Why stopping
-Not stopping: step 1 is complete and 7a starts next; nothing in this run needs a halt (R109). This STATUS is the step-boundary write.
+Not stopping: waiting on PR #23's CI (R123 needs it green on the head before the self-merge). Nothing here needs the owner (R109). This STATUS is the push-boundary write.
 
 ## §6 Mismatches
 0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
@@ -82,7 +87,7 @@ Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
 | step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
-| 7a demo tutors | in progress | `cp/7a-demo-tutors` | — | — | — |
+| 7a demo tutors | PR open, CI pending | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | pending CI |
 | 7b video registry | not started | — | — | — | — |
 | 7c room lifecycle | not started | — | — | — | — |
 | 7d lesson page | not started | — | — | — | — |
