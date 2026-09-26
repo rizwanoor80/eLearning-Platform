@@ -1,10 +1,11 @@
 # How We Work — Operating Method for AI-Assisted Projects
 
-_Version 1.2 · September 2026 · Owner: Rizwan_
+_Version 1.3 · September 2026 · Owner: Rizwan_
 _Merged from the Franchise OS and SaaS operating manuals. Hand this to every new project on day one together with PROJECT_BRIEF.md, the PRD and CLAUDE.md. Roles, loop, files and rules are fixed; only the names in §16 change per project._
 
 _Changes in 1.1: window/session vocabulary made precise (§1); new §15 Cost and context discipline, covering both seats; advisor consultations must now name the responding model (§10); HANDOFF log kind (§5); `[skip ci]` on docs-only commits (§8); one planning conversation per cycle (§15, Appendix A)._
 _Changes in 1.2: the clear moves from every step to the cycle END; auto-compaction inside a cycle is expected, not a failure; the 100k ceiling and the programme context cap are removed (§1, §2, §12, §15, Appendices A–B). 1.1's per-step clear stopped work every few minutes and cost more owner time than it saved in tokens._
+_Changes in 1.3 (owner ruling 2026-09-26, R119): the planner asks owner questions one at a time, each with its recommended option first, and writes each answer into PLAN.md as a ruling; every Owner action line carries exactly one question (§2, §7, Appendix A)._
 
 ---
 
@@ -27,7 +28,7 @@ The separation is the point: the planner keeps the plan honest because it cannot
 ## 2. The loop
 
 1. Owner asks the planner **"where are we?"** → the planner reads the channel files and Git state from the repo (never the owner's memory of them), cross-checks, and briefs: current state with evidence, how CC performed (honestly, including its confessions), what the advisor said and whether it was adopted, recommendation, and what *not* to do.
-2. Owner and planner discuss until the owner is satisfied. The planner asks clarifying questions before proposing, gives options with pros and cons, and recommends one.
+2. Owner and planner discuss until the owner is satisfied. The planner asks clarifying questions before proposing, gives options with pros and cons, and recommends one. The planner asks questions one at a time, each with its recommended option first and a one-line reason, takes each answer immediately, and writes the answers into PLAN.md as rulings.
 3. Owner says **"go ahead"** → the planner writes `docs/PLAN.md` into the checkout, uncommitted, **re-reads it from disk and diffs it against what it intended** before replying with one line — *"PLAN.md written (cycle NN rN) — tell Claude Code: update"* — and a short plain-language summary of what the plan does and what, if anything, the owner will be asked to do.
 4. Owner types the single word **`update`** in CC. Nothing else.
 5. CC: `git fetch` and fast-forward `main`; read `docs/PLAN.md`; if it is newer than the committed one, commit it as *"PLAN.md cycle NN rN"* before any other work; refuse to execute a revision that already has an END in the cycle log; then execute from the first unfinished step — logging as it goes, writing STATUS.md, committing, stopping at the next gate. When the cycle reaches END it raises the clear action (§15); within a cycle it keeps working, and auto-compaction along the way is normal. If there is no new work, it writes a NOTE and a STATUS.md saying so rather than staying silent.
@@ -149,7 +150,8 @@ CC never asks the owner anything in chat and never expects the planner to relay.
 
 - **Every question carries a recommendation.** Option 1 is labelled "(Recommended)" with a one-line reason, and the reason is logged. Bare options are not acceptable. Better still: decide with the advisor, log a DECISION, continue — ask only at a genuine stop condition or before an irreversible action outside the plan. The owner is not a judgment-outsourcing service.
 - **Evidence before asking.** Before restating an owner action, check whether it already happened — a key name in `.env`, a file on the server, a log line, a running service — and proceed on that evidence. Console output the owner pastes is welcome, never required. Anything the owner runs on a server logs its own output to a file on that box.
-- The planner asks the owner questions freely in chat; that is what the discussion step is for.
+- One question per Owner action line.
+- The planner asks the owner questions in chat one at a time, recommended option first, and writes each answer into PLAN.md as a ruling; the owner never answers a bundled list.
 
 ---
 
@@ -330,7 +332,9 @@ These files are the source of truth. Never ask the owner to paste Claude Code ou
 
 HOW WE WORK:
 - Discuss freely. Ask clarifying questions before proposing if anything is ambiguous. Give
-  options with pros and cons and one recommendation with a one-line reason.
+  options with pros and cons and one recommendation with a one-line reason. Ask questions one
+  at a time, each with its recommended option first and a one-line reason, take each answer
+  immediately, and write the answers into PLAN.md as rulings.
 - On "go ahead" (or "go", "approved", "write the plan"): write the agreed plan to docs/PLAN.md
   in the HOW-WE-WORK §4 format, under 100 lines, overwriting the previous revision; read it back
   from disk and diff it; then reply with one line — "PLAN.md written (cycle NN rN) — tell Claude

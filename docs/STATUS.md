@@ -1,18 +1,29 @@
-# STATUS — cycle 06 r1 (single-booking screen) — written 2026-09-26 11:19 (machine clock) — Context: not measured by the tool — **cycle END: 6a merged and deployed to rehearsal, 6b not found, 6c verified**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 15:45 (machine clock) — Context: not measured by the tool — **step 1 done (one deviation); 7a starting**
 
-Tests: **1375/1375 passed, 6948 assertions** on `main` at `1ede299` (+42 over the 1333/6362 baseline). Pint, PHPStan (0 errors), RTL, `ledger:verify` (Ledger OK), `npm run build`: green; CI green on the PR head `81c0216`. Advisor: consulted 3 times this cycle so far (6a design, mid-build, pre-PR; R63 'configured, not measured'; all answered). Review: two fresh-subagent reviews of PR #22 — review 1 FAIL (Medium: stale price on a two-tab submit), fixed in fix loop 1 (`quote_token`); review 2 no Medium or High open, Lows carried (§6 item 11). Resume count 0 of 8.
+Tests: **1375/1375 passed, 6948 assertions** on `main` (baseline; step 1 is docs-only, no code). Advisor: consulted 0 times this cycle so far (first consultation, 7a design, is next; R63 'configured, not measured'). Review: n/a (no PR yet). Resume count 0 of 8.
 
 ## §1 Git state
-`main` = `origin/main` (code at `1ede299`, docs on top) (PR #22 squash: 6a — 7 files: `BookLessonController`, `StoreLessonBookingRequest`, `LessonPolicy`, `Book.vue`, `Show.vue`, `routes/web.php`, `BookLessonScreenTest`; no frozen or money file). Branch `cp/6a-booking-screen` stays on origin. `rehearsal` = `1ede299` (fast-forwarded from `c34979a`, 11 commits, no force); rehearsal's current release runs `1ede299`.
+`main` at the docs commit that carries step 1 (on top of `43c9a4f` "PLAN.md cycle 07 r1"); code baseline is still `1ede299`. No feature branch yet. `rehearsal` = `1ede299`. Open PRs: none.
 
-## §2 Step map (cycle 06 r1)
-1. `cp/6a-booking-screen` (PR #22) — **merged `1ede299`**; post-merge smoke green (`/`, `/login`, `/admin/login`, `/tutors` all 200 locally).
-2. Advisor-model measurement (R115) — **done, not found**: no model name in CC's own local records; NOTE logged, R63 'configured, not measured' continues, no ADR-017.
-3. Rehearsal deploy and END (R117) — **done**: R111 quoted; `rehearsal` pushed at 11:16; Forge deployed `1ede299` within about a minute of the push (no click); R91 checks green (§3, VERIFICATION in CYCLE-LOG).
+## §2 Step map (cycle 07 r1)
+1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
+2. `cp/7a-demo-tutors` (R121) — [in progress]
+3. `cp/7b-video-registry` — [not started]
+4. `cp/7c-room-lifecycle` — [not started]
+5. `cp/7d-lesson-page` — [not started]
+6. `cp/7e-reports` (R124) — [not started]
+7. `cp/7f-trial-cta-timeline` — [not started]
+8. `cp/7g-branding` (R49) — [not started]
+9. Deploy and END — [not started]
 
 ## §3 What changed this run
+**Cycle 07 r1, so far**
+- PLAN.md cycle 07 r1 committed as `43c9a4f` before any other work (CYCLE-LOG START).
+- Step 1: `docs/HOW-WE-WORK.md` v1.3 exactly as R119 (a)–(e) lists, plus the version stamp on line 3 (DECISION); ADR-018 (R120) appended to `docs/DECISIONS.md`. Read back and diffed; the diff lines are in the commit. PRD §11 rows D-02 and D-09: refused, see §6 item 0.
+
 - **6a merged (PR #22, `1ede299`)** — R114: `GET tutors/{tutor}/book` (`BookLessonController::create`) and `POST lessons` (`store`, calls `BookLesson` unchanged), `StoreLessonBookingRequest`, `LessonPolicy::bookFor`, `lessons/Book.vue`, slot links in `tutors/Show.vue` (guests and parents only), 42 tests. Fix loop 1 added a `quote_token` (keyed HMAC of learner, tutor, type, price, currency; recomputed in `store()`) so the client chooses neither type nor price and a stale two-tab page is refused before `BookLesson`. Also: CP3 acceptance box added in CHECKPOINTS.md (R118); §6 item 2a's single-booking gap closed.
 - The stalled STATUS helper (`shell_exec('date')` waits on Windows) was stopped by TaskStop; its half-written `docs/STATUS.md` was discarded before the branch switch. Timestamps are now passed through the `TS` env var.
+
 
 (Cycle 05 record, carried:)
 - **4f (`cp/4f-fake-gateway`, PR #21, `c34979a`)** — R107, ADR-016: `AppProvidersPaymentGatewayServiceProvider` binds `FakePaymentGateway` to `PaymentGateway` on `local`, `testing` and `rehearsal` only (allow-list; production, staging, a typo or an empty `APP_ENV` stay unbound and fail closed). One predicate, `fakeGatewayAllowed()`, also drives `SaveTestCard::available()` (tightened from "not production", so the fake add-card page also 404s on staging — a DECISION, owner may overrule), the shared Inertia prop `paymentTestMode` and the `TestModeBanner.vue` "Test mode — no real card is charged" banner on the add-card, weekly-slot and learner pages, plus the Filament create-slot modal. Docblock-only edits under `app/Services/Payments/*`. 18 new tests (`GatewayBindingTest`), red shown by dropping `rehearsal`. Docs on `main`: ADR-016 (supersedes ADR-015's "unbound outside tests" clause), CHECKPOINTS 4e line and CP5 registry line.
@@ -27,7 +38,10 @@ Tests: **1375/1375 passed, 6948 assertions** on `main` at `1ede299` (+42 over th
   - Docs on `main` (`[skip ci]`): DATA_MODEL v1.5 `payments` note, DECISIONS ADR-013..015, CHECKPOINTS 4e bullet and two acceptance annotations, CYCLE-LOG (advisor, DECISIONs, VERIFICATION, REVIEW, BLOCKER, HANDOFF, a timestamp-correction NOTE).
 - 4d (PR #19, `c0e2fc3`): portal — weekly-slot screens, fake add-card, slot emails. 4c (PR #18, `dd34988`): `recurring:generate`. 4b (PR #17, `496a76d`): slot actions and the Filament resource. 4a (PR #16, `6375469`): foundation migrations, enums, models, `SlotCalculator`. Detail: CYCLE-LOG.
 
+
 ## §4 Decisions and by whom
+- CC (cycle 07, step 1): the HOW-WE-WORK version stamp reads 1.3 (R119 lists a changelog line but not the stamp); logged as a DECISION.
+- Owner rulings for this cycle: R119–R126 (PLAN r1).
 - CC (4e): retry arithmetic; HOLD written inside the confirm transition; missed-start sweep with `charge_window_missed`; email rules; parent resume needs a usable card with `last_failed_at` null; `payments` uniqueness and key — all logged as DECISIONs 2026-09-25 and covered by ADR-013..015; the four money decisions were consulted in one mid-build consult, the others were not put to the advisor separately (disclosed).
 - Owner (2026-09-26): R104 option 1 and fix loop 1 (`update — 1: option 1; 2: option 1`, PLAN r2 R104–R106).
 - CC (4e fix loop): the R104 branch does not fire while a Pending attempt exists (a narrow departure from R104's "never charged", to avoid stranding a payment the gateway may have taken); no fix loop 2 and no self-merge for the re-review's Low (rule 6). Both logged as DECISIONs 2026-09-26.
@@ -35,10 +49,12 @@ Tests: **1375/1375 passed, 6948 assertions** on `main` at `1ede299` (+42 over th
 - CC (4d, 4c, 4b): as in the earlier STATUS — fake add-card gated on `APP_ENV != production`; permit hold and 24h rule; floor at today; skip mail keyed on `notified_at`; `SlotCalculator::local()` public; notice-end leaves the slot `active`/`paused` until 4c's daily run; the `lessons` recurring key excludes `slot_paused` rows so resume can refill. All advisor-consulted where the plan required it.
 - Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103.
 
+
 ## §5 Why stopping
-Stopping at END: cycle 06 r1 is complete and nothing further is authorised. The next plan needs the owner's D-02, D-04 and D-09 rulings (§7). Rehearsal now serves `1ede299`.
+Not stopping: step 1 is complete and 7a starts next; nothing in this run needs a halt (R109). This STATUS is the step-boundary write.
 
 ## §6 Mismatches
+0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
 2. **Open Low from the re-review — carried to CP5 by the owner (R108).** (a) **In-flight exception:** if a run dies after `begin()` committed a Pending row but before the gateway call, and the tutor is suspended before the next run, the next run charges the lesson (Confirmed, HOLD, "charged" mail) — or on a decline counts a failure toward pausing the slot. The alternative (cancel over the Pending row) can strand a payment the gateway took with no ledger entry. The proper fix is a gateway status lookup by idempotency key, which the fake gateway cannot answer; a CP5 carry. (b) Note: a `Captured` payment with a failed hold (`NeedsReview`) leaves the lesson `reserved`, so a later run could cancel it `tutor_unavailable` over money taken; `ledger:verify` flags it and the email drops "Nothing was charged"; optionally exclude Captured at the guard. (c) Notes: the 'account deleted' test proves the scope's `deleted_at` clause only (the real `AnonymizeUser` path cannot reach R104); the tutor mail would go to a trashed user's address (skip when `$tutor->trashed()`); the "keep or end" wording is asserted only as "still active".
 2a. **Fake gateway bound on rehearsal only (invariant 16 stopgap, R107 / ADR-016) — replaces the old "no gateway outside tests" mismatch.** After the step-7 deploy, rehearsal's hourly `recurring:charge` will fake-charge due weekly lessons and cancel a reserved lesson whose start has passed as `charge_window_missed`; rehearsal has 0 `recurring_slots` and 0 `lessons`, so nothing is expected to happen until someone sets one up there. Production and staging stay unbound. CP5's registry replaces the binding (CHECKPOINTS CP5). **The single-booking gap is CLOSED by 6a (PR #22, squash `1ede299`, cycle 06 r1):** a parent now books a trial or regular lesson from a tutor profile; on rehearsal it takes effect at the 6c deploy. Never pass `artisan --env=…` on a server (ADR-016).
@@ -57,20 +73,22 @@ Stopping at END: cycle 06 r1 is complete and nothing further is authorised. The 
 9. **Earlier mismatches, resolved:** R98's literal lessons index vs resume (built with `AND cancel_reason IS DISTINCT FROM 'slot_paused'`); the `lessons.payment_method_id` FK moved to 4a with `payment_methods`; `payments.payment_method_id` FK now in 4e; the 4a and 4b carried Lows all dispositioned by 4d/4e.
 10. **Review artefact, not a finding:** the reviewer saw no ADR-013..015 on the branch; they are on `main` (`git show origin/main:docs/DECISIONS.md | grep -c "ADR-01[345]"` = 3).
 
-## §7 Next step / Owner actions
-Owner action 1: **D-02 payment gateway** — reply with the gateway. Option 1 (Recommended): Stripe, the PRD §11 default (supports saved-card charging); eligibility depends on D-04. Option 2: another gateway (name it). Reply `update — 1: option 1`.
-Owner action 2: **D-04 legal entity** — decide with counsel; it gates the gateway account, VAT and the tutor agreement. Option 1 (Recommended): settle it now, since D-02 depends on it. Reply `update — 2: <decision>`.
-Owner action 3: **D-09 mail provider** — Option 1 (Recommended): Postmark, transactional-only, ADR-007 already names it. Option 2: another provider. Reply `update — 3: option 1`.
-Owner action 4: **CLAUDE.local.md lines 8 and 27** (optional; the file is git-ignored and only the owner may change it here) — since push-to-deploy proved out (§6 item 2f), set line 8 to "deploys from branch `rehearsal`, push-to-deploy ON; CC deploys per PLAN R111" and drop "triggering a deploy" from line 27 for rehearsal only, or leave both as they are and rehearsal deploys stay owner-pressed. Option 1 (Recommended): amend, so R111 needs no click. Reply `update — 4: option 1`.
-Owner action 5: **UI developer's review of PR #22 (6a, merged)** — non-blocking: ask them to review the booking screen (`resources/js/pages/lessons/Book.vue`, slot links in `tutors/Show.vue`) and send findings to the planner. To see it on rehearsal a bookable tutor must exist there (§6 item 2g); rehearsal has none. No reply needed.
-Then `/clear` this session and reply `update — <answers>`. Reply `update` after any halt.
 
-## §8 Programme board — cycle 06 r1
+## §7 Next step / Owner actions
+Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for CC and the harness refused my R126 edit. Option 1 (Recommended): you replace the D-02 row's status cell with "**Decided (owner, 2026-09-26, R120): multiple gateways via the registry (§12); Stripe first, provisional on D-04**" and add a row after D-08: `| D-09 | Transactional mail provider | Postmark (ADR-007) | **Decided (owner, 2026-09-26, R120): Postmark**; wiring is a later step, rehearsal stays on the log mailer |`. Non-blocking; reply `update` when done, or say nothing and it stays in §6.
+(Work continues with 7a; this is not a halt.)
+
+## §8 Programme board — cycle 07 r1
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 6a booking screen | merged | `cp/6a-booking-screen` | #22 | review 1 FAIL Medium (fixed); review 2 no Medium+ | self-merged `1ede299` under R116 |
-| 6b advisor model (R115) | done — not found | — | — | — | — |
-| 6c rehearsal deploy + END (R117) | done — deployed and verified | `rehearsal` = `1ede299` | — | — | R111 standing |
+| step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
+| 7a demo tutors | in progress | `cp/7a-demo-tutors` | — | — | — |
+| 7b video registry | not started | — | — | — | — |
+| 7c room lifecycle | not started | — | — | — | — |
+| 7d lesson page | not started | — | — | — | — |
+| 7e reports | not started | — | — | — | — |
+| 7f trial CTA + timeline | not started | — | — | — | — |
+| 7g branding | not started | — | — | — | — |
 
 Resume count: **0 of 8**.
 
