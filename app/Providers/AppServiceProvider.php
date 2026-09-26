@@ -54,6 +54,8 @@ class AppServiceProvider extends ServiceProvider
 
     protected function configureRateLimiting(): void
     {
+        // Named, so its counter is its own: an unnamed throttle:N,M shares one with every other unnamed throttle of the same numbers.
+        RateLimiter::for('lesson-room', fn (Request $request) => Limit::perMinute(20)->by((string) $request->user()->id));
         RateLimiter::for('video-webhooks', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
     }
 
