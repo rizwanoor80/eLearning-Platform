@@ -16,7 +16,9 @@ use App\Models\Lesson;
 use App\Models\PaymentMethod;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
+use App\Models\TutorSubject;
 use App\Models\User;
+use App\Services\Scheduling\TrialSlotPrefill;
 use App\Services\Scheduling\WeeklySlotOptions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,7 +34,7 @@ use Inertia\Response;
  */
 class WeeklySlotController extends Controller
 {
-    public function create(Request $request, CreateRecurringSlot $create, WeeklySlotOptions $options): Response
+    public function create(Request $request, CreateRecurringSlot $create, WeeklySlotOptions $options, TrialSlotPrefill $prefill): Response
     {
         /** @var User $user */
         $user = $request->user();
@@ -54,6 +56,16 @@ class WeeklySlotController extends Controller
         $card = PaymentMethod::query()->where('account_user_id', $user->id)->first();
         $usableCard = $card !== null && $card->isUsable();
 
+        $slotOptions = $options->forTutor($tutor, $user->timezone);
+        $subjects = $tutor->tutorSubjects->map(fn (TutorSubject $row): array => [
+            'curriculum_id' => $row->curriculum_id,
+            'subject_id' => $row->subject_id,
+            'label' => $row->subject?->name.' · '.$row->curriculum?->name,
+        ])->values()->all();
+
+        // Only the caller's own learner is ever looked at: `$selected` came out of their own learner list.
+        $selectedLearner = $selected === null ? null : $learners->firstWhere('id', $selected);
+
         return Inertia::render('weekly-slots/Create', [
             'tutor' => [
                 'id' => $tutor->id,
@@ -66,12 +78,9 @@ class WeeklySlotController extends Controller
                 'trial_completed' => $create->hasCompletedTrial($learner, $tutor),
             ])->all(),
             'selected_learner' => $selected,
-            'subjects' => $tutor->tutorSubjects->map(fn ($row): array => [
-                'curriculum_id' => $row->curriculum_id,
-                'subject_id' => $row->subject_id,
-                'label' => $row->subject?->name.' · '.$row->curriculum?->name,
-            ])->values()->all(),
-            'options' => $options->forTutor($tutor, $user->timezone),
+            'subjects' => $subjects,
+            'options' => $slotOptions,
+            'prefill' => $selectedLearner === null ? null : $prefill->for($selectedLearner, $tutor, $subjects, $slotOptions),
             'timezone' => $user->timezone,
             'card' => $usableCard ? ['brand' => $card->brand, 'last4' => $card->last4] : null,
             'can_add_card' => SaveTestCard::available(),

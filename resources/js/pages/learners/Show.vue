@@ -22,6 +22,31 @@ defineProps<{
     }>;
     lessons: Array<{ id: number; starts_at: string; status: string; subject: string | null; tutor: string; cancel_kind: 'skip' | null }>;
     eligible_tutors: Array<{ id: number; name: string }>;
+    reports: Array<{
+        id: number;
+        lesson_id: number;
+        date: string;
+        subject: string | null;
+        tutor: string;
+        is_trial: boolean;
+        topics_covered: string;
+        went_well: string;
+        work_on_next: string;
+        homework: string;
+        engagement: number;
+        trial_suitability: string | null;
+        trial_recommended_frequency: number | null;
+        trial_focus_areas: string | null;
+    }>;
+    reports_capped: boolean;
+    recent_focus: Array<{
+        lesson_id: number;
+        date: string;
+        subject: string | null;
+        tutor: string;
+        work_on_next: string;
+        trial_focus_areas: string | null;
+    }>;
     timezone: string;
 }>();
 
@@ -115,6 +140,46 @@ function resume(id: number) {
                     </div>
                 </li>
             </ul>
+        </section>
+
+        <section v-if="recent_focus.length" class="grid gap-3" data-test="recent-focus">
+            <h2 class="font-medium">Recent focus areas</h2>
+            <p class="text-muted-foreground text-xs">What the tutors said to work on next, from the last {{ recent_focus.length }} {{ recent_focus.length === 1 ? 'report' : 'reports' }}.</p>
+            <ul class="divide-y rounded-xl border">
+                <li v-for="item in recent_focus" :key="item.lesson_id" class="grid gap-1 p-4">
+                    <span class="text-muted-foreground text-xs">{{ item.date }} · {{ item.subject ?? 'Lesson' }} with {{ item.tutor }}</span>
+                    <span class="text-sm whitespace-pre-line">{{ item.work_on_next }}</span>
+                    <span v-if="item.trial_focus_areas" class="text-sm whitespace-pre-line"><strong>First month:</strong> {{ item.trial_focus_areas }}</span>
+                </li>
+            </ul>
+        </section>
+
+        <section v-if="reports.length" class="grid gap-3" data-test="report-timeline">
+            <h2 class="font-medium">Progress reports</h2>
+            <p v-if="reports_capped" class="text-muted-foreground text-xs">Showing the latest {{ reports.length }} reports.</p>
+            <ol class="grid gap-3">
+                <li v-for="report in reports" :key="report.id" class="grid gap-2 rounded-xl border p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-medium">{{ report.date }} · {{ report.subject ?? 'Lesson' }} with {{ report.tutor }}</span>
+                        <div class="flex items-center gap-2">
+                            <Badge v-if="report.is_trial" variant="secondary">trial</Badge>
+                            <Badge variant="outline">engagement {{ report.engagement }}/5</Badge>
+                        </div>
+                    </div>
+                    <p class="text-sm whitespace-pre-line"><strong>Topics covered:</strong> {{ report.topics_covered }}</p>
+                    <p class="text-sm whitespace-pre-line"><strong>What went well:</strong> {{ report.went_well }}</p>
+                    <p class="text-sm whitespace-pre-line"><strong>To work on next:</strong> {{ report.work_on_next }}</p>
+                    <p class="text-sm whitespace-pre-line"><strong>Homework set:</strong> {{ report.homework }}</p>
+                    <template v-if="report.is_trial">
+                        <p class="text-sm"><strong>Fit:</strong> {{ report.trial_suitability }}</p>
+                        <p class="text-sm">
+                            <strong>Recommended:</strong> {{ report.trial_recommended_frequency }}
+                            {{ report.trial_recommended_frequency === 1 ? 'lesson' : 'lessons' }} a week
+                        </p>
+                        <p class="text-sm whitespace-pre-line"><strong>Focus areas for the first month:</strong> {{ report.trial_focus_areas }}</p>
+                    </template>
+                </li>
+            </ol>
         </section>
     </div>
 </template>

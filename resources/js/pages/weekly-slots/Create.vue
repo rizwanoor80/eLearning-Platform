@@ -12,6 +12,7 @@ const props = defineProps<{
     tutor: { id: number; name: string; rate: string | null };
     learners: Array<{ id: number; display_name: string; trial_completed: boolean }>;
     selected_learner: number | null;
+    prefill: { subject: string | null; slot: string | null; frequency: number | null } | null;
     subjects: Array<{ curriculum_id: number; subject_id: number; label: string }>;
     options: Array<{ weekday: number; start_time: string; value: string; label: string; next: string | null; first_on: string | null }>;
     timezone: string;
@@ -30,8 +31,8 @@ defineOptions({
 });
 
 const learnerId = ref<number | ''>(props.selected_learner ?? '');
-const slot = ref('');
-const subject = ref('');
+const slot = ref(props.prefill?.slot ?? '');
+const subject = ref(props.prefill?.subject ?? '');
 
 const form = useForm({
     learner_id: props.selected_learner ?? '',
@@ -52,8 +53,12 @@ watch(chosen, (option) => {
     if (option?.first_on) {
         form.starts_on = option.first_on;
     }
-});
+}, { immediate: true });
 const startMin = computed(() => chosen.value?.first_on ?? props.min_start);
+// The recommendation belongs to the learner the link named; it is not shown if another learner is picked.
+const frequencyHint = computed(() => (props.prefill?.frequency && Number(learnerId.value) === props.selected_learner ? props.prefill.frequency : null));
+// The server names this error `slot`, which is not one of the form's fields.
+const slotError = computed(() => (form.errors as Record<string, string | undefined>).slot);
 const addCardHref = computed(() => `/payment-methods/create?tutor=${props.tutor.id}` + (learnerId.value ? `&learner=${learnerId.value}` : ''));
 
 function submit() {
@@ -110,6 +115,9 @@ function submit() {
             </p>
 
             <template v-else>
+                <p v-if="frequencyHint" class="rounded-md border p-3 text-sm" data-test="frequency-hint">
+                    After the trial, {{ tutor.name }} recommended {{ frequencyHint }} {{ frequencyHint === 1 ? 'lesson' : 'lessons' }} a week.
+                </p>
                 <div class="grid gap-2">
                     <Label for="subject">Subject</Label>
                     <select id="subject" v-model="subject" class="border-input rounded-md border p-2 text-sm" required>
@@ -143,7 +151,7 @@ function submit() {
                     <InputError :message="form.errors.ends_on" />
                 </div>
 
-                <InputError :message="form.errors.slot" />
+                <InputError :message="slotError" />
 
                 <div class="flex items-center gap-3">
                     <Button type="submit" :disabled="form.processing || !slot || !subject">

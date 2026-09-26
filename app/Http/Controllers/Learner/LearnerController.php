@@ -15,6 +15,7 @@ use App\Http\Requests\Learner\UpdateLearnerRequest;
 use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
+use App\Models\ProgressReport;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
@@ -27,6 +28,11 @@ use Inertia\Response;
 
 class LearnerController extends Controller
 {
+    /** How many reports the timeline shows, and how many feed "recent focus areas". */
+    private const TIMELINE_REPORTS = 20;
+
+    private const FOCUS_REPORTS = 5;
+
     public function index(Request $request): Response
     {
         Gate::authorize('viewAny', Learner::class);
@@ -109,6 +115,19 @@ class LearnerController extends Controller
             ->values()
             ->all();
 
+        // Newest lesson first (a late report can be filed after a newer lesson's, so the lesson's own date is the
+        // order, not the filing time). Joining on the lesson's learner id scopes it: only reports on this learner,
+        // whose page the `view` gate already limited to the account owner, can appear.
+        $reports = ProgressReport::query()
+            ->select('progress_reports.*')
+            ->join('lessons', 'lessons.id', '=', 'progress_reports.lesson_id')
+            ->where('lessons.learner_id', $learner->id)
+            ->with(['lesson.subject:id,name', 'lesson.tutorProfile.user:id,name'])
+            ->orderByDesc('lessons.starts_at')
+            ->orderByDesc('progress_reports.id')
+            ->limit(self::TIMELINE_REPORTS)
+            ->get();
+
         return Inertia::render('learners/Show', [
             'learner' => $this->present($learner),
             'slots' => $slots->map(fn (RecurringSlot $slot): array => [
@@ -136,6 +155,9 @@ class LearnerController extends Controller
                 'cancel_kind' => $lesson->status === LessonStatus::Reserved ? 'skip' : null,
             ])->all(),
             'eligible_tutors' => $eligible,
+            'reports' => $reports->map(fn (ProgressReport $report): array => $this->presentReport($report, $user))->all(),
+            'reports_capped' => $reports->count() >= self::TIMELINE_REPORTS,
+            'recent_focus' => $reports->take(self::FOCUS_REPORTS)->map(fn (ProgressReport $report): array => $this->presentFocus($report, $user))->all(),
             'timezone' => $user->timezone,
         ]);
     }
@@ -175,6 +197,53 @@ class LearnerController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Learner removed.')]);
 
         return to_route('learners.index');
+    }
+
+    /**
+     * One report on the learner's timeline. The tutor's words are shown as written; the date is the
+     * lesson's, in the viewer's timezone.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentReport(ProgressReport $report, User $user): array
+    {
+        $lesson = $report->lesson;
+
+        return [
+            'id' => $report->id,
+            'lesson_id' => $lesson->id,
+            'date' => $lesson->starts_at->setTimezone($user->timezone)->format('D, j M Y'),
+            'subject' => $lesson->subject?->name,
+            'tutor' => $lesson->tutorProfile->displayName(),
+            'is_trial' => $report->trial_suitability !== null,
+            'topics_covered' => $report->topics_covered,
+            'went_well' => $report->went_well,
+            'work_on_next' => $report->work_on_next,
+            'homework' => $report->homework,
+            'engagement' => $report->engagement,
+            'trial_suitability' => $report->trial_suitability?->label(),
+            'trial_recommended_frequency' => $report->trial_recommended_frequency,
+            'trial_focus_areas' => $report->trial_focus_areas,
+        ];
+    }
+
+    /**
+     * What one report says to work on next; a trial report adds the tutor's focus areas for the first month.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentFocus(ProgressReport $report, User $user): array
+    {
+        $lesson = $report->lesson;
+
+        return [
+            'lesson_id' => $lesson->id,
+            'date' => $lesson->starts_at->setTimezone($user->timezone)->format('D, j M Y'),
+            'subject' => $lesson->subject?->name,
+            'tutor' => $lesson->tutorProfile->displayName(),
+            'work_on_next' => $report->work_on_next,
+            'trial_focus_areas' => $report->trial_focus_areas,
+        ];
     }
 
     /**
