@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\VideoProviders;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\VideoProviders\Pages\EditVideoProvider;
 use App\Filament\Resources\VideoProviders\Pages\ListVideoProviders;
 use App\Filament\Resources\VideoProviders\Schemas\VideoProviderForm;
@@ -19,6 +20,8 @@ use Filament\Tables\Table;
  */
 class VideoProviderResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = VideoProvider::class;
 
     protected static ?string $navigationLabel = 'Video providers';
