@@ -1,13 +1,13 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 16:21 (machine clock) — Context: not measured by the tool — **7a PR #23 open, in review/CI**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 16:29 (machine clock) — Context: not measured by the tool — **7a merged and on rehearsal; 7b next**
 
-Tests: **1391/1391 passed, 7172 assertions** on branch `cp/7a-demo-tutors` (`main` baseline 1375/6948). Advisor: consulted 3 times this cycle so far (7a design, mid-build, pre-PR; all answered; R63 'configured, not measured'). Review: 7a — fresh subagent, no Medium or High, 4 Low notes (3 taken in fix round 1 of 2). Resume count 0 of 8.
+Tests: **1391/1391 passed, 7172 assertions** (main 3548a04; CI green). Advisor: consulted 3 times this cycle so far (all 7a; all answered; R63 'configured, not measured'). Review: 7a — no Medium or High, 4 Low (3 fixed). Resume count 0 of 8.
 
 ## §1 Git state
-`main` at the docs commit that carries this STATUS (code baseline still `1ede299`). `cp/7a-demo-tutors` pushed at `a4c51d3` (3 commits ahead of main: 3c10202, ffdff07, a4c51d3). `rehearsal` = `1ede299`. Open PRs: #23 (7a), CI pending at write time.
+`main` = merge commit `3548a04` (PR #23) plus docs commits on top; CI on 3548a04 green (run 36241784152). `rehearsal` = `3548a04` (fast-forwarded from `1ede299` under R111). No open PRs from this cycle. Branch `cp/7a-demo-tutors` merged, kept.
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
-2. `cp/7a-demo-tutors` (R121) — **PR #23 open; CI pending; merge, deploy, seeder run and R121 checks still to do**
+2. `cp/7a-demo-tutors` (R121) — **done**: PR #23 merged (3548a04, R123), rehearsal deployed, seeder run once, 7 tutors, /tutors, a profile and guest /book (302 to /login) checked.
 3. `cp/7b-video-registry` — [not started]
 4. `cp/7c-room-lifecycle` — [not started]
 5. `cp/7d-lesson-page` — [not started]
@@ -17,14 +17,20 @@ Tests: **1391/1391 passed, 7172 assertions** on branch `cp/7a-demo-tutors` (`mai
 9. Deploy and END — [not started]
 
 ## §3 What changed this run
-**7a — DemoTutorSeeder (PR #23)**
-- `database/seeders/DemoTutorSeeder.php`: seven fictional tutors ("<First> Demo", `demo.<first>@example.test`) across GCSE (3), CBSE (2), IB MYP (1), IB DP (1); hard-coded data, no factories or Faker (Faker is require-dev); per-tutor transaction; a tutor whose email exists is skipped whole; reference rows, derived tier and price band are checked for all seven tutors before the first insert; each rate re-checked with `TutorRateBands::problemWithRate`; weekly availability rules in the tutor's timezone; permit today + 15 months; unusable random password; no bank data. Not in `DatabaseSeeder`.
-- `tests/Feature/DemoTutorSeederTest.php`: 16 tests (two runs same counts; existing row untouched; unrelated tutors untouched; nothing written on missing subject, moved band or edited year-group tier; eight weeks of slots; guest search lists them; guest `/book` → login; parent gets `slot_available` true; weekday pinned; no factory/Faker in source).
-- Suite 1375 → 1391. Fix round 1 of 2 applied after the review's Low notes.
+**7a — merged and live on rehearsal**
+- PR #23 self-merged under R123 (CI green on head a4c51d3, no Medium/High, diff = seeder + its test) as `3548a04`; main CI green.
+- `rehearsal` fast-forwarded to `3548a04` under R111; Forge release confirmed by server `git log`; migrations all Ran; Horizon running.
+- `DemoTutorSeeder` run once on rehearsal (exit 0, 1.8 s): users 1→8, tutor_profiles 0→7, tutor_subjects 0→14, availability_rules 0→21. `/tutors` lists 7; `/tutors/1` 200; guest `/tutors/1/book` 302 to `/login`.
 
 **Cycle 07 r1, so far**
 - PLAN.md cycle 07 r1 committed as `43c9a4f` before any other work (CYCLE-LOG START).
 - Step 1: `docs/HOW-WE-WORK.md` v1.3 exactly as R119 (a)–(e) lists, plus the version stamp on line 3 (DECISION); ADR-018 (R120) appended to `docs/DECISIONS.md`. Read back and diffed; the diff lines are in the commit. PRD §11 rows D-02 and D-09: refused, see §6 item 0.
+
+
+**7a — DemoTutorSeeder (PR #23)**
+- `database/seeders/DemoTutorSeeder.php`: seven fictional tutors ("<First> Demo", `demo.<first>@example.test`) across GCSE (3), CBSE (2), IB MYP (1), IB DP (1); hard-coded data, no factories or Faker (Faker is require-dev); per-tutor transaction; a tutor whose email exists is skipped whole; reference rows, derived tier and price band are checked for all seven tutors before the first insert; each rate re-checked with `TutorRateBands::problemWithRate`; weekly availability rules in the tutor's timezone; permit today + 15 months; unusable random password; no bank data. Not in `DatabaseSeeder`.
+- `tests/Feature/DemoTutorSeederTest.php`: 16 tests (two runs same counts; existing row untouched; unrelated tutors untouched; nothing written on missing subject, moved band or edited year-group tier; eight weeks of slots; guest search lists them; guest `/book` → login; parent gets `slot_available` true; weekday pinned; no factory/Faker in source).
+- Suite 1375 → 1391. Fix round 1 of 2 applied after the review's Low notes.
 
 - **6a merged (PR #22, `1ede299`)** — R114: `GET tutors/{tutor}/book` (`BookLessonController::create`) and `POST lessons` (`store`, calls `BookLesson` unchanged), `StoreLessonBookingRequest`, `LessonPolicy::bookFor`, `lessons/Book.vue`, slot links in `tutors/Show.vue` (guests and parents only), 42 tests. Fix loop 1 added a `quote_token` (keyed HMAC of learner, tutor, type, price, currency; recomputed in `store()`) so the client chooses neither type nor price and a stale two-tab page is refused before `BookLesson`. Also: CP3 acceptance box added in CHECKPOINTS.md (R118); §6 item 2a's single-booking gap closed.
 - The stalled STATUS helper (`shell_exec('date')` waits on Windows) was stopped by TaskStop; its half-written `docs/STATUS.md` was discarded before the branch switch. Timestamps are now passed through the `TS` env var.
@@ -56,7 +62,7 @@ Tests: **1391/1391 passed, 7172 assertions** on branch `cp/7a-demo-tutors` (`mai
 
 
 ## §5 Why stopping
-Not stopping: waiting on PR #23's CI (R123 needs it green on the head before the self-merge). Nothing here needs the owner (R109). This STATUS is the push-boundary write.
+Not stopping: 7a is complete. Next is 7b (step 3). Nothing here needs the owner (R109). This is the step-boundary write.
 
 ## §6 Mismatches
 0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
@@ -65,7 +71,7 @@ Not stopping: waiting on PR #23's CI (R123 needs it green on the head before the
 2a. **Fake gateway bound on rehearsal only (invariant 16 stopgap, R107 / ADR-016) — replaces the old "no gateway outside tests" mismatch.** After the step-7 deploy, rehearsal's hourly `recurring:charge` will fake-charge due weekly lessons and cancel a reserved lesson whose start has passed as `charge_window_missed`; rehearsal has 0 `recurring_slots` and 0 `lessons`, so nothing is expected to happen until someone sets one up there. Production and staging stay unbound. CP5's registry replaces the binding (CHECKPOINTS CP5). **The single-booking gap is CLOSED by 6a (PR #22, squash `1ede299`, cycle 06 r1):** a parent now books a trial or regular lesson from a tutor profile; on rehearsal it takes effect at the 6c deploy. Never pass `artisan --env=…` on a server (ADR-016).
 2b. **Push-to-deploy on rehearsal is unproven (R111).** The `rehearsal` push at 02:12 deployed nothing in 15 minutes; the release that landed at 05:58 UTC matches the owner's Deploy click, and the shell cannot show which branch Forge used. CLAUDE.local.md lines 8 and 27 are therefore unchanged and rehearsal deploys stay owner-pressed. Rehearsal has 0 `lessons`, `payments`, `payment_methods` and `recurring_slots` (`db:show --counts`, 10:02), so the hourly fake-gateway `recurring:charge` has nothing to act on until someone creates a weekly slot there.
 2f. **Push-to-deploy on rehearsal looks proven now (R117), but CLAUDE.local.md is NOT amended.** `git push origin 1ede299:refs/heads/rehearsal` at 11:16:35 (machine clock); the shell's first `git log -1` at 11:16:41 still showed `c34979a` and the next at 11:17:13 showed `1ede299`; the `current` symlink is dated Sep 26 07:16 UTC (= 11:16 machine clock, UTC+4). That is a deploy landing on CC's push alone, so R117/R111 permit amending CLAUDE.local.md lines 8 and 27. I made that edit, the harness's permission classifier refused the next command as self-modification, and I reverted the edit with the same two strings to leave the file exactly as the owner wrote it. The file is unchanged. See Owner action 4. Why the 02:12 push did not deploy is unexplained (the owner may have switched the Forge branch since).
-2g. **R117 check not runnable: a tutor profile returns 200.** Rehearsal has 0 `tutor_profiles` (`db:show --counts`; 1 user, the admin) and `/tutors` lists none, so `/tutors/1`, `/tutors/2`, `/tutors/5` and `/tutors/999` all return 404 by design (`TutorProfile::bookable()`). The new booking route is present (`route:list --path=book`: `tutors/{tutor}/book`, `tutors.book`) and a guest on `/tutors/1/book` gets 302 to `/login`. The 200 on a profile and the whole booking screen therefore have not been exercised on rehearsal; only the code and routes are there. The demo tutors are not seeded (seeded once on first deploy; the seeder is never run again on this server, CLAUDE.local.md).
+2g. **R117 check not runnable: a tutor profile returns 200.** Rehearsal has 0 `tutor_profiles` (`db:show --counts`; 1 user, the admin) and `/tutors` lists none, so `/tutors/1`, `/tutors/2`, `/tutors/5` and `/tutors/999` all return 404 by design (`TutorProfile::bookable()`). The new booking route is present (`route:list --path=book`: `tutors/{tutor}/book`, `tutors.book`) and a guest on `/tutors/1/book` gets 302 to `/login`. The 200 on a profile and the whole booking screen therefore have not been exercised on rehearsal; only the code and routes are there. The demo tutors are not seeded (seeded once on first deploy; the seeder is never run again on this server, CLAUDE.local.md). **CLOSED 2026-09-26 16:29: seeder run once, 7 tutors, profile 200, guest /book 302 to /login (log VERIFICATION).**
 2c. **`vue-tsc --noEmit` (`npm run types:check`) is not run by CI or `composer test`** (`composer types:check` is PHPStan); it already reports one error on `main` in `weekly-slots/Create.vue:146` (`form.errors.slot`). 6a's `Book.vue` avoids the same error with a typed cast. Low, not a 6a defect.
 2d. **6a disclosures.** (a) `BookLessonController::quote()`/`decide()` repeats `BookLesson`'s trial rule (first non-cancelled lesson for the pair, same `freeingSlotValues` query) for display only; the tests prove the two agree, and `BookLesson` still decides. (b) `store()` refuses plainly ("Booking is not available yet.") when no `PaymentGateway` is bound, which is production today. (c) Two refusals are deliberately generic ("That lesson cannot be booked.") so a missing and a non-bookable tutor look the same. (d) **Open Low, carried to CP5:** the quote-token check is check-then-act; two genuinely concurrent submits could pass it before either books. A lock is wrong here (it would span the gateway capture and hide the pending Payment row, R77); full closure is an expected-quote check inside `BookLesson`, which R116 puts out of scope. Deferred line below.
 2e. **Review 2 Lows (6a, carried, non-blocking):** see the REVIEW entry in CYCLE-LOG for the numbered list; none touches money, and no Medium or High is open.
@@ -87,7 +93,7 @@ Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
 | step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
-| 7a demo tutors | PR open, CI pending | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | pending CI |
+| 7a demo tutors | done, on rehearsal | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | self-merged 3548a04 (R123) |
 | 7b video registry | not started | — | — | — | — |
 | 7c room lifecycle | not started | — | — | — | — |
 | 7d lesson page | not started | — | — | — | — |
