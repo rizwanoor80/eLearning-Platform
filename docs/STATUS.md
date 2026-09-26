@@ -1,15 +1,15 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 17:36 (machine clock) — Context: not measured by the tool — **7b verified on head `2bd999a`, pushing and opening the PR; review next**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 18:02 (machine clock) — Context: not measured by the tool — **7b merged (8bb50bf); 7c starting**
 
-Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; main was 1391). Advisor: consulted 7 times this cycle so far (3 for 7a; 4 for 7b: design, dedicated webhook/credentials, mid-build, pre-PR; all answered; R63 'configured, not measured'). Review: 7b pending. Resume count 0 of 8.
+Tests: **1434/1434 passed, 7313 assertions** (main at 8bb50bf, solo run; 1391 before 7b). Advisor: consulted 8 times this cycle so far (3 for 7a; 4 for 7b; 1 for 7c design; all answered; R63 'configured, not measured'). Review: 7b — no FAIL, 6 Low/notes carried forward. Resume count 0 of 8.
 
 ## §1 Git state
-`main` = docs commits on top of `3548a04` (PR #23); `rehearsal` = `3548a04`. Working branch `cp/7b-video-registry`: three commits ahead of `origin/main` (`4019e55`, `af7306b`, `2bd999a`), being pushed now. No open PRs before this push.
+`main` = `8bb50bf` (merge of PR #24) plus docs commits on top; `rehearsal` = `3548a04` (7b is not deployed; deploys happen at step 9, R111). Branch `cp/7b-video-registry` merged, kept. No open PRs.
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
 2. `cp/7a-demo-tutors` (R121) — **done**: PR #23 merged (3548a04, R123), rehearsal deployed, seeder run once, 7 tutors, /tutors, a profile and guest /book (302 to /login) checked.
-3. `cp/7b-video-registry` (R122, R125) — **verified on head `2bd999a`**; push, PR, fresh-subagent review, self-merge under R123 (scope reading in CYCLE-LOG DECISION)
-4. `cp/7c-room-lifecycle` — [not started]
+3. `cp/7b-video-registry` (R122, R125) — **done**: PR #24 merged (8bb50bf, R123), 1434/1434 on main, smoke 200/200/200
+4. `cp/7c-room-lifecycle` — [in progress: design advisor done]
 5. `cp/7d-lesson-page` — [not started]
 6. `cp/7e-reports` (R124) — [not started]
 7. `cp/7f-trial-cta-timeline` — [not started]
@@ -17,12 +17,11 @@ Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; ma
 9. Deploy and END — [not started]
 
 ## §3 What changed this run
-**7b — video-provider registry (built, verified, not yet pushed)**
-- `video_providers` registry: migration-inserted `daily` (inactive, no credentials) and `fake` (active except in production) rows, one-active partial unique index, `encrypted:array` credentials hidden from serialisation. `VideoProviderManager` (`active()`, `forCode()`, `forRow()`), `DailyVideoProvider` (HTTP-faked in tests) and `FakeVideoProvider`. Activation guard refuses `fake` in production, a code with no driver, and missing credentials.
-- Filament `Video providers` resource: write-only credential inputs, blank keeps the stored value, audit rows name credential keys only, Activate/Deactivate actions.
-- `POST webhooks/video/{code}`: signature verified against the row named in the URL, replay-safe (`video_webhook_events` unique on provider and event id, replay → 200 `duplicate`, dispatched once; store and dispatch share one transaction, so a failed dispatch rolls the row back and the provider's retry is not lost), throttled, body-capped, CSRF-exempt for `webhooks/*` only, no `fake` endpoint in production.
-- Docs: ADR-017, DATA_MODEL v1.6, CHECKPOINTS CP6 note (R126). Daily wire details are from documentation and are flagged "confirm on the first real key" in ADR-017.
-- Verification (head `2bd999a`): Pint, PHPStan 0 errors, RTL check, `ledger:verify` OK, `npm run build` exit 0, 1434/1434 (7313 assertions, 683 s). An earlier run was invalid through my own mistake (two suites on one database); see CYCLE-LOG DEVIATION. The 683 s run is a BLOCKER disclosure (§6).
+**7b — merged (not yet on rehearsal)**
+- PR #24 self-merged under R123 as `8bb50bf`: CI green on head `2bd999a`, the fresh-subagent review found no FAIL (11 verdicts, all PASS or PASS WITH NOTE), the three wiring files outside the video folders were confirmed as 7b's own by the reviewer.
+- Built: `video_providers` registry with encrypted, write-only credentials; `VideoProviderManager`; Daily and fake drivers; verified, replay-safe, transactional `POST webhooks/video/{code}`; Filament `Video providers` screen; ADR-017 and DATA_MODEL v1.6.
+- Post-merge: 1434/1434 (7313 assertions) on main; `/`, `/login`, `/admin/login` 200.
+- Carried to 7c: listener applies an event only when `lessons.room_provider` equals the event's provider code, is idempotent, synchronous (not `afterCommit`, no `SerializesModels`); test that a non-admin and a suspended admin cannot open the video-provider edit page or run Activate. Carried to step 9: trusted-proxy configuration before production.
 
 **Cycle 07 r1, so far**
 - PLAN.md cycle 07 r1 committed as `43c9a4f` before any other work (CYCLE-LOG START).
@@ -38,6 +37,13 @@ Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; ma
 - PR #23 self-merged under R123 (CI green on head a4c51d3, no Medium/High, diff = seeder + its test) as `3548a04`; main CI green.
 - `rehearsal` fast-forwarded to `3548a04` under R111; Forge release confirmed by server `git log`; migrations all Ran; Horizon running.
 - `DemoTutorSeeder` run once on rehearsal (exit 0, 1.8 s): users 1→8, tutor_profiles 0→7, tutor_subjects 0→14, availability_rules 0→21. `/tutors` lists 7; `/tutors/1` 200; guest `/tutors/1/book` 302 to `/login`.
+
+**7b — video-provider registry (built, verified, not yet pushed)**
+- `video_providers` registry: migration-inserted `daily` (inactive, no credentials) and `fake` (active except in production) rows, one-active partial unique index, `encrypted:array` credentials hidden from serialisation. `VideoProviderManager` (`active()`, `forCode()`, `forRow()`), `DailyVideoProvider` (HTTP-faked in tests) and `FakeVideoProvider`. Activation guard refuses `fake` in production, a code with no driver, and missing credentials.
+- Filament `Video providers` resource: write-only credential inputs, blank keeps the stored value, audit rows name credential keys only, Activate/Deactivate actions.
+- `POST webhooks/video/{code}`: signature verified against the row named in the URL, replay-safe (`video_webhook_events` unique on provider and event id, replay → 200 `duplicate`, dispatched once; store and dispatch share one transaction, so a failed dispatch rolls the row back and the provider's retry is not lost), throttled, body-capped, CSRF-exempt for `webhooks/*` only, no `fake` endpoint in production.
+- Docs: ADR-017, DATA_MODEL v1.6, CHECKPOINTS CP6 note (R126). Daily wire details are from documentation and are flagged "confirm on the first real key" in ADR-017.
+- Verification (head `2bd999a`): Pint, PHPStan 0 errors, RTL check, `ledger:verify` OK, `npm run build` exit 0, 1434/1434 (7313 assertions, 683 s). An earlier run was invalid through my own mistake (two suites on one database); see CYCLE-LOG DEVIATION. The 683 s run is a BLOCKER disclosure (§6).
 
 - **6a merged (PR #22, `1ede299`)** — R114: `GET tutors/{tutor}/book` (`BookLessonController::create`) and `POST lessons` (`store`, calls `BookLesson` unchanged), `StoreLessonBookingRequest`, `LessonPolicy::bookFor`, `lessons/Book.vue`, slot links in `tutors/Show.vue` (guests and parents only), 42 tests. Fix loop 1 added a `quote_token` (keyed HMAC of learner, tutor, type, price, currency; recomputed in `store()`) so the client chooses neither type nor price and a stale two-tab page is refused before `BookLesson`. Also: CP3 acceptance box added in CHECKPOINTS.md (R118); §6 item 2a's single-booking gap closed.
 - The stalled STATUS helper (`shell_exec('date')` waits on Windows) was stopped by TaskStop; its half-written `docs/STATUS.md` was discarded before the branch switch. Timestamps are now passed through the `TS` env var.
@@ -58,8 +64,8 @@ Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; ma
 
 
 ## §4 Decisions and by whom
-- CC (7b): `supports_attendance_webhooks` does not gate the webhook endpoint; it decides what the lesson page shows (DECISION, owner may overrule).
-- CC (7b): the three wiring files outside the video folders (`bootstrap/app.php`, `AppServiceProvider.php`, `config/video.php`) are read as 7b's own area under R123; the reviewer is asked to test that reading, and the PR is held if it disagrees.
+- CC (7c design): no-show marking stays manual per PRD §4; the state machine is not edited (R94); join tokens are minted on request and never stored; the attendance listener is synchronous.
+- CC (7b): `supports_attendance_webhooks` does not gate the webhook endpoint; the three wiring files are 7b's own area under R123 (confirmed by the review).
 - CC (cycle 07, step 1): the HOW-WE-WORK version stamp reads 1.3 (R119 lists a changelog line but not the stamp); logged as a DECISION.
 - Owner rulings for this cycle: R119–R126 (PLAN r1).
 - CC (4e): retry arithmetic; HOLD written inside the confirm transition; missed-start sweep with `charge_window_missed`; email rules; parent resume needs a usable card with `last_failed_at` null; `payments` uniqueness and key — all logged as DECISIONs 2026-09-25 and covered by ADR-013..015; the four money decisions were consulted in one mid-build consult, the others were not put to the advisor separately (disclosed).
@@ -71,9 +77,11 @@ Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; ma
 
 
 ## §5 Why stopping
-Not stopping: 7b is verified on the head. Next is push, PR and the fresh-subagent review. Nothing here needs the owner (R109). This is the step-boundary write.
+Not stopping: 7b is merged and its record is on main. Next is 7c (step 4). Nothing here needs the owner (R109). This is the step-boundary write.
 
 ## §6 Mismatches
+0a. **`in_progress → provider_failure` has no edge** (PRD §4 says "if the video provider is down for the lesson window, admin can mark provider_failure"). 7c limits the admin action to `confirmed` lessons and does not edit the frozen `LessonStateMachine.php` (R94). An outage that begins after one party has joined cannot be marked until the machine gains that edge.
+0b. **A lesson can sit in `in_progress` forever** if only one party joined and nobody marks a no-show (PRD §4 makes marking manual). 7e's 72 h auto-release acts only on `completed`, so it does not see these. Owner action at END.
 1. **Full suite is now over the 10-minute stall line (BLOCKER disclosure, not a halt).** `php artisan test` took 683 s on the 7b head (608 s earlier the same sub-cycle). It completed green. It grows about 10 s per sub-cycle, so raising the stall line for this one command, or splitting the suite, needs a planner/owner ruling before it becomes a permanent breach. Nothing is blocked today.
 0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
@@ -104,8 +112,8 @@ Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for
 |---|---|---|---|---|---|
 | step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
 | 7a demo tutors | done, on rehearsal | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | self-merged 3548a04 (R123) |
-| 7b video registry | verified, PR next | `cp/7b-video-registry` | — | pending | — |
-| 7c room lifecycle | not started | — | — | — | — |
+| 7b video registry | done | `cp/7b-video-registry` | #24 | no FAIL; 6 Low carried | self-merged 8bb50bf (R123) |
+| 7c room lifecycle | in progress | `cp/7c-room-lifecycle` | — | — | — |
 | 7d lesson page | not started | — | — | — | — |
 | 7e reports | not started | — | — | — | — |
 | 7f trial CTA + timeline | not started | — | — | — | — |
