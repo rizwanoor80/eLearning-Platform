@@ -14,8 +14,9 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * The tutor's report, to the account holder of the learner — never to the learner (invariant 7). A trial
- * report also carries the link to set up a weekly slot with that tutor (CP6 box 4); the pre-filled
- * version of that call to action is 7f's.
+ * report also carries the link to set up a weekly slot with that tutor (CP6 box 4). The link stays plain
+ * (tutor and learner ids only): the form it opens computes its own pre-fill from the signed-in parent's
+ * own completed trial (`TrialSlotPrefill`, 7f), so nothing about the trial travels in the URL.
  */
 class ProgressReportMail extends Mailable implements ShouldQueue
 {
