@@ -58,6 +58,61 @@ function something()
     // ..
 }
 
+// Helpers used by more than one test file live here, never in a test file: under
+// `php artisan test --parallel` files are split across processes, so a file cannot rely on
+// another file having been loaded (R128).
+
+const FAKE_WEBHOOK_SECRET = 'test-fake-webhook-secret';
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function webhookBody(string $id = 'evt-1', array $overrides = []): string
+{
+    return json_encode(array_replace_recursive([
+        'id' => $id,
+        'type' => 'participant.joined',
+        'event_ts' => time(),
+        'payload' => ['room' => 'lesson-42', 'user_id' => 'tutor'],
+    ], $overrides));
+}
+
+/**
+ * @return array<string, string>
+ */
+function signedHeaders(string $body, ?int $timestamp = null, string $secret = FAKE_WEBHOOK_SECRET): array
+{
+    $timestamp ??= time();
+
+    return [
+        'X-Webhook-Timestamp' => (string) $timestamp,
+        'X-Webhook-Signature' => hash_hmac('sha256', $timestamp.'.'.$body, $secret),
+    ];
+}
+
+function postWebhook(string $code, string $body, array $headers)
+{
+    $server = [];
+
+    foreach ($headers as $name => $value) {
+        $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
+    }
+
+    return test()->call('POST', "/webhooks/video/{$code}", [], [], [], $server + ['CONTENT_TYPE' => 'application/json'], $body);
+}
+
+/**
+ * The attributes of a parent-added learner, with a year group of its own curriculum.
+ *
+ * @return array{display_name: string, year_group_id: int, curriculum_id: int}
+ */
+function lnChild(): array
+{
+    $curriculum = Curriculum::factory()->create();
+
+    return ['display_name' => 'Kid', 'year_group_id' => YearGroup::factory()->create(['curriculum_id' => $curriculum->id])->id, 'curriculum_id' => $curriculum->id];
+}
+
 /**
  * A tutor who has completed every onboarding step before the agreement (shared
  * by the onboarding and pages tests).

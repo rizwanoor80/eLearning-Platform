@@ -227,15 +227,3 @@ it('deletes a learner once every lesson is terminal', function () {
 
     expect($log->actor_user_id)->toBe($owner->id);
 });
-
-/**
- * The attributes of a parent-added learner, with a year group of its own curriculum.
- *
- * @return array{display_name: string, year_group_id: int, curriculum_id: int}
- */
-function lnChild(): array
-{
-    $curriculum = Curriculum::factory()->create();
-
-    return ['display_name' => 'Kid', 'year_group_id' => YearGroup::factory()->create(['curriculum_id' => $curriculum->id])->id, 'curriculum_id' => $curriculum->id];
-}
