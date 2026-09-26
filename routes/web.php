@@ -9,6 +9,7 @@ use App\Http\Controllers\Lessons\CancelLessonController;
 use App\Http\Controllers\Lessons\LessonRoomController;
 use App\Http\Controllers\Lessons\ProgressReportController;
 use App\Http\Controllers\Match\MatchRequestController;
+use App\Http\Controllers\Messaging\MessageController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
 use App\Http\Controllers\Payments\WeeklySlotController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
 use App\Http\Controllers\Tutor\TutorWeeklySlotController;
+use App\Http\Controllers\UnreadCountsController;
 use App\Http\Controllers\Webhooks\VideoWebhookController;
 use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +44,18 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
     // CP6 7e: the tutor's report. LessonPolicy::report is the authorisation.
     Route::get('report', [ProgressReportController::class, 'create'])->name('lessons.report.create');
     Route::post('report', [ProgressReportController::class, 'store'])->name('lessons.report.store');
+});
+
+// CP7 8b (R133, R135): Messages for both portals — an account holder and a tutor each see their own
+// conversations; ConversationPolicy answers anyone else with a 404. The badge counts are one JSON endpoint.
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('unread-counts', UnreadCountsController::class)->middleware('throttle:unread-counts')->name('unread-counts');
+
+    Route::middleware('feature:messaging')->group(function () {
+        Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
+        Route::get('messages/{conversation}', [MessageController::class, 'show'])->whereNumber('conversation')->name('messages.show');
+        Route::post('messages/{conversation}', [MessageController::class, 'store'])->whereNumber('conversation')->middleware('throttle:messages')->name('messages.store');
+    });
 });
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
