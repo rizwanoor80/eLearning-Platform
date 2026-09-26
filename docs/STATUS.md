@@ -1,17 +1,18 @@
-# STATUS — cycle 06 r1 (single-booking screen) — written 2026-09-26 10:22 (machine clock) — Context: not measured by the tool — **step 6a in progress: booking screen being built on cp/6a-booking-screen**
+# STATUS — cycle 06 r1 (single-booking screen) — written 2026-09-26 10:46 (machine clock) — Context: not measured by the tool — **step 6a: PR open, adversarial review pending**
 
-Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (baseline; 6a adds R114(g) tests). No 6a code yet. Advisor: consulted 1 time this cycle (6a design; R63 'configured, not measured'; answered). Resume count 0 of 8.
+Tests: **1370/1370 passed, 6687 assertions** on `cp/6a-booking-screen` at `b568ec3` (+37 over the 1333/6362 baseline; `08aa632` is a test-name and comment change, its file re-run 37/37, 325). Pint, PHPStan (0 errors), RTL, `ledger:verify` (Ledger OK), `npm run build`: green. Advisor: consulted 3 times this cycle so far (6a design, mid-build, pre-PR; R63 'configured, not measured'; all answered). Resume count 0 of 8.
 
 ## §1 Git state
-`origin/main` carries the cycle 06 r1 PLAN (`91c6ed4`), the START entry (`fcafa4f`) and the advisor-1 entry. Branch `cp/6a-booking-screen` cut from `91c6ed4`, no code commits yet. Rehearsal runs `c34979a`.
+`origin/main` carries the cycle 06 r1 PLAN (`91c6ed4`), START (`fcafa4f`) and the docs to date. Branch `cp/6a-booking-screen` (pushed, two code commits, cut from `91c6ed4`): `git log origin/main..HEAD` = `08aa632` 6a: name the unbound-gateway test for what it proves; `b568ec3` 6a: single-booking screen from a tutor profile (R114). Three-dot diff vs `origin/main`: 7 files — `BookLessonController`, `StoreLessonBookingRequest`, `LessonPolicy`, `Book.vue`, `Show.vue`, `routes/web.php`, `BookLessonScreenTest` — all inside R116's list; no frozen or money file. Rehearsal runs `c34979a`.
 
 ## §2 Step map (cycle 06 r1)
-1. `cp/6a-booking-screen` — **in progress** (design advisor consultation 1 of 3 done).
+1. `cp/6a-booking-screen` — **PR open, review pending** (3 of 3 advisor consultations done).
 2. Advisor-model measurement (R115) — pending.
 3. Rehearsal deploy and END (R117) — pending.
 
 ## §3 What changed this run
-- Cycle 06 r1 PLAN committed (`91c6ed4`), START logged (`fcafa4f`), advisor design consultation logged. Design: the profile change lives in `tutors/Show.vue` only (R116 file list).
+- 6a code built on `cp/6a-booking-screen`: `GET tutors/{tutor}/book` (`BookLessonController::create`), `POST lessons` (`store`, calls `BookLesson` unchanged), `StoreLessonBookingRequest`, `LessonPolicy::bookFor`, `lessons/Book.vue`, slot links in `tutors/Show.vue` (guests and parents only, from existing props), 37 tests. Disclosed: (a) `quote()` duplicates `BookLesson`'s trial query for display only, proven equal by tests; (b) `store()` refuses plainly with "Booking is not available yet." when no gateway is bound (production until CP5), instead of a 500.
+- The stalled STATUS helper (`shell_exec('date')` waits on Windows) was stopped by TaskStop; its half-written `docs/STATUS.md` was discarded before the branch switch. Timestamps are now passed through the `TS` env var.
 
 (Cycle 05 record, carried:)
 - **4f (`cp/4f-fake-gateway`, PR #21, `c34979a`)** — R107, ADR-016: `AppProvidersPaymentGatewayServiceProvider` binds `FakePaymentGateway` to `PaymentGateway` on `local`, `testing` and `rehearsal` only (allow-list; production, staging, a typo or an empty `APP_ENV` stay unbound and fail closed). One predicate, `fakeGatewayAllowed()`, also drives `SaveTestCard::available()` (tightened from "not production", so the fake add-card page also 404s on staging — a DECISION, owner may overrule), the shared Inertia prop `paymentTestMode` and the `TestModeBanner.vue` "Test mode — no real card is charged" banner on the add-card, weekly-slot and learner pages, plus the Filament create-slot modal. Docblock-only edits under `app/Services/Payments/*`. 18 new tests (`GatewayBindingTest`), red shown by dropping `rehearsal`. Docs on `main`: ADR-016 (supersedes ADR-015's "unbound outside tests" clause), CHECKPOINTS 4e line and CP5 registry line.
@@ -35,13 +36,14 @@ Tests: **1333/1333 passed, 6362 assertions** on `main` at `c34979a` (baseline; 6
 - Owner/planner rulings carried: R1–R85 except R82 (withdrawn), R86–R103.
 
 ## §5 Why stopping
-Not stopping: 6a is being built. Nothing needs the owner.
+Not stopping: the PR for 6a is open and awaits the fresh-subagent review; nothing needs the owner.
 
 ## §6 Mismatches
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
 2. **Open Low from the re-review — carried to CP5 by the owner (R108).** (a) **In-flight exception:** if a run dies after `begin()` committed a Pending row but before the gateway call, and the tutor is suspended before the next run, the next run charges the lesson (Confirmed, HOLD, "charged" mail) — or on a decline counts a failure toward pausing the slot. The alternative (cancel over the Pending row) can strand a payment the gateway took with no ledger entry. The proper fix is a gateway status lookup by idempotency key, which the fake gateway cannot answer; a CP5 carry. (b) Note: a `Captured` payment with a failed hold (`NeedsReview`) leaves the lesson `reserved`, so a later run could cancel it `tutor_unavailable` over money taken; `ledger:verify` flags it and the email drops "Nothing was charged"; optionally exclude Captured at the guard. (c) Notes: the 'account deleted' test proves the scope's `deleted_at` clause only (the real `AnonymizeUser` path cannot reach R104); the tutor mail would go to a trashed user's address (skip when `$tutor->trashed()`); the "keep or end" wording is asserted only as "still active".
 2a. **Fake gateway bound on rehearsal only (invariant 16 stopgap, R107 / ADR-016) — replaces the old "no gateway outside tests" mismatch.** After the step-7 deploy, rehearsal's hourly `recurring:charge` will fake-charge due weekly lessons and cancel a reserved lesson whose start has passed as `charge_window_missed`; rehearsal has 0 `recurring_slots` and 0 `lessons`, so nothing is expected to happen until someone sets one up there. Production and staging stay unbound. CP5's registry replaces the binding (CHECKPOINTS CP5). **There is no single-booking UI:** `BookLesson` is called by nothing in `app/` or `routes/` except itself, so on rehearsal a parent can set up a weekly slot after a trial but cannot book that trial through the portal; the trial-booking screen is a gap for the backend developer's next look. Never pass `artisan --env=…` on a server (ADR-016).
 2b. **Push-to-deploy on rehearsal is unproven (R111).** The `rehearsal` push at 02:12 deployed nothing in 15 minutes; the release that landed at 05:58 UTC matches the owner's Deploy click, and the shell cannot show which branch Forge used. CLAUDE.local.md lines 8 and 27 are therefore unchanged and rehearsal deploys stay owner-pressed. Rehearsal has 0 `lessons`, `payments`, `payment_methods` and `recurring_slots` (`db:show --counts`, 10:02), so the hourly fake-gateway `recurring:charge` has nothing to act on until someone creates a weekly slot there.
+2c. **`vue-tsc --noEmit` (`npm run types:check`) is not run by CI or `composer test`** (`composer types:check` is PHPStan); it already reports one error on `main` in `weekly-slots/Create.vue:146` (`form.errors.slot`). 6a's `Book.vue` avoids the same error with a typed cast. Low, not a 6a defect.
 3. **NeedsReview exposure (disclosed):** if a parent skips a lesson between the gateway taking the money and the confirmation, the payment stays `captured` with no hold, an exception is reported and `ledger:verify` flags it after five minutes; there is no refund path until CP5. The reviewer's related wording point: the skip email says the skip was free although the parent was charged.
 4. **Idempotency rests on the real gateway (review 1, 9):** two overlapping runs would both call the gateway with the same key; and a card replaced while an attempt is pending reuses that attempt with the same key and a different card, which a real gateway will likely reject each hour until the start. CP5 must decide this (key per card, or void the pending attempt on card replace).
 5. **R102 paused-recipient note — closed in 4e** (the admin now gets the paused email for `payment_failed`); review note: that mail reads reason and counter at send time, so a quick resume can suppress it or show stale numbers.
@@ -57,7 +59,7 @@ No Owner action right now. Carried for the END write: **D-04** legal entity, **D
 ## §8 Programme board — cycle 06 r1
 | Sub-cycle | State | Branch | PR | Review verdict | Merge |
 |---|---|---|---|---|---|
-| 6a booking screen | in progress | `cp/6a-booking-screen` | — | — | — |
+| 6a booking screen | PR open, review pending | `cp/6a-booking-screen` | see CYCLE-LOG | — | — |
 | 6b advisor model (R115) | pending | — | — | — | — |
 | 6c rehearsal deploy + END (R117) | pending | `rehearsal` | — | — | — |
 
