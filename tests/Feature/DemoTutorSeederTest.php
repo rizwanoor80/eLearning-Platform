@@ -140,7 +140,7 @@ it('lets a signed-in parent open the booking screen for a demo tutor at a real s
     $this->actingAs($parent)
         ->get(route('tutors.book', $profile->id).'?starts_at='.rawurlencode($slot->startsAt->utc()->format('Y-m-d\TH:i:s\Z')))
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->component('lessons/Book')->where('tutor.name', 'Amira'));
+        ->assertInertia(fn ($page) => $page->component('lessons/Book')->where('tutor.name', 'Amira')->where('slot_available', true));
 });
 
 it('is idempotent — a second run leaves every count unchanged', function () {
