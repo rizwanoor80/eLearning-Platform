@@ -151,7 +151,7 @@ Acceptance
 **Goal:** the lesson happens on the platform, the parent gets a report, and a good trial turns into a weekly slot.
 
 Tasks
-- `video_providers` registry: Filament resource (code, name, encrypted credentials shown masked, `supports_embed`, `supports_attendance_webhooks`, `is_active` one-active index); `VideoRoomProvider` resolved from the active row; `fake` row for local/CI.
+- `video_providers` registry _(7b, R122/R125, ADR-017: built on `cp/7b-video-registry` — migration-inserted `daily` and `fake` rows, `VideoProviderManager`, `DailyVideoProvider` and `FakeVideoProvider`, write-only credential admin, verified and de-duplicated webhook endpoint `POST webhooks/video/{code}`; Daily wire details to be confirmed on the first real key)_: Filament resource (code, name, encrypted credentials shown masked, `supports_embed`, `supports_attendance_webhooks`, `is_active` one-active index); `VideoRoomProvider` resolved from the active row; `fake` row for local/CI.
 - `VideoRoomProvider` interface + Daily driver (embed + webhooks): create room at T−15 (scheduled job), per-party join tokens, webhook for join/leave → `tutor_joined_at / learner_joined_at`, close at end + 10 min. `lessons.room_provider` records the provider per lesson.
 - Lesson page for both parties: embedded room when the active provider `supports_embed`, otherwise a join link; when the provider lacks attendance webhooks, "I've joined" buttons set the joined-at timestamps manually. Join buttons active T−10.
 - `in_progress → completed` sweep job; no-show marking actions per PRD §4; admin `provider_failure` action.
