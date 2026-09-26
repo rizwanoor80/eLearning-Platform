@@ -1,0 +1,64 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/*
+  TrusTutor admin theme (R49, docs/brand). Primary is the brand maroon (set on the panel); this file adds the
+  deep-maroon sidebar (#240A12), a coral active bar, the cooler admin canvas and the admin radii of 8px controls and
+  12px cards. Coral appears only as the 3px active bar and the 14%-alpha active tint: never as text.
+*/
+:root {
+    --tt-admin-sidebar: #240a12;
+    --tt-admin-canvas: #f6f5f6;
+    --tt-admin-radius-control: 8px;
+    --tt-admin-radius-card: 12px;
+}
+
+.fi-body {
+    background-color: var(--tt-admin-canvas);
+}
+
+.fi-sidebar,
+.fi-sidebar-header {
+    background-color: var(--tt-admin-sidebar);
+    --tw-ring-color: transparent;
+}
+
+.fi-sidebar-header {
+    box-shadow: none;
+}
+
+.fi-sidebar-group-label,
+.fi-sidebar-item-label,
+.fi-sidebar-item-icon,
+.fi-sidebar-group-collapse-button {
+    color: rgb(251 248 247 / 0.78);
+}
+
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
+    background-color: rgb(253 76 83 / 0.14);
+    box-shadow: inset 3px 0 0 #fd4c53;
+}
+
+.fi-sidebar-item.fi-active .fi-sidebar-item-label,
+.fi-sidebar-item.fi-active .fi-sidebar-item-icon {
+    color: #ffffff;
+}
+
+.fi-sidebar-item-btn:hover {
+    background-color: rgb(255 255 255 / 0.06);
+}
+
+.fi-btn,
+.fi-input-wrp,
+.fi-dropdown-panel {
+    border-radius: var(--tt-admin-radius-control);
+}
+
+.fi-section,
+.fi-ta-ctn,
+.fi-wi-stats-overview-stat,
+.fi-modal-window {
+    border-radius: var(--tt-admin-radius-card);
+}

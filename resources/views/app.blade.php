@@ -22,17 +22,18 @@
         {{-- Inline style to set the HTML background color based on our theme in app.css --}}
         <style>
             html {
-                background-color: oklch(1 0 0);
+                background-color: #fbf8f7;
             }
 
             html.dark {
-                background-color: oklch(0.145 0 0);
+                background-color: #1a0810;
             }
         </style>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="icon" href="/brand/favicon-32.png" type="image/png" sizes="32x32">
+        <link rel="icon" href="/brand/favicon-16.png" type="image/png" sizes="16x16">
+        <link rel="apple-touch-icon" href="/brand/apple-touch-icon-180.png">
+        <meta property="og:image" content="{{ asset('brand/og-image-1200x630.png') }}">
 
         @fonts
 
