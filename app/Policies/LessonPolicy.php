@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\Role;
+use App\Enums\VideoParticipant;
 use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\User;
@@ -29,6 +30,15 @@ class LessonPolicy
     {
         return in_array($user->role, [Role::Tutor, Role::AccountOwner], true)
             && LessonParties::participantFor($lesson, $user) !== null;
+    }
+
+    /**
+     * The lesson's own tutor only (CP6 7e). A parent, another tutor and an admin are refused here, before
+     * `SubmitProgressReport::problemFor` looks at the lesson's status.
+     */
+    public function report(User $user, Lesson $lesson): bool
+    {
+        return $user->role === Role::Tutor && LessonParties::participantFor($lesson, $user) === VideoParticipant::Tutor;
     }
 
     /**

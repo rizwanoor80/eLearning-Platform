@@ -2,6 +2,7 @@
 
 namespace App\Actions\Tutor;
 
+use App\Enums\StrikeType;
 use App\Enums\TutorProfileStatus;
 use App\Events\Tutor\TutorSuspendedForStrikes;
 use App\Models\TutorProfile;
@@ -31,6 +32,8 @@ class SuspendTutorForStrikes
 
             $strikeCount = TutorStrike::query()
                 ->where('tutor_profile_id', $locked->id)
+                // The late-report review row is history for the admins (PRD §2.7 rule 5), not a strike toward suspension.
+                ->where('type', '!=', StrikeType::LateReportX3)
                 ->where('created_at', '>=', now()->subDays(90))
                 ->count();
 

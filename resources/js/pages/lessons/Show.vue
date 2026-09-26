@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router, usePoll } from '@inertiajs/vue3';
+import { Head, Link, router, usePoll } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ type LessonView = {
     other_joined: boolean;
     other_role: 'student' | 'tutor';
     no_show_outcome: 'pay_tutor' | 'refund_parent';
+    can_report: boolean;
     terminal: boolean;
 };
 
@@ -142,6 +143,13 @@ const closedMessages: Record<string, string> = {
                 </p>
             </div>
             <Badge variant="outline">{{ statusLabel }}</Badge>
+        </div>
+
+        <div v-if="lesson.can_report" class="flex flex-wrap items-center gap-3 rounded-xl border p-4" data-test="report-prompt">
+            <p class="text-sm">Your report on this lesson is due. It goes to the parent.</p>
+            <Button as-child data-test="report-link">
+                <Link :href="`/lessons/${lesson.id}/report`">Write the report</Link>
+            </Button>
         </div>
 
         <p v-if="lesson.terminal" class="rounded-xl border p-4 text-sm" data-test="closed">
