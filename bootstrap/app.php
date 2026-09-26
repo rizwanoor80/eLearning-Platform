@@ -19,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        // Provider webhooks authenticate by signature, not by session or CSRF token.
+        $middleware->preventRequestForgery(except: ['webhooks/*']);
+
         $middleware->alias([
             'feature' => EnsureFeatureEnabled::class,
         ]);
