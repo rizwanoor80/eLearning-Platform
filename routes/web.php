@@ -6,6 +6,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Lessons\BookLessonController;
 use App\Http\Controllers\Lessons\CancelLessonController;
+use App\Http\Controllers\Lessons\LessonRoomController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
@@ -30,6 +31,13 @@ Route::post('webhooks/video/{code}', VideoWebhookController::class)->where('code
 
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
+
+// CP6 7c: the lesson room, for the lesson's own tutor or parent. LessonPolicy::attend is the authorisation.
+Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['lesson' => '[0-9]{1,18}'])->group(function () {
+    Route::post('room', [LessonRoomController::class, 'join'])->middleware('throttle:20,1')->name('lessons.room');
+    Route::post('joined', [LessonRoomController::class, 'joined'])->name('lessons.joined');
+    Route::post('no-show', [LessonRoomController::class, 'noShow'])->name('lessons.no-show');
+});
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');

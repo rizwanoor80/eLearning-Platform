@@ -32,3 +32,13 @@ Schedule::command('recurring:charge')->hourly()->onOneServer()->withoutOverlappi
 // idempotency guard; onOneServer + withoutOverlapping only stop a second
 // worker starting, not what makes one harmless if it does.
 Schedule::command('lessons:send-reminders')->everyMinute()->onOneServer()->withoutOverlapping();
+
+// Lesson-room lifecycle (CP6 7c, PRD §9). Rooms are created from T-15 min and closed at the end + 10 min;
+// the settle sweep completes lessons both sides attended and refunds confirmed ones nobody attended.
+// Each is idempotent by itself (a conditional UPDATE per row, the provider's create-by-name, the state
+// machine's edge check on the locked row); onOneServer + withoutOverlapping only stop a second worker
+// starting. The overlap lock expires after 10 minutes, not the 24-hour default, so a run that dies
+// mid-way cannot silence the sweep for a day.
+Schedule::command('lessons:create-rooms')->everyMinute()->onOneServer()->withoutOverlapping(10);
+Schedule::command('lessons:close-rooms')->everyMinute()->onOneServer()->withoutOverlapping(10);
+Schedule::command('lessons:settle-ended')->everyMinute()->onOneServer()->withoutOverlapping(10);

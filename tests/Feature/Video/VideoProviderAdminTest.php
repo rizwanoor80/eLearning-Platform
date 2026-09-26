@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\UserStatus;
 use App\Filament\Resources\VideoProviders\Pages\EditVideoProvider;
 use App\Filament\Resources\VideoProviders\Pages\ListVideoProviders;
 use App\Models\AuditLog;
@@ -108,4 +109,53 @@ it('activates and deactivates from the table and refuses an unconfigured provide
         ->callTableAction('deactivate', $this->daily->fresh());
 
     expect(VideoProvider::query()->active()->count())->toBe(0);
+});
+
+it('keeps the video registry pages from a parent, a tutor and a suspended admin', function () {
+    $this->daily->credentials = ['api_key' => 'k', 'webhook_secret' => base64_encode('s')];
+    $this->daily->save();
+
+    $suspended = User::factory()->admin()->create(['status' => UserStatus::Suspended]);
+
+    foreach ([User::factory()->create(), User::factory()->tutor()->create(), $suspended] as $outsider) {
+        test()->actingAs($outsider)->get(ListVideoProviders::getUrl())->assertForbidden();
+        test()->actingAs($outsider)->get(EditVideoProvider::getUrl(['record' => $this->daily]))->assertForbidden();
+    }
+
+    expect($this->daily->fresh()->is_active)->toBeFalse()
+        ->and(VideoProvider::query()->where('code', 'fake')->value('is_active'))->toBeTrue();
+});
+
+it('does not let a parent, a tutor or a suspended admin run Activate on a video provider', function () {
+    $this->daily->credentials = ['api_key' => 'k', 'webhook_secret' => base64_encode('s')];
+    $this->daily->save();
+
+    foreach ([User::factory()->create(), User::factory()->tutor()->create(), User::factory()->admin()->create(['status' => UserStatus::Suspended])] as $outsider) {
+        try {
+            Livewire::actingAs($outsider)->test(ListVideoProviders::class)->callTableAction('activate', $this->daily->fresh());
+        } catch (Throwable) {
+            // a refusal by any route is fine; what matters is the state below
+        }
+
+        expect($this->daily->fresh()->is_active)->toBeFalse()
+            ->and(VideoProvider::query()->where('code', 'fake')->value('is_active'))->toBeTrue();
+    }
+});
+
+it('does not let a parent, a tutor or a suspended admin change a video provider\'s credentials', function () {
+    $this->daily->credentials = ['api_key' => 'original-key', 'webhook_secret' => base64_encode('s')];
+    $this->daily->save();
+
+    foreach ([User::factory()->create(), User::factory()->tutor()->create(), User::factory()->admin()->create(['status' => UserStatus::Suspended])] as $outsider) {
+        try {
+            Livewire::actingAs($outsider)
+                ->test(EditVideoProvider::class, ['record' => $this->daily->getRouteKey()])
+                ->fillForm(['secret_api_key' => 'attacker-key'])
+                ->call('save');
+        } catch (Throwable) {
+            // refused by any route is fine; the stored value is the proof
+        }
+
+        expect($this->daily->fresh()->credentials['api_key'])->toBe('original-key');
+    }
 });
