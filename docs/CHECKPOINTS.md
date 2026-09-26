@@ -166,7 +166,7 @@ Acceptance
 - [ ] Trial report without the three trial fields is rejected; regular report with them is rejected.
 - [ ] Submitting a report releases escrow exactly once; second submit is rejected; auto-release after 72h sets the late flag.
 - [ ] Parent receives the report email within one queue cycle; the trial email contains a working weekly-slot link.
-- [ ] With a link-mode provider fixture (`supports_embed=false`, `supports_attendance_webhooks=false`) the lesson page shows a join link and manual "I've joined" sets the timestamps; with Daily the timestamps come only from the webhook.
+- [x] With a link-mode provider fixture (`supports_embed=false`, `supports_attendance_webhooks=false`) the lesson page shows a join link and manual "I've joined" sets the timestamps; with Daily the timestamps come only from the webhook. *(7d, PR #26 `76b9316`: `LessonPageTest` "shows a join link and the manual joined button when the provider has no embed and no attendance webhooks" (`can_join` with `embed` false drives the "Get the lesson link" button, then the link; `can_mark_joined` drives the button, `Show.vue` `v-if="lesson.can_mark_joined"`), "sets each side's own joined-at timestamp from the manual button, and only that side's", "shows the embed and no manual button for a provider with attendance webhooks, and refuses the manual post", "takes attendance from the provider, so the page reflects a recorded join"; `AttendanceTest` for the webhook path. The tests read the Inertia props; no browser test asserts the anchor or button rendering itself.)*
 
 ---
 
