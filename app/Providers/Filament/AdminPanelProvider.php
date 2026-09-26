@@ -52,7 +52,8 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('TrusTutor')
             ->brandLogo(fn () => view('filament.admin.brand'))
             ->brandLogoHeight('2rem')
-            ->favicon(asset('brand/favicon-32.png'))
+            ->darkModeBrandLogo(fn () => view('filament.admin.brand-dark'))
+            ->favicon(fn (): string => asset('brand/favicon-32.png'))
             ->viteTheme('resources/css/filament/admin/theme.css')
             // Schibsted Grotesk is self-hosted by the Vite fonts build (same files as the site): no runtime CDN.
             ->font('Schibsted Grotesk', provider: LocalFontProvider::class)

@@ -9,6 +9,6 @@ import BrandLockup from '@/components/BrandLockup.vue';
     />
     <BrandLockup
         variant="symbol"
-        class="hidden group-data-[collapsible=icon]:block"
+        class="hidden group-data-[collapsible=icon]:inline-flex"
     />
 </template>

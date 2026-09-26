@@ -24,7 +24,7 @@ defineProps<{
                 :href="home()"
                 class="relative z-20 flex items-center text-lg font-medium"
             >
-                <BrandLockup variant="symbol" dark class="me-2" />
+                <BrandLockup variant="symbol" dark decorative class="me-2" />
                 {{ name }}
             </Link>
         </div>

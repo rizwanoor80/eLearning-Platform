@@ -15,7 +15,8 @@
     --tt-admin-radius-card: 12px;
 }
 
-.fi-body {
+/* Light scheme only: in dark mode Filament's own dark canvas stays. */
+html:not(.dark) .fi-body {
     background-color: var(--tt-admin-canvas);
 }
 
@@ -32,13 +33,25 @@
 .fi-sidebar-group-label,
 .fi-sidebar-item-label,
 .fi-sidebar-item-icon,
-.fi-sidebar-group-collapse-button {
+.fi-sidebar-group-collapse-btn {
     color: rgb(251 248 247 / 0.78);
 }
 
 .fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
+    position: relative;
     background-color: rgb(253 76 83 / 0.14);
-    box-shadow: inset 3px 0 0 #fd4c53;
+}
+
+/* The 3px coral active bar sits on the start edge (logical, so it follows RTL). */
+.fi-sidebar-item.fi-active > .fi-sidebar-item-btn::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 3px;
+    background-color: #fd4c53;
+    border-start-start-radius: var(--tt-admin-radius-control);
+    border-end-start-radius: var(--tt-admin-radius-control);
 }
 
 .fi-sidebar-item.fi-active .fi-sidebar-item-label,
