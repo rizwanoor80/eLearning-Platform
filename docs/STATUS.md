@@ -1,14 +1,14 @@
-# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 17:25 (machine clock) — Context: not measured by the tool — **7b built and verified on `cp/7b-video-registry`; PR and review next**
+# STATUS — cycle 07 r1 (programme "CP6") — written 2026-09-26 17:36 (machine clock) — Context: not measured by the tool — **7b verified on head `2bd999a`, pushing and opening the PR; review next**
 
-Tests: **1432/1432 passed, 7308 assertions** (solo run on the 7b code; 1391 on main; a later test-only commit brings it to 1433 — `tests/Feature/Video` 42/42, full suite re-run by CI on the head). Advisor: consulted 6 times this cycle so far (3 for 7a, 3 for 7b: design, dedicated webhook/credentials, mid-build; all answered; R63 'configured, not measured'). Review: 7b pending. Resume count 0 of 8.
+Tests: **1434/1434 passed, 7313 assertions** (solo run on the head `2bd999a`; main was 1391). Advisor: consulted 7 times this cycle so far (3 for 7a; 4 for 7b: design, dedicated webhook/credentials, mid-build, pre-PR; all answered; R63 'configured, not measured'). Review: 7b pending. Resume count 0 of 8.
 
 ## §1 Git state
-`main` = `3548a04` (PR #23) plus docs commits; `rehearsal` = `3548a04`. Working branch `cp/7b-video-registry`: two commits ahead of `origin/main` (`4019e55`, `af7306b`), not yet pushed. No open PRs.
+`main` = docs commits on top of `3548a04` (PR #23); `rehearsal` = `3548a04`. Working branch `cp/7b-video-registry`: three commits ahead of `origin/main` (`4019e55`, `af7306b`, `2bd999a`), being pushed now. No open PRs before this push.
 
 ## §2 Step map (cycle 07 r1)
 1. Docs-only commit (R119 v1.3, R126 PRD rows, ADR-018) — **done with one deviation**: v1.3 and ADR-018 written and read back; the PRD rows are not written (§6 item 0, Owner action 1).
 2. `cp/7a-demo-tutors` (R121) — **done**: PR #23 merged (3548a04, R123), rehearsal deployed, seeder run once, 7 tutors, /tutors, a profile and guest /book (302 to /login) checked.
-3. `cp/7b-video-registry` (R122, R125) — **built and verified locally**; docs committed to main, then PR, fresh-subagent review, self-merge under R123 (scope reading in CYCLE-LOG DECISION)
+3. `cp/7b-video-registry` (R122, R125) — **verified on head `2bd999a`**; push, PR, fresh-subagent review, self-merge under R123 (scope reading in CYCLE-LOG DECISION)
 4. `cp/7c-room-lifecycle` — [not started]
 5. `cp/7d-lesson-page` — [not started]
 6. `cp/7e-reports` (R124) — [not started]
@@ -20,9 +20,9 @@ Tests: **1432/1432 passed, 7308 assertions** (solo run on the 7b code; 1391 on m
 **7b — video-provider registry (built, verified, not yet pushed)**
 - `video_providers` registry: migration-inserted `daily` (inactive, no credentials) and `fake` (active except in production) rows, one-active partial unique index, `encrypted:array` credentials hidden from serialisation. `VideoProviderManager` (`active()`, `forCode()`, `forRow()`), `DailyVideoProvider` (HTTP-faked in tests) and `FakeVideoProvider`. Activation guard refuses `fake` in production, a code with no driver, and missing credentials.
 - Filament `Video providers` resource: write-only credential inputs, blank keeps the stored value, audit rows name credential keys only, Activate/Deactivate actions.
-- `POST webhooks/video/{code}`: signature verified against the row named in the URL, replay-safe (`video_webhook_events` unique on provider and event id, replay → 200 `duplicate`, dispatched once), throttled, body-capped, CSRF-exempt for `webhooks/*` only, no `fake` endpoint in production.
+- `POST webhooks/video/{code}`: signature verified against the row named in the URL, replay-safe (`video_webhook_events` unique on provider and event id, replay → 200 `duplicate`, dispatched once; store and dispatch share one transaction, so a failed dispatch rolls the row back and the provider's retry is not lost), throttled, body-capped, CSRF-exempt for `webhooks/*` only, no `fake` endpoint in production.
 - Docs: ADR-017, DATA_MODEL v1.6, CHECKPOINTS CP6 note (R126). Daily wire details are from documentation and are flagged "confirm on the first real key" in ADR-017.
-- Verification: Pint, PHPStan 0 errors, RTL check, `ledger:verify` OK, `npm run build` exit 0, 1432/1432 (7308 assertions). One earlier run was invalid through my own mistake (two suites on one database); see CYCLE-LOG DEVIATION. Solo rerun is the valid one.
+- Verification (head `2bd999a`): Pint, PHPStan 0 errors, RTL check, `ledger:verify` OK, `npm run build` exit 0, 1434/1434 (7313 assertions, 683 s). An earlier run was invalid through my own mistake (two suites on one database); see CYCLE-LOG DEVIATION. The 683 s run is a BLOCKER disclosure (§6).
 
 **Cycle 07 r1, so far**
 - PLAN.md cycle 07 r1 committed as `43c9a4f` before any other work (CYCLE-LOG START).
@@ -71,9 +71,10 @@ Tests: **1432/1432 passed, 7308 assertions** (solo run on the 7b code; 1391 on m
 
 
 ## §5 Why stopping
-Not stopping: 7b is built and verified. Next is the pre-PR advisor consult, push, PR and fresh-subagent review. Nothing here needs the owner (R109). This is the step-boundary write.
+Not stopping: 7b is verified on the head. Next is push, PR and the fresh-subagent review. Nothing here needs the owner (R109). This is the step-boundary write.
 
 ## §6 Mismatches
+1. **Full suite is now over the 10-minute stall line (BLOCKER disclosure, not a halt).** `php artisan test` took 683 s on the 7b head (608 s earlier the same sub-cycle). It completed green. It grows about 10 s per sub-cycle, so raising the stall line for this one command, or splitting the suite, needs a planner/owner ruling before it becomes a permanent breach. Nothing is blocked today.
 0. **PRD §11 rows (R126) not written — refused by the harness's auto-mode classifier.** Both rows are ready (Owner action 1). ADR-018 already records the same decisions, and nothing in the build reads the PRD table. Note for the planner: the PRD had no D-09 row at all (§11 stops at D-08), so R126's "row D-09" is a new row.
 1. **R101 vs invariant 5 — closed in fix loop 1 (R104).** A due weekly lesson whose tutor is not `bookable()` is now cancelled uncharged as `tutor_unavailable`. **`composer test` could not run as one unit on this machine:** under PowerShell the `rtl:check` script's `bash` resolves to WSL (which has no bash), under Git Bash `composer` is not on PATH. Each constituent step was run instead (`config:clear`, Pint, PHPStan, `bash scripts/rtl-check.sh`, `php artisan test`, `php artisan ledger:verify --no-interaction`) — CYCLE-LOG VERIFICATION 01:10.
 2. **Open Low from the re-review — carried to CP5 by the owner (R108).** (a) **In-flight exception:** if a run dies after `begin()` committed a Pending row but before the gateway call, and the tutor is suspended before the next run, the next run charges the lesson (Confirmed, HOLD, "charged" mail) — or on a decline counts a failure toward pausing the slot. The alternative (cancel over the Pending row) can strand a payment the gateway took with no ledger entry. The proper fix is a gateway status lookup by idempotency key, which the fake gateway cannot answer; a CP5 carry. (b) Note: a `Captured` payment with a failed hold (`NeedsReview`) leaves the lesson `reserved`, so a later run could cancel it `tutor_unavailable` over money taken; `ledger:verify` flags it and the email drops "Nothing was charged"; optionally exclude Captured at the guard. (c) Notes: the 'account deleted' test proves the scope's `deleted_at` clause only (the real `AnonymizeUser` path cannot reach R104); the tutor mail would go to a trashed user's address (skip when `$tutor->trashed()`); the "keep or end" wording is asserted only as "still active".
@@ -103,7 +104,7 @@ Owner action 1: **PRD §11 rows D-02 and D-09** — docs/PRD.md is read-only for
 |---|---|---|---|---|---|
 | step 1 docs | done (PRD rows outstanding) | `main` | — | — | docs-only |
 | 7a demo tutors | done, on rehearsal | `cp/7a-demo-tutors` | #23 | no Medium or High; 4 Low (3 fixed) | self-merged 3548a04 (R123) |
-| 7b video registry | built, verified, PR next | `cp/7b-video-registry` | — | pending | — |
+| 7b video registry | verified, PR next | `cp/7b-video-registry` | — | pending | — |
 | 7c room lifecycle | not started | — | — | — | — |
 | 7d lesson page | not started | — | — | — | — |
 | 7e reports | not started | — | — | — | — |
