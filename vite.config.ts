@@ -9,11 +9,21 @@ import { defineConfig, lazyPlugins } from 'vite-plus';
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.ts'],
+            input: [
+                'resources/css/app.css',
+                'resources/js/app.ts',
+                'resources/css/filament/admin/theme.css',
+            ],
             refresh: true,
             fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
+                bunny('Schibsted Grotesk', {
+                    weights: [400, 500, 700],
+                }),
+                bunny('Quicksand', {
+                    weights: [600],
+                }),
+                bunny('IBM Plex Mono', {
+                    weights: [400, 500],
                 }),
             ],
         }),
