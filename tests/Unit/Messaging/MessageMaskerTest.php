@@ -109,6 +109,56 @@ gmail.com', MessageMasker::PLACEHOLDER],
     'space before the dot only' => ['mysite .com', MessageMasker::PLACEHOLDER],
     'percent-encoded at sign' => ['sara%40gmail.com', 'sara%'.MessageMasker::PLACEHOLDER],
 
+    // Round 3 (R143 skeleton rewrite): doubled/bracketed/parenthesized/braced dots, ellipsis, doubled bullets
+    'doubled dot' => ['visit mysite..com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'bracketed dot' => ['visit mysite[.]com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'parenthesized dot' => ['visit mysite(.)com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'braced dot' => ['visit mysite{.}com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'ellipsis for the dot' => ['visit mysite…com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'doubled bullets for the dot' => ['visit mysite••com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'bullet after a real dot' => ['visit mysite.•com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    // A label is not distinguished from the spelled-out separator words "at"/"dot" — deliberately, or a
+    // real bare domain built the same way would leak (accepted over-masking, R143 skeleton design).
+    'spelled-out at and dot in brackets is accepted over-masking (R143)' => ['sara (at) gmail (dot) com', MessageMasker::PLACEHOLDER],
+    'a literal "dot" domain label is not mistaken for the spelled-out separator' => ['visit mysite.dot.com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+
+    // Round 3: a symbol directly beside the at sign, on either side, or wrapping the whole local part
+    'exclaim between local part and at' => ['sara!@gmail.com', MessageMasker::PLACEHOLDER],
+    'hash between local part and at' => ['sara#@gmail.com', MessageMasker::PLACEHOLDER],
+    // The opening quote sits before the local part starts, so it is not part of the match and survives —
+    // the strong signal is the `@`, and leaving a bare punctuation mark visible is not over- or under-masking.
+    'quoted local part' => ['"sara"@gmail.com', '"'.MessageMasker::PLACEHOLDER],
+    'star between at and provider' => ['sara@*gmail.com', MessageMasker::PLACEHOLDER],
+    'exclaim between at and provider' => ['sara@!gmail.com', MessageMasker::PLACEHOLDER],
+    'doubled at sign' => ['sara@@mysite.com', MessageMasker::PLACEHOLDER],
+    // EMAIL never required a recognised TLD ending — an unlisted ending such as ".art" only matters to the
+    // bare-domain patterns, which do not apply once an `@` has anchored the match.
+    'doubled at sign, unlisted ending still matches via the at sign' => ['sara@@mysite.art', MessageMasker::PLACEHOLDER],
+
+    // Round 3: comma, arabic comma, fullwidth comma, slash and dash as a non-word-ending domain separator
+    'comma and space for the dot' => ['visit mysite, com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'arabic comma for the dot' => ['visit mysite، com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'fullwidth comma for the dot' => ['visit mysite，com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'slash with spaces for the dot' => ['visit mysite / com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'dash with spaces for the dot' => ['visit mysite - com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+
+    // Round 3: a two-letter country code after an exotic tight separator
+    'bullet-tight country code' => ['visit mysite•ae now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+
+    // Round 3: single-digit enclosed number symbols not already folded by NFKC
+    'dingbat negative circled digits' => ['❶❷❸❹❺❻❼', MessageMasker::PLACEHOLDER],
+    'dingbat negative circled sans-serif digits' => ['➊➋➌➍➎➏➐', MessageMasker::PLACEHOLDER],
+    'double circled digits' => ['⓵⓶⓷⓸⓹⓺⓻', MessageMasker::PLACEHOLDER],
+    // NFKC (applied ahead of the digit fold, unrelated to this rewrite) already decomposes "½" into
+    // "1" + U+2044 FRACTION SLASH + "2" on its own, so this is not exercising foldEnclosedDigits at all.
+    'a half is decomposed by NFKC before the digit fold ever runs' => ['about ½ an hour', "about 1\u{2044}2 an hour"],
+
+    // Round 3: a separator unit is now one grapheme, not one code point, so a handful of multi-codepoint
+    // emoji between digit groups no longer defeats the six-unit budget
+    'two family emoji between digit groups' => ["050\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}123\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}4567", MessageMasker::PLACEHOLDER],
+    'four skin-tone thumbs between digit groups' => ["050\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FC}\u{1F44D}\u{1F3FD}\u{1F44D}\u{1F3FE}123\u{1F44D}\u{1F3FB}\u{1F44D}\u{1F3FC}\u{1F44D}\u{1F3FD}\u{1F44D}\u{1F3FE}4567", MessageMasker::PLACEHOLDER],
+    'four flags between digit groups' => ["050\u{1F1E6}\u{1F1EA}\u{1F1FA}\u{1F1F8}\u{1F1EC}\u{1F1E7}\u{1F1EB}\u{1F1F7}123\u{1F1E6}\u{1F1EA}\u{1F1FA}\u{1F1F8}\u{1F1EC}\u{1F1E7}\u{1F1EB}\u{1F1F7}4567", MessageMasker::PLACEHOLDER],
+
     // Left alone
     'ordinary sentence' => ['See you on Tuesday at 5 pm, bring chapter 3.', 'See you on Tuesday at 5 pm, bring chapter 3.'],
     'six digits' => ['ref 123456', 'ref 123456'],
@@ -142,8 +192,11 @@ question 12
     'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
     'colon-separated number' => ['050:123:4567', '050:123:4567'],
     'lookalike letters for digits' => ['O5O l234567', 'O5O l234567'],
-    'at and dot in brackets' => ['sara (at) gmail (dot) com', 'sara (at) gmail (dot) com'],
     'spelled-out address' => ['sara at gmail dot com', 'sara at gmail dot com'],
+    'a spaced word-like ending is a known limit (R143)' => ['contact me at mysite. online please', 'contact me at mysite. online please'],
+    // Pure whitespace alone, with no punctuation at all, is deliberately not a valid bare-domain
+    // separator (R143) — otherwise ordinary line-wrapped sentences would bridge into a false positive.
+    'a bare newline with no punctuation is a known limit (R143)' => ["visit mysite\ncom now", "visit mysite\ncom now"],
 ]);
 
 it('masks and leaves alone as the fixture table says', function (string $input, string $expected) {
