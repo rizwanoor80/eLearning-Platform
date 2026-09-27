@@ -68,3 +68,23 @@ it('stays available while messaging is switched off, because the data is kept fo
     test()->actingAs($this->admin)->get(ViewConversation::getUrl(['record' => $conversation]))->assertOk();
     expect(AuditLog::query()->where('action', 'conversation.viewed')->count())->toBe(1);
 });
+
+it('opens the view page from the table, so an open is always audited', function () {
+    $conversation = Conversation::factory()->create();
+
+    Livewire::actingAs($this->admin)->test(ListConversations::class)
+        ->assertTableActionHasUrl('view', ViewConversation::getUrl(['record' => $conversation]), $conversation);
+
+    expect(AuditLog::query()->where('action', 'conversation.viewed')->count())->toBe(0);
+});
+
+it('shows the newest messages, oldest first, when a thread is longer than the cap', function () {
+    $conversation = Conversation::factory()->create();
+    Message::factory()->count(503)->sequence(fn ($sequence) => ['conversation_id' => $conversation->id, 'sender_user_id' => $conversation->account_user_id, 'body' => sprintf('msg-%03d', $sequence->index)])->create();
+
+    Livewire::actingAs($this->admin)->test(ViewConversation::class, ['record' => $conversation->getRouteKey()])
+        ->assertSee('latest 500 of 503')
+        ->assertSee('msg-502')
+        ->assertSee('msg-003')
+        ->assertDontSee('msg-002');
+});

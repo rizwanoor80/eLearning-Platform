@@ -21,14 +21,20 @@ class ConversationInfolist
                 TextEntry::make('created_at')->label('Opened')->dateTime(),
                 TextEntry::make('first_lesson_completed_at')->label('First lesson completed')->dateTime()->placeholder('Not yet — contact details are masked'),
                 RepeatableEntry::make('thread')
-                    ->label('Messages (stored as sent: contact details were masked before saving)')
+                    ->label(function (Conversation $record): string {
+                        $total = $record->messages()->count();
+                        $shown = $total > self::MESSAGE_LIMIT ? 'latest '.self::MESSAGE_LIMIT." of {$total}" : (string) $total;
+
+                        return "Messages ({$shown}; stored as sent: contact details were masked before saving)";
+                    })
                     ->columnSpanFull()
-                    ->getStateUsing(fn (Conversation $record): array => $record->messages()->with('sender:id,name')->oldest('id')->limit(self::MESSAGE_LIMIT)->get()
+                    ->getStateUsing(fn (Conversation $record): array => $record->messages()->with('sender:id,name')->latest('id')->limit(self::MESSAGE_LIMIT)->get()
+                        ->reverse()
                         ->map(fn (Message $message): array => [
                             'sender' => $message->sender->name,
                             'sent_at' => $message->created_at?->format('Y-m-d H:i').' UTC',
                             'body' => $message->body,
-                        ])->all())
+                        ])->values()->all())
                     ->schema([
                         TextEntry::make('sender'),
                         TextEntry::make('sent_at')->label('Sent'),
