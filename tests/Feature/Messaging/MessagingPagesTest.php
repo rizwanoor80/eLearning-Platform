@@ -186,20 +186,51 @@ it('shows the thread with the masking notice before the first lesson and without
 });
 
 it('sends no email address, phone number or user record to either portal', function () {
-    ['conversation' => $conversation, 'parent' => $parent, 'tutorUser' => $tutorUser] = msgPair();
-    $parent->forceFill(['email' => 'parent.secret@example.org'])->save();
+    ['conversation' => $conversation, 'parent' => $parent, 'tutorUser' => $tutorUser, 'tutor' => $tutor] = msgPair();
+    $parent->forceFill(['email' => 'parent.secret@example.org', 'phone' => '0501234567'])->save();
     $tutorUser->forceFill(['email' => 'tutor.secret@example.org'])->save();
     Message::factory()->create(['conversation_id' => $conversation->id, 'sender_user_id' => $tutorUser->id, 'body' => 'hello']);
 
-    foreach ([[$parent, 'tutor.secret'], [$tutorUser, 'parent.secret']] as [$viewer, $forbidden]) {
-        foreach ([route('messages.index'), route('messages.show', $conversation)] as $url) {
-            $body = test()->actingAs($viewer)->get($url)->assertOk()->getContent();
-            $page = json_decode(html_entity_decode((string) preg_match('/data-page="([^"]*)"/', $body, $m) ? $m[1] : ''), true);
-            $props = json_encode($page['props']['conversation'] ?? $page['props']['conversations'] ?? []);
+    $cases = [
+        [$parent, $tutor->displayName(), 'tutor.secret'],
+        [$tutorUser, $parent->name, 'parent.secret'],
+    ];
 
-            expect($props)->not->toContain($forbidden)->and($props)->not->toContain('@example.org');
+    foreach ($cases as [$viewer, $counterpart, $forbidden]) {
+        foreach ([route('messages.index'), route('messages.show', $conversation)] as $url) {
+            $props = null;
+            test()->actingAs($viewer)->get($url)->assertOk()->assertInertia(function (AssertableInertia $page) use (&$props) {
+                $props = $page->toArray()['props'];
+            });
+            $json = json_encode($props['conversation'] ?? $props['conversations']);
+
+            // The page really carried the counterpart, so the absences below are not vacuous.
+            expect($json)->toContain($counterpart)
+                ->and($json)->not->toContain($forbidden)
+                ->and($json)->not->toContain('@example.org')
+                ->and($json)->not->toContain('0501234567');
         }
     }
+});
+
+it('masks a counterpart name that carries contact details until the first lesson', function () {
+    ['conversation' => $conversation, 'parent' => $parent, 'tutorUser' => $tutorUser] = msgPair();
+    $parent->forceFill(['name' => 'Sara 0501234567'])->save();
+
+    foreach ([route('messages.index'), route('messages.show', $conversation)] as $url) {
+        $props = null;
+        test()->actingAs($tutorUser)->get($url)->assertOk()->assertInertia(function (AssertableInertia $page) use (&$props) {
+            $props = $page->toArray()['props'];
+        });
+        $json = json_encode($props['conversation'] ?? $props['conversations']);
+
+        expect($json)->not->toContain('0501234567')->and($json)->toContain('Sara');
+    }
+
+    $after = msgPair(afterFirstLesson: true);
+    $after['parent']->forceFill(['name' => 'Sara 0501234567'])->save();
+    test()->actingAs($after['tutorUser'])->get(route('messages.show', $after['conversation']))
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('conversation.counterpart', 'Sara 0501234567'));
 });
 
 it('shows a tutor\'s first name to the parent and the parent\'s name to the tutor', function () {

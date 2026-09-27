@@ -7,6 +7,8 @@ dataset('masking fixtures', [
     // Email addresses
     'plain email' => ['write to sara@example.com please', 'write to '.MessageMasker::PLACEHOLDER.' please'],
     'email with plus tag and subdomain' => ['sara.k+lessons@mail.school.co.uk', MessageMasker::PLACEHOLDER],
+    'email with spaces around the dot' => ['sara@gmail . com', MessageMasker::PLACEHOLDER],
+    'email with spaces around at and dot' => ['sara @ gmail . co . uk', MessageMasker::PLACEHOLDER],
     'email with spaces around the at sign' => ['sara @ example.com', MessageMasker::PLACEHOLDER],
     'fullwidth at sign' => ['sara＠example.com', MessageMasker::PLACEHOLDER],
     'uppercase email' => ['SARA@EXAMPLE.COM', MessageMasker::PLACEHOLDER],
@@ -39,6 +41,15 @@ dataset('masking fixtures', [
     'circled digits' => ['⑤⓪①②③④⑤⑥', MessageMasker::PLACEHOLDER],
     'digits split by single spaces' => ['0 5 0 1 2 3 4 5 6 7', MessageMasker::PLACEHOLDER],
     'two numbers in one message' => ['0501234567 or 0509876543', MessageMasker::PLACEHOLDER.' or '.MessageMasker::PLACEHOLDER],
+    'newline between digit groups' => ['0501
+234567', MessageMasker::PLACEHOLDER],
+    'carriage return and newline' => ['050
+123
+4567', MessageMasker::PLACEHOLDER],
+    'keycap digits' => ["0\u{FE0F}\u{20E3}5\u{FE0F}\u{20E3}0\u{FE0F}\u{20E3}1\u{FE0F}\u{20E3}2\u{FE0F}\u{20E3}3\u{FE0F}\u{20E3}4\u{FE0F}\u{20E3}", MessageMasker::PLACEHOLDER],
+    'commas between digit groups' => ['050,123,4567', MessageMasker::PLACEHOLDER],
+    'arabic decimal and thousands separators' => ["٠٥٠\u{066B}١٢٣\u{066C}٤٥٦٧", MessageMasker::PLACEHOLDER],
+    'digits separated by slashes and underscores' => ['050/123_4567', MessageMasker::PLACEHOLDER],
     'zero-width space between digits' => ["050\u{200B}123\u{200B}4567", MessageMasker::PLACEHOLDER],
     'zero-width joiner and word joiner' => ["050\u{200D}123\u{2060}4567", MessageMasker::PLACEHOLDER],
     'soft hyphen and bom' => ["\u{FEFF}050\u{00AD}1234567", MessageMasker::PLACEHOLDER],

@@ -92,14 +92,19 @@ class MessageController extends Controller
 
     /**
      * The other side's name as this viewer may see it: a tutor's first name (as everywhere on the
-     * public site), an account holder's name for the tutor. No email, no phone.
+     * public site), an account holder's name for the tutor. No email, no phone: until the first lesson a
+     * name that carries one (a user can type anything into it) is masked like a message.
      */
     private function counterpartName(User $viewer, Conversation $conversation): string
     {
-        if ($viewer->id === $conversation->account_user_id) {
-            return $conversation->tutorProfile->displayName();
+        $name = $viewer->id === $conversation->account_user_id
+            ? $conversation->tutorProfile->displayName()
+            : $conversation->account->name;
+
+        if (! $conversation->contactIsVisible()) {
+            $name = app(MessageMasker::class)->mask($name)->text;
         }
 
-        return Str::limit($conversation->account->name, 60);
+        return Str::limit($name, 60);
     }
 }

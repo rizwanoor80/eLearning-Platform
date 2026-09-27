@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search } from '@lucide/vue';
+import { BookOpen, Folder, LayoutGrid, Menu, MessageSquare, Search } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import BrandLockup from '@/components/BrandLockup.vue';
@@ -34,6 +34,7 @@ import {
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { getInitials } from '@/composables/useInitials';
+import { useUnreadCounts } from '@/composables/useUnreadCounts';
 import { toUrl } from '@/lib/utils';
 import type { BreadcrumbItem, NavItem } from '@/types';
 
@@ -52,12 +53,17 @@ const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
 const activeItemStyles =
     'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100';
 
+// R133/R135: Messages shows for the two portals when the feature is on; the badge is the polled unread count.
+const messagingOn = computed(() => page.props.features.messaging && ['account_owner', 'tutor'].includes(String(auth.value.user?.role ?? '')));
+const { messages: unreadMessages } = useUnreadCounts(() => messagingOn.value);
+
 const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'Dashboard',
         href: auth.value.home,
         icon: LayoutGrid,
     },
+    ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
 ]);
 
 const rightNavItems: NavItem[] = [
@@ -119,6 +125,7 @@ const rightNavItems: NavItem[] = [
                                             class="h-5 w-5"
                                         />
                                         {{ item.title }}
+                                        <span v-if="item.badge" class="bg-primary text-primary-foreground ms-auto min-w-5 rounded-full px-1.5 text-center text-xs" data-test="nav-badge">{{ item.badge > 99 ? '99+' : item.badge }}</span>
                                     </Link>
                                 </nav>
                                 <div class="flex flex-col space-y-4">
@@ -175,6 +182,7 @@ const rightNavItems: NavItem[] = [
                                         class="me-2 h-4 w-4"
                                     />
                                     {{ item.title }}
+                                    <span v-if="item.badge" class="bg-primary text-primary-foreground ms-2 min-w-5 rounded-full px-1.5 text-center text-xs" data-test="nav-badge">{{ item.badge > 99 ? '99+' : item.badge }}</span>
                                 </Link>
                                 <div
                                     v-if="isCurrentUrl(item.href)"

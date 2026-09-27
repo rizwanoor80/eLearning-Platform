@@ -6,6 +6,7 @@ use App\Exceptions\ConversationClosedException;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
+use App\Support\Messaging\MaskedMessage;
 use App\Support\Messaging\MessageMasker;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -36,14 +37,16 @@ class SendMessage
         // Read fresh: the date can only go from null to set, so a stale read errs towards masking.
         $conversation->refresh();
 
-        $stored = $conversation->contactIsVisible() ? null : $this->masker->mask($body);
+        $stored = $conversation->contactIsVisible()
+            ? new MaskedMessage($body, false)
+            : $this->masker->mask($body);
 
-        return DB::transaction(function () use ($sender, $conversation, $body, $stored): Message {
+        return DB::transaction(function () use ($sender, $conversation, $stored): Message {
             $message = Message::query()->create([
                 'conversation_id' => $conversation->id,
                 'sender_user_id' => $sender->id,
-                'body' => $stored?->text ?? $body,
-                'body_masked' => $stored?->masked ?? false,
+                'body' => $stored->text,
+                'body_masked' => $stored->masked,
             ]);
 
             $conversation->forceFill(['last_message_at' => $message->created_at])->save();

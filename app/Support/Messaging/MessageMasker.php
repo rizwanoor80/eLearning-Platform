@@ -18,7 +18,7 @@ use RuntimeException;
  * patterns. Digits are matched as `\p{Nd}`, which covers Arabic-Indic and Persian digits — PCRE's `\d`
  * does not, even with `/u`.
  *
- * Known limits, disclosed in ADR-003: numbers and addresses spelled out in words ("zero five zero…",
+ * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words ("zero five zero…",
  * "name at gmail dot com"), digits split by words, and social handles are not caught. The safe side is
  * over-masking: a date such as 27-09-2026 or a file name such as notes.pdf is masked too.
  */
@@ -31,7 +31,7 @@ class MessageMasker
     /** Zero-width and direction characters, the soft hyphen, word joiners and the BOM. */
     private const INVISIBLE = '~[\x{00AD}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{FEFF}]~u';
 
-    private const EMAIL = '~[\p{L}\p{N}._%+\-]+ ?@ ?[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)+~u';
+    private const EMAIL = '~[\p{L}\p{N}._%+\-]+ ?@ ?[\p{L}\p{N}\-]+(?: ?\. ?[\p{L}\p{N}\-]+)+~u';
 
     private const URL_WITH_SCHEME = '~\b[a-z][a-z0-9+.\-]{1,15}://\S+~iu';
 
@@ -40,7 +40,7 @@ class MessageMasker
     /** Any two-letter country code, or one of the common longer endings, after a dotted label. */
     private const BARE_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+\.)+(?:com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|online|site|tech|link|page|club|shop|store|blog|live|news|pro|cloud|academy|wiki|name|mobi|[a-z]{2})(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
 
-    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:[ \t.\-()\[\]/_]*\p{Nd})+~u';
+    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:[\s\p{M},.\-()\[\]/_\x{066B}\x{066C}]*\p{Nd})+\p{M}*~u';
 
     public function mask(string $body): MaskedMessage
     {

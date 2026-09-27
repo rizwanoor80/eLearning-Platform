@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_message_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read int|null $unread_count set by withCount() on the message list
  */
 class Conversation extends Model
 {
