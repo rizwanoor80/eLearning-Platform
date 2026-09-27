@@ -211,6 +211,14 @@ class TutorProfile extends Model
     }
 
     /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
      * Whether the permit is still valid today — the PHP twin of the permit
      * half of `scopeBookable()` (expiry strictly after today, by date), so
      * approval, reinstatement and search can never disagree about one tutor.

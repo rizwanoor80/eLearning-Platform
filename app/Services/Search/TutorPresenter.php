@@ -2,6 +2,7 @@
 
 namespace App\Services\Search;
 
+use App\Models\Review;
 use App\Models\TutorProfile;
 use App\Services\Scheduling\Slot;
 use App\Support\Facades\Settings;
@@ -41,8 +42,61 @@ class TutorPresenter
             'intro_video_url' => $video !== null && preg_match('#^https?://#i', $video) === 1 ? $video : null,
             'subjects' => $this->subjects($tutor),
             'next_slots' => array_map(fn (Slot $slot): array => $this->slot($slot), array_slice($slots, 0, 12)),
-            ...($showReviews ? ['reviews' => []] : []),
+            ...($showReviews ? ['reviews' => $this->reviews($tutor)] : []),
         ];
+    }
+
+    /**
+     * Published reviews only, latest first, 10 per page (R136). The reviewer is never a learner
+     * (invariant #7) — always the account holder, shown as "First L." only, never a full name; a
+     * one-word name (or an anonymised "Deleted user") degrades to its first word alone rather than
+     * guessing at a last name. `reviews_page` is a distinct query-string name so it can never collide
+     * with another paginator on the same page.
+     *
+     * @return array<string, mixed>
+     */
+    private function reviews(TutorProfile $tutor): array
+    {
+        $reviews = Review::query()
+            ->where('tutor_profile_id', $tutor->id)
+            ->whereNotNull('published_at')
+            ->with('account:id,name')
+            ->latest('id')
+            ->paginate(10, ['*'], 'reviews_page');
+
+        return [
+            'data' => $reviews->getCollection()->map(fn (Review $review): array => [
+                'rating' => $review->rating,
+                'comment' => $review->comment,
+                'reviewer' => $this->reviewerLabel($review->account?->name),
+                'published_at' => $review->published_at?->toIso8601String(),
+                'date_label' => $review->published_at?->format('j M Y'),
+            ])->all(),
+            'current_page' => $reviews->currentPage(),
+            'last_page' => $reviews->lastPage(),
+        ];
+    }
+
+    /**
+     * "First L." — never a full name, and never a guess at a surname a one-word name doesn't have.
+     */
+    private function reviewerLabel(?string $name): string
+    {
+        $name = trim((string) $name);
+
+        if ($name === '') {
+            return __('A parent');
+        }
+
+        $parts = preg_split('/\s+/u', $name) ?: [];
+
+        if (count($parts) < 2) {
+            return $parts[0];
+        }
+
+        $last = (string) end($parts);
+
+        return $parts[0].' '.mb_substr($last, 0, 1).'.';
     }
 
     /**

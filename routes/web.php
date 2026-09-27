@@ -13,6 +13,7 @@ use App\Http\Controllers\Messaging\MessageController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
 use App\Http\Controllers\Payments\WeeklySlotController;
+use App\Http\Controllers\Reviews\ReviewController;
 use App\Http\Controllers\Tutor\TutorDashboardController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
@@ -44,6 +45,12 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
     // CP6 7e: the tutor's report. LessonPolicy::report is the authorisation.
     Route::get('report', [ProgressReportController::class, 'create'])->name('lessons.report.create');
     Route::post('report', [ProgressReportController::class, 'store'])->name('lessons.report.store');
+
+    // CP7 8c (R136): the account holder's review of a completed lesson. LessonPolicy::review is the authorisation.
+    Route::middleware('feature:reviews')->group(function () {
+        Route::get('review', [ReviewController::class, 'create'])->name('lessons.review.create');
+        Route::post('review', [ReviewController::class, 'store'])->middleware('throttle:reviews')->name('lessons.review.store');
+    });
 });
 
 // CP7 8b (R133, R135): Messages for both portals — an account holder and a tutor each see their own

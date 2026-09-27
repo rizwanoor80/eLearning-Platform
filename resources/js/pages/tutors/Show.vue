@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
@@ -17,7 +17,11 @@ const props = defineProps<{
         rating_count: number;
         subjects: Array<{ curriculum: string | null; subject: string | null; level_min: string; level_max: string }>;
         next_slots: Array<{ starts_at: string; label: string }>;
-        reviews?: Array<{ id: number }>;
+        reviews?: {
+            data: Array<{ rating: number; comment: string | null; reviewer: string; published_at: string | null; date_label: string | null }>;
+            current_page: number;
+            last_page: number;
+        };
     };
     timezone: string;
     can_set_up_weekly: boolean;
@@ -33,6 +37,11 @@ function bookHref(startsAt: string): string {
     const utc = new Date(startsAt).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
     return `/tutors/${props.tutor.id}/book?starts_at=${encodeURIComponent(utc)}`;
+}
+
+// A distinct query-string name (reviews_page) so this paginator never collides with another on the page.
+function goToReviewsPage(targetPage: number) {
+    router.get(`/tutors/${props.tutor.id}`, { reviews_page: targetPage }, { preserveScroll: true, preserveState: true, only: ['tutor'] });
 }
 </script>
 
@@ -95,9 +104,44 @@ function bookHref(startsAt: string): string {
             <Link :href="`/weekly-slots/create?tutor=${tutor.id}`" class="w-fit text-sm underline underline-offset-4">Set up a weekly slot</Link>
         </section>
 
-        <section v-if="tutor.reviews !== undefined" class="grid gap-2">
+        <section v-if="tutor.reviews !== undefined" class="grid gap-3" data-test="reviews">
             <h2 class="font-medium">Reviews</h2>
-            <p class="text-muted-foreground text-sm">No reviews yet.</p>
+
+            <p v-if="tutor.reviews.data.length === 0" class="text-muted-foreground text-sm">No reviews yet.</p>
+
+            <template v-else>
+                <ul class="grid gap-3">
+                    <li v-for="(review, index) in tutor.reviews.data" :key="index" class="rounded-xl border p-4 text-sm" data-test="review">
+                        <div class="flex items-center justify-between gap-2">
+                            <span>★ {{ review.rating }} out of 5</span>
+                            <span class="text-muted-foreground text-xs">{{ review.reviewer }} · {{ review.date_label }}</span>
+                        </div>
+                        <p v-if="review.comment" class="mt-2 whitespace-pre-line">{{ review.comment }}</p>
+                    </li>
+                </ul>
+
+                <div v-if="tutor.reviews.last_page > 1" class="flex items-center gap-3 text-sm" data-test="reviews-pagination">
+                    <button
+                        type="button"
+                        class="underline-offset-4 disabled:text-muted-foreground disabled:no-underline hover:underline"
+                        :disabled="tutor.reviews.current_page <= 1"
+                        data-test="reviews-prev"
+                        @click="goToReviewsPage(tutor.reviews.current_page - 1)"
+                    >
+                        Previous
+                    </button>
+                    <span class="text-muted-foreground text-xs">Page {{ tutor.reviews.current_page }} of {{ tutor.reviews.last_page }}</span>
+                    <button
+                        type="button"
+                        class="underline-offset-4 disabled:text-muted-foreground disabled:no-underline hover:underline"
+                        :disabled="tutor.reviews.current_page >= tutor.reviews.last_page"
+                        data-test="reviews-next"
+                        @click="goToReviewsPage(tutor.reviews.current_page + 1)"
+                    >
+                        Next
+                    </button>
+                </div>
+            </template>
         </section>
     </main>
 

@@ -51,4 +51,15 @@ class LessonPolicy
             && ! $learner->trashed()
             && $learner->account_user_id === $user->id;
     }
+
+    /**
+     * The lesson's account holder only (CP7 8c, R136) — never the learner, who has no login
+     * (invariant #7), and never the tutor. `SubmitReview::eligibilityProblem` re-checks on the
+     * locked row; this is the controller's first, generic refusal, so a review page 404s for
+     * anyone but the parent who owns the lesson.
+     */
+    public function review(User $user, Lesson $lesson): bool
+    {
+        return $user->role === Role::AccountOwner && $lesson->learner->account_user_id === $user->id;
+    }
 }

@@ -60,6 +60,8 @@ class AppServiceProvider extends ServiceProvider
         // Per user, not per address: 30 messages a minute (R133), and 30 polls a minute for the badge counts (R135).
         RateLimiter::for('messages', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));
         RateLimiter::for('unread-counts', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));
+        // One review per lesson is enforced by the unique index; this only bounds submit attempts (R136).
+        RateLimiter::for('reviews', fn (Request $request) => Limit::perMinute(10)->by((string) $request->user()->id));
     }
 
     /**

@@ -28,6 +28,7 @@ type LessonView = {
     other_role: 'student' | 'tutor';
     no_show_outcome: 'pay_tutor' | 'refund_parent';
     can_report: boolean;
+    can_review: boolean;
     terminal: boolean;
 };
 
@@ -149,6 +150,13 @@ const closedMessages: Record<string, string> = {
             <p class="text-sm">Your report on this lesson is due. It goes to the parent.</p>
             <Button as-child data-test="report-link">
                 <Link :href="`/lessons/${lesson.id}/report`">Write the report</Link>
+            </Button>
+        </div>
+
+        <div v-if="lesson.can_review" class="flex flex-wrap items-center gap-3 rounded-xl border p-4" data-test="review-prompt">
+            <p class="text-sm">How was this lesson? Your review is public on the tutor's profile.</p>
+            <Button as-child data-test="review-link">
+                <Link :href="`/lessons/${lesson.id}/review`">Leave a review</Link>
             </Button>
         </div>
 
