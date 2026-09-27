@@ -174,7 +174,7 @@ Acceptance
 **Goal:** families and tutors can talk safely; ratings drive search; anyone can flag a problem.
 
 Tasks
-- Conversations created on first booking (paid or reserved); messages with Reverb live badges; masking of emails/phones/URLs until `first_lesson_completed_at`.
+- Conversations created on first booking (paid or reserved); messages with unread badges polled every 60 s (ADR-020; Reverb badges are a CP8 item); masking of emails/phones/URLs until `first_lesson_completed_at`.
 - Reviews after `completed*`; `rating_avg / rating_count` maintained; visible on profile and search sort.
 - Report button on tutor profile, conversation, and lesson page → `abuse_reports` → Filament safeguarding queue with suspend-tutor / suspend-account actions (history preserved) → admin email.
 - Notification centre (in-app list) + all remaining emails from PRD §8.
@@ -196,6 +196,7 @@ Tasks
 - Disputes: open within 48h, pauses release (lesson → `disputed`, tutor bucket "on hold"), Filament resolution with two dials (parent refund %, tutor pay %), defaults per PRD §2.10, → `LedgerService::settle` + gateway refund.
 - Filament: lessons index with force-cancel / force-complete / provider-failure (note + audit), tutor detail with strikes/flags/late reports, dashboard widgets (lessons this week, revenue, reports overdue, permits expiring, failed charges, open reports).
 - Legal page content: Rizwan/counsel enter the final terms, privacy, tutor agreement, safeguarding, about and contact text in the CP2 pages editor and publish (no code; the "DRAFT" placeholders must be gone before the checklist is signed).
+- Production hardening additions from cycle 08: trusted proxies configured for the production load balancer (R130); the `fake` video provider confirmed unselectable outside the local/testing/rehearsal allow-list (R131); live unread badges over Reverb replacing the 60 s poll (R135, ADR-020).
 - Production hardening: rate limiting, backups verified restore, error tracking, uptime check, `.env` review, seed data removed, webhook signature verification confirmed on both providers.
 - Launch checklist run with 5 real tutors and 3 friendly families, including one full trial → weekly slot → auto-charge → report → payout loop.
 

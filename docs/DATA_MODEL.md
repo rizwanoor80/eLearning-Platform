@@ -1,4 +1,4 @@
-# DATA MODEL — v1.6
+# DATA MODEL — v1.7
 
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
@@ -8,6 +8,8 @@ _v1.5 (cycle 05, CP4+ sub-cycle 4a, R92/R95/R98/R99/R100; describes what shipped
 
 _v1.6 (cycle 07, CP6 sub-cycle 7b, R122/R125/R126, ADR-017; describes what shipped in 7b): `video_providers` is built as a registry whose two rows (`daily`, `fake`) are inserted by the migration, and `video_webhook_events` is new (verified attendance webhooks, unique on provider and event id, the replay guard). `credentials` is an encrypted array, not encrypted json, keyed by the driver's credential names. The lessons room columns (`room_provider`, `room_id`, `room_created_at`, `room_closed_at`) already existed from CP3._
 _v1.6 addendum (cycle 07, CP6 sub-cycle 7e, R124/R126; describes what shipped in 7e): `progress_reports` is built as specified below, `emailed_at` being the parent-email idempotency claim. `lessons` gains `auto_release_at` (the 72 h deadline, frozen when the lesson completes — a settings change never moves it) and `report_late_at` (set when the platform released escrow because no report came in time; a tutor's late flags are counted from these rows inside a 90-day window, never stored as a number), with an index on `(tutor_profile_id, report_late_at)`. `tutor_strikes.type = late_report_x3` is written once when the third flag lands; it is history plus an admin email, and does not suspend._
+
+_v1.7 (cycle 08, CP7 sub-cycle 8b, R133/R134/R140, ADR-019; describes what shipped in 8b): `conversations` and `messages` are built as specified below. `messages` is append-only at the database, like `ledger_entries`: a trigger (`messages_are_append_only`) rejects a delete and any update that changes a column other than `read_at`, and the `Message` model refuses the same. `conversations.first_lesson_completed_at` is set only when a lesson of the pair enters `completed` (not `completed_reported`, which is also reached from a cancellation or no-show), and the migration backfills it, and the rows, from existing lessons: one conversation per (account, tutor) pair that has a lesson beyond `pending_payment` or `expired` (a `cancelled_payment_failed` lesson counts only if it came from a weekly slot), dated by the earliest `lessons.completed_at`. `messages.body` holds the masked text only, and `body_masked` records that something was hidden._
 
 ## ERD
 
