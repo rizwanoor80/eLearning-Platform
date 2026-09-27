@@ -61,21 +61,82 @@ use RuntimeException;
  * a number past the patterns. Digits are matched as `\p{Nd}`, which covers Arabic-Indic and Persian
  * digits — PCRE's `\d` does not, even with `/u`.
  *
+ * R144 (cycle 08 r3): round 4 of the 8b review found that every junk gap above had a character-count cap
+ * (`LOOSE_DOT_JUNK` `{1,3}`, `LABEL_GAP`/`TIGHT_JUNK` `{1,6}`, `AT_GAP` `{0,8}`) — once real punctuation in
+ * the message exceeded the cap, the pattern failed to match *at all*, so the address or domain passed
+ * through **fully unmasked** rather than over- or under-masked at an edge (`sara@name.......com`, seven
+ * dots, was untouched; six dots masked correctly). Every one of those gaps is now unbounded: a junk run of
+ * any length still matches, so a gap can never fail open purely because it is long — repeating a separator
+ * already present in a gap can only ever widen what gets masked, never defeat the match. This did not by
+ * itself need a literal-skeleton rewrite (R143's DEVIATION of 09:15, accepted by R144): the gap patterns
+ * already matched "junk between letter/digit runs" without enumerating separators; only their length caps
+ * were the bug. Removing a cap on a repeated character class reopens exactly the superlinear-backtracking
+ * shape the round-4 review's Finding 2 flagged (`str_repeat('a.', n)`-shaped input against the *unbounded*
+ * `NAMED_DOMAIN_LOOSE`/`_TIGHT`/`COUNTRY_DOMAIN` patterns), so every *gap* (`JUNK++`, `\s*+`, `AT_GAP`) is
+ * possessive throughout: within a gap nothing overlaps (junk is never whitespace, `@` is excluded from
+ * both), so committing to one possessive reading of a gap never throws away a match a greedy reading would
+ * have found, and it forecloses the internal, nested-quantifier-shaped backtracking that made a single gap
+ * costly to fail on its own.
+ *
+ * TWO further DEVIATIONs from the design first disclosed in the 15:39 ADVISOR entry, both found empirically
+ * (fixture failures, not reasoned in advance — see CYCLE-LOG) rather than by construction, which is why this
+ * paragraph states what actually ships rather than what was planned:
+ *
+ * 1. Domain **label** runs (`[\p{L}\p{Nd}\-]+`) stay greedy, not possessive, in `EMAIL`,
+ * `NAMED_DOMAIN_LOOSE`, `NAMED_DOMAIN_TIGHT` and `COUNTRY_DOMAIN`. The label class includes `-`, and so does
+ * `JUNK` (a dash is a valid separator, not just valid inside a label — "sara@gmail-com" masking "gmail-com"
+ * as one address, dash standing in for the dot, is a fixture (`dash for the dot`), not an edge case). A
+ * possessive label run swallows a trailing dash that the *following* gap needed, and can never give it back:
+ * `EMAIL` then fails to match the whole address, and a narrower pattern (`MAIL_PROVIDER`) matches only
+ * "sara@gmail", leaving "-com" as plain text. Reverting the label run to greedy restores that one-character,
+ * non-catastrophic backtrack (a fixed-class run backtracking against a single following gap is linear, not
+ * exponential — the class has no internal repeated ambiguity of its own) without reopening Finding 2, whose
+ * cost came from the *outer* group's iteration count, not from backtracking inside one label.
+ * 2. The local part (`[\p{L}\p{Nd}._%+\-]++`) and the `@` run (`@++`) stay possessive as planned: nothing
+ * after them shares their class the way a label shares `-` with `JUNK`, so there is no separator to steal.
+ *
+ * The *outer* `(?:gap label)*`/`+` group in `NAMED_DOMAIN_LOOSE`, `NAMED_DOMAIN_TIGHT` and `COUNTRY_DOMAIN`
+ * also stays greedy, not possessive, for the reason the ADVISOR entry gave: the ending alternation (`com`,
+ * `online`, `[a-z]{2}`) shares the letter class with an ordinary label, so a possessive outer group can
+ * commit to reading the final "gap label" as just one more iteration and leave nothing for the required
+ * trailing gap+ending to match — "mysite.com" would go through fully unmasked. (`EMAIL` and
+ * `MAIL_PROVIDER`'s outer groups stay possessive: nothing follows them, so there is no ending to be
+ * swallowed.) A lookahead-guarded possessive outer group was also tried, to avoid this backtracking, and
+ * reverted (third DEVIATION, empirically found): guarding each iteration with "don't take this label if the
+ * text ahead already looks like a complete ending" breaks a domain whose *first* label is itself short
+ * enough to read as one ("wa.me/971501234567" — the guard sees "me" could be a final code and refuses to
+ * let the loop consume "wa" as a mid-chain label, so the whole match fails even though "wa.me" is a longer,
+ * correct match). Reproducing greedy longest-match with no new risk of under- or unmasking needs real
+ * backtracking, so these three patterns are left fully backtracking (their pre-R144(b) "second pass" form)
+ * and measured at up to ~180ms on `str_repeat('a.', 1000)` — over R144(b)'s 50ms budget on their own.
+ * Finding 2's budget is instead met by `hasCandidate()`: before running one of these three patterns'
+ * `replace()` at all, a cheap, non-backtracking presence check (fixed-length lookbehind/lookahead, no
+ * nested quantifiers, so linear in message length) proves whether that pattern's ending token could appear
+ * anywhere in the message — the literal `NON_WORD_ENDINGS`/`WORD_ENDINGS` alternatives for the two named-
+ * domain patterns, a bounded, non-alnum-delimited two-letter run for `COUNTRY_DOMAIN`. A literal substring
+ * the ending token requires is a necessary condition for the full pattern to match anywhere, so skipping
+ * the expensive pattern when it is absent can never turn a match into a non-match; it only skips inputs
+ * that were already guaranteed not to match. `str_repeat('a.', n)` contains none of the three tokens (no
+ * letter is ever followed immediately by another letter), so all three patterns are skipped and the whole
+ * call is linear in practice. A PCRE engine failure in either the gate or the full pattern (backtrack
+ * limit, bad UTF-8) still fails the message closed, via `hasCandidate()`/`orFail()` respectively.
+ *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
  * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
  * replaced by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
- * four family emoji, get through), a `:` between digits, an address padded with more than five spaces, an
- * address whose provider is not on the short MAIL_PROVIDER list and whose domain has no recognised
- * ending, a bare word-like ending reached only by whitespace and no punctuation at all is deliberately NOT
- * caught (see above), a multi-digit or fractional enclosed-number symbol ("➉", "½", Roman numerals), and
- * social handles are not caught. The safe side is over-masking: dates (27-09-2026, 27/09/2026), "Year 10,
- * 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a bare domain whose ending
- * is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates its labels, and "(at)"/
- * "(dot)" written with any punctuation around them ("sara (at) gmail (dot) com") are masked too — a label
- * is not distinguished from a spelled-out separator word, deliberately, or a real bare domain built the
- * same way ("mysite.dot.com") would leak instead; the variation selectors and every format character (bar
- * the ZWJ, see above) are stripped from the stored text; 16:00-17:00 and ordinary sentence ends are left
- * alone.
+ * four family emoji, get through — phone-gap limits are unchanged by R144, disclosed as out of scope),
+ * a `:` between digits, an address whose provider is not on the short MAIL_PROVIDER list and whose domain
+ * has no recognised ending, a bare word-like ending reached only by whitespace and no punctuation at all
+ * is deliberately NOT caught (see above), a multi-digit or fractional enclosed-number symbol ("➉", "½",
+ * Roman numerals), and social handles are not caught. The safe side is over-masking: dates (27-09-2026,
+ * 27/09/2026), "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a
+ * bare domain whose ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates
+ * its labels, "(at)"/"(dot)" written with any punctuation around them ("sara (at) gmail (dot) com"), and
+ * now (R144) an arbitrarily long run of junk punctuation between labels (fifty or five hundred dots, or a
+ * mixed junk run) are masked too — a label is not distinguished from a spelled-out separator word,
+ * deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead; the
+ * variation selectors and every format character (bar the ZWJ, see above) are stripped from the stored
+ * text; 16:00-17:00 and ordinary sentence ends are left alone.
  */
 class MessageMasker
 {
@@ -104,18 +165,27 @@ class MessageMasker
     /**
      * Whitespace and/or junk freely mixed, possibly empty — used only immediately touching an `@`, where the `@`
      * itself is already the strong signal, so unlike a bare domain no particular punctuation is required: pure
-     * spaces ("sara  @  gmail"), pure junk ("sara"@gmail, sara!@gmail) or a mix are all accepted.
+     * spaces ("sara  @  gmail"), pure junk ("sara"@gmail, sara!@gmail) or a mix are all accepted. Unbounded and
+     * possessive (R144): a gap must never fail to match purely because it is long, and since JUNK/whitespace/`@`
+     * never overlap with a letter or digit there is nothing for possessive matching to wrongly commit to.
      */
-    private const AT_GAP = '[^\p{L}\p{Nd}@]{0,8}';
+    private const AT_GAP = '[^\p{L}\p{Nd}@]*+';
 
-    /** Junk with optional bounding whitespace either side, but never JUST whitespace — used between domain/local-part labels once `@` has already anchored the match. */
-    private const LABEL_GAP = '\s{0,5}'.self::JUNK.'{1,6}\s{0,5}';
+    /**
+     * Junk and whitespace freely interspersed, but at least one junk character somewhere in the run — used between
+     * domain/local-part labels once `@` has already anchored the match. Unbounded and possessive (R144): both the
+     * spacing and the count of junk repetitions are uncapped, so a gap of any length or shape (all-dots, all-spaces
+     * around one dot, or dots and spaces mixed, "sara@name . , . com") still matches; the leading/trailing/interior
+     * `\s*+` and the required `JUNK` inside each iteration of the group never overlap each other or a letter/digit,
+     * so possessive matching commits to nothing a greedy match would have found instead.
+     */
+    private const LABEL_GAP = '\s*+(?:'.self::JUNK.'\s*+)++';
 
-    /** No whitespace at all — used for bare-domain word-like endings and every two-letter country code. */
-    private const TIGHT_JUNK = self::JUNK.'{1,6}';
+    /** No whitespace at all — used for bare-domain word-like endings and every two-letter country code. Unbounded and possessive (R144, see LABEL_GAP above); whitespace-free is the defining property, so it stays a single possessive run. */
+    private const TIGHT_JUNK = self::JUNK.'++';
 
-    /** A "dot, possibly padded with up to five spaces" gap — used for bare-domain non-word endings only. */
-    private const LOOSE_DOT_JUNK = '\s{0,5}'.self::JUNK.'{1,3}\s{0,5}';
+    /** Junk and whitespace freely interspersed, at least one junk character — used for bare-domain non-word endings only. Unbounded and possessive (R144, see LABEL_GAP above); structurally identical to LABEL_GAP now that both caps are gone. */
+    private const LOOSE_DOT_JUNK = '\s*+(?:'.self::JUNK.'\s*+)++';
 
     private const NON_WORD_ENDINGS = 'com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|pro|mobi|link|page';
 
@@ -126,23 +196,47 @@ class MessageMasker
      * either side of the `@`, then two or more letter/digit labels joined by loose junk. The `@` itself is the
      * strong signal, so unlike a bare domain any junk (not just a dot) is accepted between labels here.
      */
-    private const EMAIL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@+'.self::AT_GAP.'[\p{L}\p{Nd}\-]+(?:'.self::LABEL_GAP.'[\p{L}\p{Nd}\-]+)+~u';
+    private const EMAIL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'[\p{L}\p{Nd}\-]+(?:'.self::LABEL_GAP.'[\p{L}\p{Nd}\-]+)++~u';
 
     /** A well-known mail provider after an `@` needs no domain ending at all: "sara@gmail com" and "sara@gmail" are addresses. */
-    private const MAIL_PROVIDER = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@+'.self::AT_GAP.'(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|proton(?:mail)?|aol|msn)(?![\p{L}\p{Nd}])~iu';
+    private const MAIL_PROVIDER = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|proton(?:mail)?|aol|msn)(?![\p{L}\p{Nd}])~iu';
 
     private const URL_WITH_SCHEME = '~\b[a-z][a-z0-9+.\-]{1,15}://\S+~iu';
 
     private const URL_WWW = '~(?<![\p{L}\p{Nd}])www\.\S+~iu';
 
-    /** A non-word ending after a loose, dot-shaped gap: "mysite . com", "mysite[.]com", "mysite,,com" all mask. */
-    private const NAMED_DOMAIN_LOOSE = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::LOOSE_DOT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::LOOSE_DOT_JUNK.'(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*)?~iu';
+    /**
+     * A non-word ending after a loose, dot-shaped gap: "mysite . com", "mysite[.]com", "mysite,,com" all mask. Both
+     * the outer `(?:gap label)*` group and the label runs stay greedy, not possessive (R144, see class docblock):
+     * a lookahead-guarded possessive outer group was tried and reverted (DEVIATION, see CYCLE-LOG) — it breaks a
+     * short first label that itself looks like a complete ending ("wa.me/971501234567" stopped matching, because
+     * the lookahead refused to let the loop consume "wa" once it saw "me" could be read as the final code — but
+     * "wa" was never meant to be final here, there was more domain after it). Reproducing greedy longest-match
+     * exactly, with no risk of a new under- or unmask, needs real backtracking; Finding 2's cost is instead bounded
+     * the other way — see `hasCandidate()` below, which skips this pattern entirely when none of its ending words
+     * appear anywhere in the message, so pure-junk input (no "com"/"net"/… substring anywhere) never reaches it.
+     */
+    private const NAMED_DOMAIN_LOOSE = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::LOOSE_DOT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::LOOSE_DOT_JUNK.'(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
-    /** A word-like ending needs a tight gap — no whitespace at all — or "Ok. Online lessons are fine." would mask. */
-    private const NAMED_DOMAIN_TIGHT = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::TIGHT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*)?~iu';
+    /** A word-like ending needs a tight gap — no whitespace at all — or "Ok. Online lessons are fine." would mask. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated the same way by `hasCandidate()`. */
+    private const NAMED_DOMAIN_TIGHT = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::TIGHT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
-    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. */
-    private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{Nd}])(?:[\p{L}\p{Nd}\-]+'.self::TIGHT_JUNK.')+[a-z]{2}(?![\p{L}\p{Nd}])(?:[/:?#]\S*)?~iu';
+    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated by `hasCandidate()` on a bare `[\p{L}]{2}` presence check. */
+    private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{Nd}])(?:[\p{L}\p{Nd}\-]+'.self::TIGHT_JUNK.')+[a-z]{2}(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
+
+    /**
+     * Presence gates for NAMED_DOMAIN_LOOSE/TIGHT/COUNTRY_DOMAIN (R144(b), see class docblock): each is a fixed,
+     * non-backtracking check (no nested quantifiers — a literal alternation and/or a fixed-length lookaround) for
+     * whether that pattern's ending token could occur anywhere in the message at all. A literal ending token is a
+     * necessary condition for the full pattern to match, so `hasCandidate()` returning false is proof the full
+     * pattern cannot match anywhere and its `replace()` call can be skipped outright.
+     */
+    private const HAS_NON_WORD_ENDING = '~(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])~iu';
+
+    private const HAS_WORD_ENDING = '~(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])~iu';
+
+    /** Mirrors COUNTRY_DOMAIN's own ending: a bounded two-letter run, preceded by junk (never a bare letter/digit) and not followed by another letter/digit — "word"/"text" (4 letters, no isolated 2-letter token) do not count. */
+    private const HAS_COUNTRY_ENDING = '~(?<![\p{L}\p{Nd}])[a-z]{2}(?![\p{L}\p{Nd}])~iu';
 
     /**
      * Digits with up to six separator *graphemes* between them (`\X`, not a code point — see the class docblock),
@@ -164,19 +258,25 @@ class MessageMasker
         $masked = $text;
 
         foreach ([
-            self::EMAIL,
-            self::URL_WITH_SCHEME,
-            self::URL_WWW,
-            self::NAMED_DOMAIN_LOOSE,
-            self::NAMED_DOMAIN_TIGHT,
-            self::COUNTRY_DOMAIN,
+            [self::EMAIL, null],
+            [self::URL_WITH_SCHEME, null],
+            [self::URL_WWW, null],
+            // Gated (R144(b)): these three are the only patterns whose outer group is fully
+            // backtracking (see class docblock), so each is skipped outright — no replace() call at
+            // all — when a cheap, linear presence check proves its ending token cannot occur anywhere.
+            [self::NAMED_DOMAIN_LOOSE, self::HAS_NON_WORD_ENDING],
+            [self::NAMED_DOMAIN_TIGHT, self::HAS_WORD_ENDING],
+            [self::COUNTRY_DOMAIN, self::HAS_COUNTRY_ENDING],
             // MAIL_PROVIDER runs last: run before the bare-domain patterns, a partial match (e.g.
             // "sara@gmail" alone) leaves real trailing text ("  com") directly against the freshly
             // inserted PLACEHOLDER's own "]", which NAMED_DOMAIN_LOOSE then spuriously bridges into a
             // second, nested placeholder. Running it last means EMAIL/the bare-domain patterns already
             // consumed every case MAIL_PROVIDER would otherwise partially match.
-            self::MAIL_PROVIDER,
-        ] as $pattern) {
+            [self::MAIL_PROVIDER, null],
+        ] as [$pattern, $gate]) {
+            if ($gate !== null && ! $this->hasCandidate($gate, $masked)) {
+                continue;
+            }
             $masked = $this->replace($pattern, self::PLACEHOLDER, $masked, $hidden);
         }
 
@@ -234,6 +334,23 @@ class MessageMasker
     private function replaceCallback(string $pattern, callable $callback, string $subject): string
     {
         return $this->orFail(preg_replace_callback($pattern, $callback, $subject));
+    }
+
+    /**
+     * R144(b): the cheap presence gate in front of NAMED_DOMAIN_LOOSE/TIGHT/COUNTRY_DOMAIN (see class docblock and
+     * the HAS_*_ENDING constants). A PCRE failure here (bad UTF-8, backtrack limit) is exactly the kind of engine
+     * failure `orFail()` treats as fail-closed elsewhere, so it is treated the same way here: the message is
+     * refused rather than let through on the assumption that "no match" meant "definitely not a candidate."
+     */
+    private function hasCandidate(string $gate, string $subject): bool
+    {
+        $result = preg_match($gate, $subject);
+
+        if ($result === false) {
+            throw new RuntimeException('The message could not be masked, so it was not stored.');
+        }
+
+        return $result === 1;
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Messaging\MaskedMessage;
 use App\Support\Messaging\MessageMasker;
 
 // The fixture table is the specification (R134): [input, expected stored text].
@@ -188,6 +189,32 @@ question 12
     'a large number with commas' => ['10,000,000', MessageMasker::PLACEHOLDER],
     'a pdf file name' => ['I attached notes.pdf', 'I attached notes.pdf'],
 
+    // R144 (cycle 08 r3, round 4 of the 8b review, Finding 1): every junk gap used to cap the number of
+    // junk characters it would match (LOOSE_DOT_JUNK {1,3}, LABEL_GAP/TIGHT_JUNK {1,6}) — once real
+    // punctuation exceeded the cap the pattern failed to match *at all*, so the address or domain went
+    // through fully unmasked. Every gap is now unbounded: repeating a separator already present in a gap
+    // can only ever widen what gets masked, never defeat the match. One case per pattern that has its own
+    // gap shape (an anchored email, a bare domain with a non-word ending, one with a word-like ending, and
+    // a country code), each at the exact repro length (7), and padded much further (50, 500) to prove the
+    // fix is not itself capped at some other number, plus one run mixing several junk characters together
+    // rather than repeating just one.
+    'R144 repro: seven dots defeated the old cap and went through unmasked' => ['sara@name.......com', MessageMasker::PLACEHOLDER],
+    'R144 email, 50 dots' => ['sara@name'.str_repeat('.', 50).'com', MessageMasker::PLACEHOLDER],
+    'R144 email, 500 dots' => ['sara@name'.str_repeat('.', 500).'com', MessageMasker::PLACEHOLDER],
+    'R144 email, mixed junk run' => ['sara@name'.str_repeat(' .,-  ', 5).'com', MessageMasker::PLACEHOLDER],
+    'R144 non-word-ending bare domain, 7 dots' => ['visit mysite.......com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'R144 non-word-ending bare domain, 50 dots' => ['visit mysite'.str_repeat('.', 50).'com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'R144 non-word-ending bare domain, 500 dots' => ['visit mysite'.str_repeat('.', 500).'com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'R144 non-word-ending bare domain, mixed junk run' => ['visit mysite'.str_repeat(' .,-  ', 5).'com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'R144 word-ending bare domain, 7 dots' => ['mysite.......online', MessageMasker::PLACEHOLDER],
+    'R144 word-ending bare domain, 50 dots' => ['mysite'.str_repeat('.', 50).'online', MessageMasker::PLACEHOLDER],
+    'R144 word-ending bare domain, 500 dots' => ['mysite'.str_repeat('.', 500).'online', MessageMasker::PLACEHOLDER],
+    'R144 word-ending bare domain, mixed junk run (tight, no whitespace)' => ['mysite'.str_repeat('.,-', 5).'online', MessageMasker::PLACEHOLDER],
+    'R144 country-code domain, 7 dots' => ['mysite.......ae', MessageMasker::PLACEHOLDER],
+    'R144 country-code domain, 50 dots' => ['mysite'.str_repeat('.', 50).'ae', MessageMasker::PLACEHOLDER],
+    'R144 country-code domain, 500 dots' => ['mysite'.str_repeat('.', 500).'ae', MessageMasker::PLACEHOLDER],
+    'R144 country-code domain, mixed junk run (tight, no whitespace)' => ['mysite'.str_repeat('.,-', 5).'ae', MessageMasker::PLACEHOLDER],
+
     // Known limits (ADR-019): spelled out is not caught
     'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
     'colon-separated number' => ['050:123:4567', '050:123:4567'],
@@ -237,4 +264,43 @@ it('handles a very long body without a regex failure', function () {
     $result = (new MessageMasker)->mask(str_repeat('1 ', 900).str_repeat('a.', 900));
 
     expect($result->text)->toContain(MessageMasker::PLACEHOLDER);
+});
+
+// R144(b): removing the junk-gap caps above reopens the superlinear-backtracking shape the round-4
+// review's Finding 2 flagged for the bare-domain patterns (NAMED_DOMAIN_LOOSE/_TIGHT/COUNTRY_DOMAIN),
+// whose outer group stays fully backtracking (see the class docblock). `hasCandidate()`'s presence gate
+// is what actually keeps these inputs cheap — measured directly here, not assumed — against the three
+// shapes the finding named: a body with no valid domain ending anywhere, the finding-1 repro shapes
+// padded well past the old cap, and a mixed adversarial body combining both junk and lookalike-ending
+// words that are not actually on any ending list.
+it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string $label, string $body) {
+    $start = hrtime(true);
+    $result = (new MessageMasker)->mask($body);
+    $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+    expect(preg_last_error())->toBe(PREG_NO_ERROR)
+        ->and($elapsedMs)->toBeLessThan(50.0, "{$label} took {$elapsedMs}ms, over the 50ms R144(b) budget")
+        ->and($result)->toBeInstanceOf(MaskedMessage::class);
+})->with([
+    'no domain ending anywhere: str_repeat("a.", 1000)' => ['no ending', str_repeat('a.', 1000)],
+    'finding-1 shape padded to 2000 chars (dots)' => ['padded dots', 'sara@name'.str_repeat('.', 2000).'com'],
+    'finding-1 shape padded to 2000 chars (spaces)' => ['padded spaces', 'sara@name'.str_repeat(' ', 2000).'.com'],
+    'mixed adversarial: junk and non-ending words' => ['mixed junk', str_repeat('word- . ,text', 150)],
+]);
+
+// R144(b): a genuine PCRE engine failure — forced here via a backtrack limit far below what any real
+// match needs, rather than relying on accidentally hitting the default limit — must still fail the
+// message closed (`orFail()`/`hasCandidate()`), never let the original text through unmasked.
+it('still fails closed on a genuine PCRE engine failure', function () {
+    $original = ini_get('pcre.backtrack_limit');
+    ini_set('pcre.backtrack_limit', '1');
+
+    try {
+        (new MessageMasker)->mask('sara@gmail.com');
+        expect(false)->toBeTrue('expected mask() to throw when PCRE cannot complete the match');
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toContain('could not be masked');
+    } finally {
+        ini_set('pcre.backtrack_limit', $original);
+    }
 });
