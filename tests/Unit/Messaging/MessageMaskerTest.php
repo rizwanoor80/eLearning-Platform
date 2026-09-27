@@ -51,6 +51,20 @@ dataset('masking fixtures', [
     'zero-width joiner and word joiner' => ["050\u{200D}123\u{2060}4567", MessageMasker::PLACEHOLDER],
     'soft hyphen and bom' => ["\u{FEFF}050\u{00AD}1234567", MessageMasker::PLACEHOLDER],
     'slashes' => ['050/123/4567', MessageMasker::PLACEHOLDER],
+    'five spaces between groups' => ['050     123     4567', MessageMasker::PLACEHOLDER],
+    'a run of tabs' => ['050					123					4567', MessageMasker::PLACEHOLDER],
+    'doubled dashes with spaces' => ['050 - - 123 - - 4567', MessageMasker::PLACEHOLDER],
+    'many blank lines' => ['050
+
+
+
+
+
+123
+
+
+
+4567', MessageMasker::PLACEHOLDER],
     'stars' => ['050*123*4567', MessageMasker::PLACEHOLDER],
     'pipes' => ['050|123|4567', MessageMasker::PLACEHOLDER],
     'hashes' => ['050#123#4567', MessageMasker::PLACEHOLDER],

@@ -46,11 +46,11 @@ class MessageMasker
     private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+\.)+[a-z]{2}(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
 
     /**
-     * Digits with up to four characters between them that are neither letters nor digits — spaces, line
-     * breaks, dots, dashes, brackets, commas, emoji keycap marks, `*`, `|`, `#`, anything. `:` is left out so
+     * Digits with up to six separator units between them, a unit being a whole run of whitespace or one character
+     * that is neither a letter nor a digit — spaces, tabs, line breaks, dots, dashes, brackets, commas, emoji keycap marks, `*`, `|`, `#`, anything. `:` is left out so
      * a time range such as 16:00-17:00 survives; a number written 050:123:4567 is a disclosed limit.
      */
-    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:[^\p{L}\p{Nd}:]{0,4}\p{Nd})+\p{M}*~u';
+    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:(?:\s++|[^\p{L}\p{Nd}:\s]){0,6}\p{Nd})+\p{M}*~u';
 
     public function mask(string $body): MaskedMessage
     {
