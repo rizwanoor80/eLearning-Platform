@@ -51,7 +51,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
                 'home' => $this->homeRouteFor($request->user()),
                 // R133: the Messages nav item shows for the two portals when the feature is on, so no `.vue` file branches on the role.
-                'can_message' => EnsureFeatureEnabled::enabled('messaging') && in_array($request->user()?->role, [Role::AccountOwner, Role::Tutor], true),
+                'can_message' => EnsureFeatureEnabled::enabled('messaging') && $request->user()?->hasVerifiedEmail() === true && in_array($request->user()->role, [Role::AccountOwner, Role::Tutor], true),
             ],
             // Read from the pages table when a page renders, so a new page or a
             // renamed one shows in the footer at once.

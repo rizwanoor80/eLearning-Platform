@@ -293,6 +293,9 @@ it('tells the layout who may see the Messages nav item, so no .vue file branches
 
     test()->actingAs($parent)->get(route('dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', true));
     test()->actingAs($tutor)->get(route('tutor.dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', true));
+    $parent->forceFill(['email_verified_at' => null])->save();
+    test()->actingAs($parent->fresh())->get(route('home'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', false));
+    test()->actingAs(User::factory()->admin()->create())->get(route('home'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', false));
     app('auth')->forgetGuards();
     test()->get(route('home'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', false));
 });
