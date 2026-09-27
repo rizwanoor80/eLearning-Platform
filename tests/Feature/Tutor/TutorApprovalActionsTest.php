@@ -4,6 +4,7 @@ use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\ApproveTutor;
 use App\Actions\Tutor\RejectTutor;
 use App\Actions\Tutor\RequestTutorChanges;
+use App\Actions\Tutor\CancelSuspendedTutorLessons;
 use App\Actions\Tutor\ReviewTutorDocument;
 use App\Actions\Tutor\SuspendTutor;
 use App\Enums\TutorDocumentStatus;
@@ -97,7 +98,7 @@ it('suspends an approved tutor with a note and writes an audit row', function ()
     $admin = User::factory()->admin()->create();
     $profile = TutorProfile::factory()->approved()->create();
 
-    (new SuspendTutor(app(RecordAuditLog::class)))($admin, $profile, 'Repeated late cancellations.');
+    (new SuspendTutor(app(RecordAuditLog::class), app(CancelSuspendedTutorLessons::class)))($admin, $profile, 'Repeated late cancellations.');
 
     expect($profile->fresh())
         ->status->toBe(TutorProfileStatus::Suspended)
@@ -158,7 +159,7 @@ it('refuses to suspend a tutor who is not approved', function () {
     $admin = User::factory()->admin()->create();
     $pending = TutorProfile::factory()->create(['status' => TutorProfileStatus::PendingReview]);
 
-    expect(fn () => (new SuspendTutor(app(RecordAuditLog::class)))($admin, $pending, 'x'))
+    expect(fn () => (new SuspendTutor(app(RecordAuditLog::class), app(CancelSuspendedTutorLessons::class)))($admin, $pending, 'x'))
         ->toThrow(TutorStatusTransitionException::class);
     expect($pending->fresh()->status)->toBe(TutorProfileStatus::PendingReview);
 });

@@ -55,14 +55,20 @@ class RecurringSlotPolicy
     }
 
     /**
-     * An admin resumes any paused slot; the parent only one the system paused for failed charges (R101),
-     * after replacing the card (`ResumeRecurringSlot` checks the card). A slot an admin paused stays
-     * the admin's to resume.
+     * An admin resumes any paused slot; the parent resumes one the system paused for failed charges
+     * (R101, after replacing the card — `ResumeRecurringSlot` checks it) or one R138 paused for a
+     * tutor or account suspension (the parent resumes it once the suspension no longer applies —
+     * reinstating restores nothing cancelled, but the slot itself is theirs to pick back up). A slot
+     * an admin paused directly (`Admin` reason) stays the admin's to resume.
      */
     public function resume(User $user, RecurringSlot $slot): bool
     {
         return $this->isActiveAdmin($user)
-            || ($this->isParentOf($user, $slot) && $slot->paused_reason === RecurringSlotPauseReason::PaymentFailed);
+            || ($this->isParentOf($user, $slot) && in_array($slot->paused_reason, [
+                RecurringSlotPauseReason::PaymentFailed,
+                RecurringSlotPauseReason::TutorSuspended,
+                RecurringSlotPauseReason::AccountSuspended,
+            ], true));
     }
 
     public function update(User $user, RecurringSlot $slot): bool

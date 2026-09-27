@@ -5,6 +5,7 @@ use App\Actions\RecurringSlots\ChargeReservedLesson;
 use App\Actions\RecurringSlots\EndRecurringSlot;
 use App\Actions\RecurringSlots\PauseRecurringSlot;
 use App\Actions\RecurringSlots\ResumeRecurringSlot;
+use App\Actions\Tutor\SuspendTutor;
 use App\Enums\ChargeOutcome;
 use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
@@ -535,7 +536,7 @@ it('flags money taken for a lesson that could not be confirmed, instead of hidin
     expect(Artisan::call('ledger:verify'))->toBe(1);
 });
 
-it('leaves a pending attempt visible when the lesson start passes before the run finishes it', function () {
+it('resumes a pending attempt to a captured, confirmed result even once the lesson start has passed, rather than stranding it', function () {
     ['slot' => $slot, 'parent' => $parent] = acSetup();
     $lesson = acLesson($slot);
     Payment::factory()->create(['lesson_id' => $lesson->id, 'attempt_no' => 1, 'payer_user_id' => $parent->id, 'status' => PaymentStatus::Pending, 'gateway_ref' => null]);
@@ -543,9 +544,13 @@ it('leaves a pending attempt visible when the lesson start passes before the run
     acAt('2026-09-18 12:30:00');
     acRun();
 
-    expect($lesson->fresh()->status)->toBe(LessonStatus::CancelledPaymentFailed)
-        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Pending)
-        ->and(app(LedgerService::class)->strandedPayments())->toHaveCount(1);
+    // R138: a `pending` row is now resumed to a terminal result before the window-missed cancel ever
+    // gets a chance to run — this test used to prove the opposite (the cancel fired first and left
+    // the payment `pending` forever), exactly the stranded shape `strandedPayments()` exists to catch.
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Confirmed)
+        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Captured)
+        ->and(app(LedgerService::class)->strandedPayments())->toHaveCount(0);
+    expect(Artisan::call('ledger:verify'))->toBe(0);
 });
 
 it('reports a lesson whose gateway call blows up, leaves it pending for the next run, and still charges the rest', function () {
@@ -714,19 +719,62 @@ it('charges the next week normally once the tutor is bookable again, because the
         ->and($slot->fresh()->status)->toBe(RecurringSlotStatus::Active);
 });
 
-it('lets an attempt already in flight finish rather than cancelling over a payment the gateway may have taken', function () {
+it('lets an attempt already in flight finish rather than cancelling over a payment the gateway may have taken, then refunds it because the tutor is no longer bookable', function () {
+    Mail::fake();
+    $admin = User::factory()->admin()->create();
     ['parent' => $parent, 'tutor' => $tutor, 'slot' => $slot] = acSetup();
     $lesson = acLesson($slot);
     Payment::factory()->create(['lesson_id' => $lesson->id, 'attempt_no' => 1, 'payer_user_id' => $parent->id, 'status' => PaymentStatus::Pending, 'gateway_ref' => null]);
-    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    // The real cascade, not a bare status flip: `SuspendTutor` also pauses the slot (via
+    // `CancelSuspendedTutorLessons`'s `DB::afterCommit`, which this suite's transactional tests do
+    // run — see TutorStatusTransitionsTest's "moves a tutor along every allowed edge" coverage). The
+    // slot being `paused`, not `active`, by the time `recurring:charge` runs is exactly the case this
+    // test exists to prove `begin()` still resumes the pending attempt through.
+    app(SuspendTutor::class)($admin, $tutor, 'safeguarding note');
+
+    expect($slot->fresh()->status)->toBe(RecurringSlotStatus::Paused);
+
+    acAt('2026-09-16 12:00:00');
+    acRun();
+    $lesson->refresh();
+
+    // R138: `begin()` let the in-flight attempt finish rather than strand it, but `succeed()`
+    // re-checks bookability once the gateway confirms the charge — a suspended tutor never gets a
+    // confirmed lesson out of it. The captured payment is refunded, not left sitting uncaptured.
+    expect($lesson->status)->toBe(LessonStatus::CancelledByTutor)
+        ->and($lesson->cancel_reason)->toBe(LessonCancelReason::TutorUnavailable->value)
+        ->and($lesson->cancelled_by_user_id)->toBeNull()
+        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Refunded)
+        ->and(app(LedgerService::class)->sum($lesson))->toBe(0);
+    expect(Artisan::call('ledger:verify'))->toBe(0);
+
+    // The parent really was charged then refunded — the email must not claim otherwise.
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, fn (WeeklyLessonTutorUnavailableMail $mail): bool => $mail->hasTo($parent) && ! str_contains($mail->render(), 'Nothing was charged'));
+    Mail::assertQueued(WeeklyLessonTutorUnavailableMail::class, fn (WeeklyLessonTutorUnavailableMail $mail): bool => $mail->hasTo($tutor->user) && ! str_contains($mail->render(), 'The family was not charged.'));
+});
+
+it('resumes a pending attempt left by a crashed run even once its slot has been paused out from under it', function () {
+    // No suspension involved: this isolates the `begin()`/`CancelSlotReservedLessons` half of the
+    // R138 fix from the tutor-bookability half above. An admin pausing the slot mid-flight must not
+    // strand a payment the gateway may already have captured, any more than a suspension sweep does.
+    $admin = User::factory()->admin()->create();
+    ['parent' => $parent, 'slot' => $slot] = acSetup();
+    $lesson = acLesson($slot);
+    Payment::factory()->create(['lesson_id' => $lesson->id, 'attempt_no' => 1, 'payer_user_id' => $parent->id, 'status' => PaymentStatus::Pending, 'gateway_ref' => null]);
+
+    app(PauseRecurringSlot::class)($admin, $slot);
+
+    expect($slot->fresh()->status)->toBe(RecurringSlotStatus::Paused)
+        ->and($lesson->fresh()->status)->toBe(LessonStatus::Reserved);
 
     acAt('2026-09-16 12:00:00');
     acRun();
     $lesson->refresh();
 
     expect($lesson->status)->toBe(LessonStatus::Confirmed)
-        ->and($lesson->cancel_reason)->toBeNull()
-        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Captured);
+        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Captured)
+        ->and(app(LedgerService::class)->sum($lesson))->toBe(0);
     expect(Artisan::call('ledger:verify'))->toBe(0);
 });
 

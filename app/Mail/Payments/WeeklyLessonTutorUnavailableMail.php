@@ -18,8 +18,11 @@ use Illuminate\Queue\SerializesModels;
  * A weekly lesson was cancelled at charge time because its tutor was no longer bookable (R104:
  * parent and tutor). The parent's copy stays neutral about why — it never names a suspension or a
  * permit — and offers to keep or end the slot; the tutor's copy says the profile is not bookable.
- * Both say nothing was charged, but only when no `pending` or `captured` payment exists for the
- * lesson (a crashed earlier attempt could have left one, and the email must not then claim otherwise).
+ * Both say nothing was charged, but only when no payment for the lesson ever moved money —
+ * `pending` (a crashed earlier attempt could have left one), `captured`, or `refunded`/
+ * `partially_refunded` (R138: `succeed()`'s hold-then-refund path captures the money before giving
+ * it back, so that payment was not "nothing"; the email must not claim otherwise). Only a `failed`
+ * attempt, or no attempt at all, counts as nothing charged.
  */
 class WeeklyLessonTutorUnavailableMail extends Mailable implements ShouldQueue
 {
@@ -44,7 +47,12 @@ class WeeklyLessonTutorUnavailableMail extends Mailable implements ShouldQueue
                 'isParent' => $this->lesson->learner->account_user_id === $this->recipient->id,
                 'nothingCharged' => ! Payment::query()
                     ->where('lesson_id', $this->lesson->id)
-                    ->whereIn('status', [PaymentStatus::Pending, PaymentStatus::Captured])
+                    ->whereIn('status', [
+                        PaymentStatus::Pending,
+                        PaymentStatus::Captured,
+                        PaymentStatus::Refunded,
+                        PaymentStatus::PartiallyRefunded,
+                    ])
                     ->exists(),
             ],
         );

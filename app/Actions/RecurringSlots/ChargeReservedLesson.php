@@ -45,7 +45,21 @@ use RuntimeException;
  *    only here, once the attempt's result is recorded, so a second run finds nothing to do.
  *
  * A due lesson whose tutor is no longer `bookable()` is never charged (R104): `cancelled_by_tutor`
- * with `tutor_unavailable`, no strike, no ledger entry, the slot untouched.
+ * with `tutor_unavailable`, no strike, no ledger entry, the slot untouched. `begin()`'s check for
+ * this only runs when no attempt is already in flight — a lesson skipped there specifically because
+ * one is reaches `succeed()` with the tutor now possibly unbookable (e.g. suspended mid-charge,
+ * R138), so `succeed()` re-checks `tutorIsBookable()` itself, right after the gateway confirms the
+ * charge: bookable, confirm as normal; not, `reserved -> cancelled_by_tutor` with a hold-then-refund
+ * (the captured payment never gets a real hold otherwise, and `strandedPayments()` would flag it)
+ * instead of confirming a lesson for a tutor who can no longer deliver it.
+ *
+ * `begin()` resumes a `pending` attempt (the same "crashed run" row described in step 1) before any
+ * other check runs, and unconditionally — even if the slot has since been paused (R138: a
+ * suspension sweep pauses the slot in the same beat it skips this lesson, precisely so it is still
+ * here to resume) or the lesson's start has passed. The gateway may already hold this money; only
+ * `succeed()`/`fail()` resolve it, so nothing here may cancel the lesson, or leave the row behind,
+ * without going through one of them first. `CancelSlotReservedLessons` carries the matching half of
+ * this guard: it will not cancel a `reserved` lesson out from under a pending attempt either.
  *
  * A lesson whose start has passed is never charged (the 4c carry): it is cancelled as
  * `cancelled_payment_failed` with `charge_window_missed`, and that does not count against the slot
@@ -108,15 +122,34 @@ class ChargeReservedLesson
                 return ChargeOutcome::Skipped;
             }
 
+            $attempt = $lesson->charge_attempts + 1;
+
+            // R138: a `pending` row already exists for this attempt — a run that died after creating it
+            // (the gateway may or may not have been called yet), or one a suspension sweep deliberately
+            // left alone. Either way it must be resumed to a terminal result, whatever the slot or lesson
+            // look like right now: not the window-missed cancel below, not the slot-active gate after
+            // that. Only a run with a live gateway can push it to that result, so one without leaves the
+            // row for the next run that has one.
+            $pending = Payment::query()->where('lesson_id', $lesson->id)->where('attempt_no', $attempt)->where('status', PaymentStatus::Pending)->first();
+
+            if ($pending !== null) {
+                if ($gateway === null) {
+                    return ChargeOutcome::Skipped;
+                }
+
+                $method = PaymentMethod::query()->where('account_user_id', $lesson->learner->account_user_id)->first();
+
+                return [$pending->id, $attempt, $method?->id];
+            }
+
             $due = ($lesson->next_charge_at !== null && ! $lesson->next_charge_at->isFuture()) || $lesson->starts_at->lessThanOrEqualTo(now());
 
             // R104, invariant 5: a lesson that falls due after its tutor stopped being bookable is never
             // charged. It is the tutor's side that failed, so it is `cancelled_by_tutor` with no actor and
             // no strike, and the slot stays active. This needs no gateway, so it runs before that check.
-            // An attempt already in flight (a run that died after `begin()`) is left to finish first: the gateway
-            // may have taken the money, and the same idempotency key returns that result, so confirming it puts
-            // the money on the ledger where cancelling would strand it.
-            if ($due && $slot->status === RecurringSlotStatus::Active && ! $this->hasPendingAttempt($lesson->id) && ! $this->tutorIsBookable($lesson->tutor_profile_id)) {
+            // (A pending attempt already in flight was resumed above, before this point, so there is
+            // never one left to guard against here.)
+            if ($due && $slot->status === RecurringSlotStatus::Active && ! $this->tutorIsBookable($lesson->tutor_profile_id)) {
                 LessonStateMachine::transition($lesson, LessonStatus::CancelledByTutor, function (Lesson $locked): void {
                     $locked->forceFill([
                         'next_charge_at' => null,
@@ -146,7 +179,6 @@ class ChargeReservedLesson
                 return ChargeOutcome::Skipped;
             }
 
-            $attempt = $lesson->charge_attempts + 1;
             $account = $lesson->learner->account_user_id;
             $method = PaymentMethod::query()->where('account_user_id', $account)->first();
 
@@ -173,11 +205,6 @@ class ChargeReservedLesson
     /**
      * Invariant 5: the one place a tutor is judged chargeable is the `bookable()` scope, read at charge time.
      */
-    private function hasPendingAttempt(int $lessonId): bool
-    {
-        return Payment::query()->where('lesson_id', $lessonId)->where('status', PaymentStatus::Pending)->exists();
-    }
-
     private function tutorIsBookable(int $tutorProfileId): bool
     {
         return TutorProfile::query()->bookable()->whereKey($tutorProfileId)->exists();
@@ -199,6 +226,37 @@ class ChargeReservedLesson
                 }
 
                 $lesson = Lesson::query()->findOrFail($lessonId);
+
+                // R138: this attempt was already in flight when a suspension sweep ran, so `begin()`
+                // left it alone (`hasPendingAttempt`) rather than risk stranding a charge the gateway
+                // might already have taken. The charge has now gone through — re-check bookability
+                // here, the one place left to catch it before the lesson is confirmed for a tutor who
+                // can no longer deliver it.
+                if (! $this->tutorIsBookable($lesson->tutor_profile_id)) {
+                    LessonStateMachine::transition($lesson, LessonStatus::CancelledByTutor, function (Lesson $locked) use ($payment, $attempt, $gatewayRef, $rawResponse): void {
+                        $payment->update(['gateway_ref' => $gatewayRef, 'status' => PaymentStatus::Captured, 'raw_response' => $rawResponse]);
+
+                        $locked->forceFill([
+                            'charge_attempts' => $attempt,
+                            'next_charge_at' => null,
+                            'cancelled_at' => now(),
+                            'cancelled_by_user_id' => null,
+                            'cancel_reason' => LessonCancelReason::TutorUnavailable->value,
+                        ]);
+
+                        // Hold then immediately refund: the captured payment needs a real hold entry
+                        // (otherwise `strandedPayments()` flags it) and `LedgerService::refund()` only
+                        // reverses one that already exists — the same requirement `refundParent()`
+                        // relies on for an already-confirmed lesson, just both steps run here instead
+                        // of one having happened earlier at the original confirm time.
+                        app(LedgerService::class)->hold($locked, null);
+                        app(LedgerService::class)->refund($locked, null);
+
+                        $payment->update(['status' => PaymentStatus::Refunded, 'refunded_amount' => $locked->price]);
+                    });
+
+                    return ChargeOutcome::TutorUnavailable;
+                }
 
                 LessonStateMachine::transition($lesson, LessonStatus::Confirmed, function (Lesson $locked) use ($payment, $attempt, $method, $gatewayRef, $rawResponse): void {
                     $payment->update(['gateway_ref' => $gatewayRef, 'status' => PaymentStatus::Captured, 'raw_response' => $rawResponse]);

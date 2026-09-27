@@ -4,10 +4,13 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Enums\UserStatus;
 use App\Http\Responses\LoginResponse;
 use App\Http\Responses\VerifyEmailResponse;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -46,6 +49,21 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+
+        // R138 (Safeguarding queue): a suspended account's password still exists — only its
+        // sessions, passkeys and remember-me token were revoked (`SuspendAccount`) — so credentials
+        // alone must not be enough to issue a fresh session. Same shape as Fortify's own default
+        // authenticator (`Hash::check` against the stored password), with the status check added;
+        // a non-`Active` user and a wrong password fail identically, so login never discloses which.
+        Fortify::authenticateUsing(function (Request $request) {
+            $user = User::where(Fortify::username(), $request->{Fortify::username()})->first();
+
+            if ($user !== null && Hash::check((string) $request->password, $user->password) && $user->status === UserStatus::Active) {
+                return $user;
+            }
+
+            return null;
+        });
     }
 
     /**
