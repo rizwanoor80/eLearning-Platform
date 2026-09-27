@@ -181,8 +181,8 @@ Tasks
 - Admin read-only conversation view.
 
 Acceptance
-- [ ] A message containing a phone number before the first completed lesson is stored masked and shown masked to the recipient.
-- [ ] Cannot open a conversation without a lesson between the parties.
+- [x] A message containing a phone number before the first completed lesson is stored masked and shown masked to the recipient. — `tests/Unit/Messaging/MessageMaskerTest.php` (fixture table, 149 assertions); `tests/Feature/Messaging/MessagingPagesTest.php::lets either party post, and stores the message masked before the first lesson`, `::stores a message unmasked once the first lesson is complete, and keeps earlier ones masked`, `::never stores the original anywhere: not in the row, and not in the flashed session on a rejected post`.
+- [x] Cannot open a conversation without a lesson between the parties. — `tests/Feature/Messaging/ConversationLifecycleTest.php::opens none for a pending_payment lesson that is created, or that expires`, `::opens none for a cancelled_payment_failed reservation or an unpaid weekly attempt`, `::refuses a second conversation for the same pair at the database`; `tests/Feature/Messaging/MessagingPagesTest.php::refuses the action itself for a non-party`, `::answers a stranger, another tutor, an admin and a missing id with 404 on every route`.
 - [ ] One review per lesson; rating aggregates update; search sorts by rating.
 - [ ] Filing a report creates an open `abuse_reports` row, emails admin, and does not notify the reported party.
 - [ ] Suspending a tutor from the safeguarding queue removes them from search immediately and cancels their `reserved` lessons without deleting anything.
