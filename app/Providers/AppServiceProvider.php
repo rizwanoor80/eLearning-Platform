@@ -62,6 +62,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('unread-counts', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));
         // One review per lesson is enforced by the unique index; this only bounds submit attempts (R136).
         RateLimiter::for('reviews', fn (Request $request) => Limit::perMinute(10)->by((string) $request->user()->id));
+        // 5 per hour per user (CP7 8d, R137) — deliberately per hour, not per minute, to bound abuse-report spam.
+        RateLimiter::for('abuse-reports', fn (Request $request) => Limit::perHour(5)->by((string) $request->user()->id));
     }
 
     /**

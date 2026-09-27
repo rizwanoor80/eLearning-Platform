@@ -42,6 +42,17 @@ class LessonPolicy
     }
 
     /**
+     * Filing a safeguarding report against this lesson (CP7 8d, R137) — the same two parties as
+     * `attend()` (never a learner, another parent, or an admin), but deliberately its own gate:
+     * `report()` above already means "tutor's progress report" and must not be reused here.
+     */
+    public function reportAbuse(User $user, Lesson $lesson): bool
+    {
+        return in_array($user->role, [Role::Tutor, Role::AccountOwner], true)
+            && LessonParties::participantFor($lesson, $user) !== null;
+    }
+
+    /**
      * Booking a single lesson for one learner (R114). `BookLesson` re-checks ownership; this is the
      * controller's first, generic refusal.
      */

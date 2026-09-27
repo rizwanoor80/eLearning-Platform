@@ -7,6 +7,7 @@ use App\Actions\Lessons\MarkNoShow;
 use App\Actions\Lessons\SubmitProgressReport;
 use App\Actions\Reviews\SubmitReview;
 use App\Actions\Video\IssueJoinToken;
+use App\Enums\AbuseReportReason;
 use App\Enums\LessonStatus;
 use App\Enums\VideoParticipant;
 use App\Exceptions\AttendanceException;
@@ -83,6 +84,12 @@ final class LessonRoomView
             'no_show_outcome' => $isTutor ? 'pay_tutor' : 'refund_parent',
             'can_report' => $isTutor && SubmitProgressReport::problemFor($user, $lesson) === null,
             'can_review' => ! $isTutor && EnsureFeatureEnabled::enabled('reviews') && SubmitReview::eligibilityProblem($user, $lesson) === null,
+            // CP7 8d (R137): safeguarding report, distinct from `can_report` above (the tutor's
+            // progress report). Reaching this page already means `LessonParties::participantFor`
+            // resolved a party for $user — the exact same shape `LessonPolicy::reportAbuse` checks —
+            // so any party here may file one.
+            'can_report_abuse' => true,
+            'abuse_report_reasons' => AbuseReportReason::options(),
             'terminal' => ! in_array($lesson->status, [LessonStatus::PendingPayment, LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress], true),
         ];
     }

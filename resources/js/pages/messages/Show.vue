@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import InputError from '@/components/InputError.vue';
+import ReportAbuseButton from '@/components/ReportAbuseButton.vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -12,6 +13,8 @@ const props = defineProps<{
         closed_notice: string;
         contact_hidden: boolean;
         placeholder: string;
+        can_report_abuse: boolean;
+        abuse_report_reasons: Array<{ value: string; label: string }>;
     };
     messages: Array<{
         id: number;
@@ -47,7 +50,14 @@ function submit() {
     <div class="flex max-w-2xl flex-col gap-4 p-4">
         <div class="flex items-baseline justify-between gap-2">
             <h1 class="text-xl font-semibold" data-test="conversation-title">{{ conversation.counterpart }}</h1>
-            <Link href="/messages" class="text-muted-foreground text-sm underline underline-offset-4">All messages</Link>
+            <div class="flex items-center gap-3">
+                <ReportAbuseButton
+                    v-if="conversation.can_report_abuse"
+                    :post-url="`/messages/${conversation.id}/abuse-reports`"
+                    :reasons="conversation.abuse_report_reasons"
+                />
+                <Link href="/messages" class="text-muted-foreground text-sm underline underline-offset-4">All messages</Link>
+            </div>
         </div>
 
         <p v-if="conversation.contact_hidden" class="text-muted-foreground text-sm" data-test="masking-notice">

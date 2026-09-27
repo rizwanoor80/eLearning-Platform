@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Messaging;
 
 use App\Actions\Messaging\SendMessage;
+use App\Enums\AbuseReportReason;
 use App\Exceptions\ConversationClosedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Messaging\StoreMessageRequest;
@@ -68,6 +69,10 @@ class MessageController extends Controller
                 'closed_notice' => ConversationClosedException::NOTICE,
                 'contact_hidden' => ! $conversation->contactIsVisible(),
                 'placeholder' => MessageMasker::PLACEHOLDER,
+                // CP7 8d (R137): `ConversationPolicy::reportAbuse` delegates to `view()` exactly,
+                // already checked above to reach this page, so any viewer here may file one.
+                'can_report_abuse' => true,
+                'abuse_report_reasons' => AbuseReportReason::options(),
             ],
             'messages' => $messages->map(fn (Message $message): array => [
                 'id' => $message->id,

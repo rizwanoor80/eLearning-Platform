@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tutor;
 
+use App\Enums\AbuseReportReason;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Models\TutorProfile;
@@ -34,6 +35,10 @@ class TutorProfileController extends Controller
             'tutor' => $presenter->profile($profile, $calculator->forTutor($profile, $timezone), EnsureFeatureEnabled::enabled('reviews')),
             'timezone' => $timezone,
             'can_set_up_weekly' => $user instanceof User && $user->can('access-parent-area'),
+            // CP7 8d (R137): mirrors `TutorProfilePolicy::reportAbuse` exactly (a guest, or the
+            // tutor viewing their own profile, gets no button) — the route still re-checks on submit.
+            'can_report_abuse' => $user instanceof User && $user->can('reportAbuse', $profile),
+            'abuse_report_reasons' => AbuseReportReason::options(),
         ]);
     }
 }

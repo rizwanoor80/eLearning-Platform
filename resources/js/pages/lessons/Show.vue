@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, usePoll } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import ReportAbuseButton from '@/components/ReportAbuseButton.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -29,6 +30,8 @@ type LessonView = {
     no_show_outcome: 'pay_tutor' | 'refund_parent';
     can_report: boolean;
     can_review: boolean;
+    can_report_abuse: boolean;
+    abuse_report_reasons: Array<{ value: string; label: string }>;
     terminal: boolean;
 };
 
@@ -143,7 +146,14 @@ const closedMessages: Record<string, string> = {
                     <template v-if="lesson.side === 'parent'"> · for {{ lesson.learner_display_name }}</template>
                 </p>
             </div>
-            <Badge variant="outline">{{ statusLabel }}</Badge>
+            <div class="flex items-center gap-3">
+                <Badge variant="outline">{{ statusLabel }}</Badge>
+                <ReportAbuseButton
+                    v-if="lesson.can_report_abuse"
+                    :post-url="`/lessons/${lesson.id}/abuse-reports`"
+                    :reasons="lesson.abuse_report_reasons"
+                />
+            </div>
         </div>
 
         <div v-if="lesson.can_report" class="flex flex-wrap items-center gap-3 rounded-xl border p-4" data-test="report-prompt">

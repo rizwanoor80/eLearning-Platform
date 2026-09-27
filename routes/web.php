@@ -14,6 +14,7 @@ use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
 use App\Http\Controllers\Payments\WeeklySlotController;
 use App\Http\Controllers\Reviews\ReviewController;
+use App\Http\Controllers\Safeguarding\AbuseReportController;
 use App\Http\Controllers\Tutor\TutorDashboardController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
@@ -36,6 +37,15 @@ Route::post('webhooks/video/{code}', VideoWebhookController::class)->where('code
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');
 
+// CP7 8d (R137): filing a report against a tutor's profile. Named `abuse-reports.*`, never
+// `tutors.*`: TutorProfilePolicy::reportAbuse is the authorisation, a non-party gets a 404.
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('tutors/{tutor}/abuse-reports', [AbuseReportController::class, 'storeForTutor'])
+        ->where('tutor', '[0-9]{1,18}')
+        ->middleware('throttle:abuse-reports')
+        ->name('abuse-reports.tutor.store');
+});
+
 // CP6 7c/7d: the lesson page and room, for the lesson's own tutor or parent. LessonPolicy::attend is the authorisation.
 Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['lesson' => '[0-9]{1,18}'])->group(function () {
     Route::get('/', [LessonRoomController::class, 'show'])->name('lessons.show');
@@ -45,6 +55,13 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
     // CP6 7e: the tutor's report. LessonPolicy::report is the authorisation.
     Route::get('report', [ProgressReportController::class, 'create'])->name('lessons.report.create');
     Route::post('report', [ProgressReportController::class, 'store'])->name('lessons.report.store');
+
+    // CP7 8d (R137): filing a safeguarding report against this lesson. Named `abuse-reports.*`,
+    // deliberately not `lessons.report.*` (that name already means the tutor's progress report).
+    // LessonPolicy::reportAbuse is the authorisation.
+    Route::post('abuse-reports', [AbuseReportController::class, 'storeForLesson'])
+        ->middleware('throttle:abuse-reports')
+        ->name('abuse-reports.lesson.store');
 
     // CP7 8c (R136): the account holder's review of a completed lesson. LessonPolicy::review is the authorisation.
     Route::middleware('feature:reviews')->group(function () {
@@ -62,6 +79,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('messages', [MessageController::class, 'index'])->name('messages.index');
         Route::get('messages/{conversation}', [MessageController::class, 'show'])->whereNumber('conversation')->name('messages.show');
         Route::post('messages/{conversation}', [MessageController::class, 'store'])->whereNumber('conversation')->middleware('throttle:messages')->name('messages.store');
+
+        // CP7 8d (R137): filing a report against this conversation. Named `abuse-reports.*`, NOT
+        // `messages.*` — `EnsureAccountActive` exempts the `messages.` route-name prefix from its
+        // suspended-user logout so a closed conversation stays viewable; naming this route under
+        // that prefix would let an already-suspended user's surviving session keep filing reports.
+        // ConversationPolicy::reportAbuse is the authorisation.
+        Route::post('messages/{conversation}/abuse-reports', [AbuseReportController::class, 'storeForConversation'])
+            ->whereNumber('conversation')
+            ->middleware('throttle:abuse-reports')
+            ->name('abuse-reports.conversation.store');
     });
 });
 
