@@ -45,6 +45,16 @@ function sgConfirmedLesson(TutorProfile $tutor): Lesson
 
 beforeEach(function () {
     $this->admin = User::factory()->admin()->create();
+
+    // Only the one `$this->seed()` test below needs this — `AdminUserSeeder` (part of
+    // `DatabaseSeeder`) hard-stops on an unset password by design (R10), and `.env.example`
+    // deliberately ships no default (a public repo, so a real value there would be a published
+    // admin password). Matches the config-override precedent in DatabaseSeederTest.php /
+    // DemoTutorSeederTest.php rather than touching `.env.example` or the seeder's own guard.
+    config([
+        'seeding.admin.email' => 'admin@project-elearning.test',
+        'seeding.admin.password' => 'a-strong-seed-password',
+    ]);
 });
 
 // ---- access -------------------------------------------------------------------------------------
