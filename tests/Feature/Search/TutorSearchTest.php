@@ -3,6 +3,7 @@
 use App\Enums\AvailabilityExceptionType;
 use App\Enums\LessonStatus;
 use App\Enums\LevelTier;
+use App\Enums\SettingGroup;
 use App\Enums\TutorProfileStatus;
 use App\Models\AvailabilityException;
 use App\Models\AvailabilityRule;
@@ -176,6 +177,20 @@ it('excludes unrated tutors once a minimum rating is set (R30 #10)', function ()
         ->and(srchIds(query: ['min_rating' => '4']))->toBe([$rated->id])
         ->and(srchIds(query: ['min_rating' => '4.8']))->toBe([])
         ->and(srchIds(query: ['min_rating' => '0']))->toBe([$rated->id]);
+});
+
+it('ignores min_rating and a rating sort server-side while reviews is off, not just in the UI (R136)', function () {
+    $low = srchTutor(['rating_avg' => 2.0, 'rating_count' => 3]);
+    $high = srchTutor(['rating_avg' => 5.0, 'rating_count' => 3]);
+
+    Settings::set('reviews', true, SettingGroup::Features);
+    expect(srchIds(query: ['min_rating' => '4']))->toBe([$high->id]);
+
+    // Off: the low-rated tutor is no longer filtered out by a crafted min_rating.
+    Settings::set('reviews', false, SettingGroup::Features);
+    expect(srchIds(query: ['min_rating' => '4']))->toBe([$low->id, $high->id]);
+
+    Settings::set('reviews', true, SettingGroup::Features);
 });
 
 it('filters by day and time of day in the viewer timezone (R30 #8)', function () {

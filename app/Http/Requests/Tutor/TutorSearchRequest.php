@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Tutor;
 
+use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Models\Learner;
 use App\Models\User;
 use App\Services\Search\TutorSearchCriteria;
@@ -78,6 +79,12 @@ class TutorSearchRequest extends FormRequest
         // The learner's year group is used only when it belongs to the curriculum being searched.
         $learnerYearGroup = $learner !== null && $curriculumId !== null && $learner->curriculum_id === $curriculumId ? $learner->year_group_id : null;
 
+        // R136: while `features.reviews` is off, a crafted `min_rating`/`sort=rating` query string
+        // must not do anything — the UI hides both, and this is the server-side half of that, not
+        // just cosmetic.
+        $reviewsEnabled = EnsureFeatureEnabled::enabled('reviews');
+        $requestedSort = $this->filled('sort') ? $this->string('sort')->toString() : TutorSearchCriteria::SORT_RATING;
+
         return new TutorSearchCriteria(
             curriculumId: $curriculumId,
             subjectId: $this->filled('subject_id') ? $this->integer('subject_id') : null,
@@ -86,8 +93,8 @@ class TutorSearchRequest extends FormRequest
             maxRate: $this->filled('max_price') ? Money::fromDecimalString($this->string('max_price')->toString()) : null,
             day: $this->filled('day') ? $this->integer('day') : null,
             timeOfDay: $this->filled('time_of_day') ? $this->string('time_of_day')->toString() : null,
-            minRating: $this->filled('min_rating') ? $this->string('min_rating')->toString() : null,
-            sort: $this->filled('sort') ? $this->string('sort')->toString() : TutorSearchCriteria::SORT_RATING,
+            minRating: $reviewsEnabled && $this->filled('min_rating') ? $this->string('min_rating')->toString() : null,
+            sort: $reviewsEnabled ? $requestedSort : TutorSearchCriteria::SORT_PRICE,
         );
     }
 }

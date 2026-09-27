@@ -226,4 +226,12 @@ class Lesson extends Model
     {
         return $this->hasOne(Payment::class)->latestOfMany('attempt_no');
     }
+
+    /**
+     * @return HasOne<Review, $this>
+     */
+    public function review(): HasOne
+    {
+        return $this->hasOne(Review::class);
+    }
 }

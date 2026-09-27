@@ -33,9 +33,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // A rejected message is redirected back with its input flashed to the session; the body must not
-        // go there, or an over-long message holding a phone number would be kept unmasked (R134).
-        $exceptions->dontFlash(['body']);
+        // A rejected message or review is redirected back with its input flashed to the session; the
+        // body/comment must not go there, or an over-long one holding a phone number would be kept
+        // unmasked (R134/R136).
+        $exceptions->dontFlash(['body', 'comment']);
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),

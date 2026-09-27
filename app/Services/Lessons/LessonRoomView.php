@@ -5,10 +5,12 @@ namespace App\Services\Lessons;
 use App\Actions\Lessons\MarkJoined;
 use App\Actions\Lessons\MarkNoShow;
 use App\Actions\Lessons\SubmitProgressReport;
+use App\Actions\Reviews\SubmitReview;
 use App\Actions\Video\IssueJoinToken;
 use App\Enums\LessonStatus;
 use App\Enums\VideoParticipant;
 use App\Exceptions\AttendanceException;
+use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Models\Lesson;
 use App\Models\User;
 use App\Models\VideoProvider;
@@ -80,6 +82,7 @@ final class LessonRoomView
             'other_role' => $isTutor ? 'student' : 'tutor',
             'no_show_outcome' => $isTutor ? 'pay_tutor' : 'refund_parent',
             'can_report' => $isTutor && SubmitProgressReport::problemFor($user, $lesson) === null,
+            'can_review' => ! $isTutor && EnsureFeatureEnabled::enabled('reviews') && SubmitReview::eligibilityProblem($user, $lesson) === null,
             'terminal' => ! in_array($lesson->status, [LessonStatus::PendingPayment, LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress], true),
         ];
     }
