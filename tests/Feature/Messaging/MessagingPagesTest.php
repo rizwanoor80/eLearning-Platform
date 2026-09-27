@@ -280,11 +280,21 @@ it('404s every messaging route, hides the nav and keeps the data while messaging
     test()->actingAs($parent)->get(route('messages.show', $conversation))->assertNotFound();
     test()->actingAs($parent)->post(route('messages.store', $conversation), ['body' => 'hi'])->assertNotFound();
     test()->actingAs($parent)->get(route('dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('features.messaging', false));
+    test()->actingAs($parent)->get(route('dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', false));
     expect(Message::query()->count())->toBe(1);
 
     Settings::set('messaging', true, SettingGroup::Features);
 
     test()->actingAs($parent)->get(route('messages.index'))->assertOk();
+});
+
+it('tells the layout who may see the Messages nav item, so no .vue file branches on the role', function () {
+    ['tutorUser' => $tutor, 'parent' => $parent] = msgPair();
+
+    test()->actingAs($parent)->get(route('dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', true));
+    test()->actingAs($tutor)->get(route('tutor.dashboard'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', true));
+    app('auth')->forgetGuards();
+    test()->get(route('home'))->assertInertia(fn (AssertableInertia $page) => $page->where('auth.can_message', false));
 });
 
 // ---- the unread endpoint -----------------------------------------------------------------------

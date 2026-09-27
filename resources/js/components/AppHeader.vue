@@ -53,8 +53,8 @@ const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
 const activeItemStyles =
     'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100';
 
-// R133/R135: Messages shows for the two portals when the feature is on; the badge is the polled unread count.
-const messagingOn = computed(() => page.props.features.messaging && ['account_owner', 'tutor'].includes(String(auth.value.user?.role ?? '')));
+// R133/R135: Messages shows when the server says the caller may message (feature on, parent or tutor); the badge is the polled unread count.
+const messagingOn = computed(() => auth.value.can_message);
 const { messages: unreadMessages } = useUnreadCounts(() => messagingOn.value);
 
 const mainNavItems = computed<NavItem[]>(() => [

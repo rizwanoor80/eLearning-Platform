@@ -20,7 +20,7 @@ use RuntimeException;
  *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words ("zero five zero…",
  * "name at gmail dot com", "(at)"/"(dot)"), digits split by words or replaced by lookalike letters,
- * separators of more than four characters or a colon, and social handles are not caught. The safe side
+ * more than six separator units between digits (a run of whitespace counts as one, so seven dashes or underscores in a row get through) or a colon, and an address padded with more than five spaces, and social handles are not caught. The safe side
  * is over-masking: dates (27-09-2026, 27/09/2026), "Year 10, 11, 12, 13", 10,000,000 and a file name such
  * as solution.py are masked too; 16:00-17:00 and ordinary sentence ends are left alone.
  */
@@ -30,17 +30,21 @@ class MessageMasker
 
     private const MIN_PHONE_DIGITS = 7;
 
-    /** Zero-width and direction characters, the soft hyphen, word joiners and the BOM. */
-    private const INVISIBLE = '~[\x{00AD}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{FEFF}]~u';
+    /** Zero-width and direction characters, the soft hyphen, word joiners, the BOM and the invisible Hangul and Khmer fillers. */
+    private const INVISIBLE = '~[\x{00AD}\x{115F}\x{1160}\x{17B4}\x{17B5}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{3164}\x{FEFF}\x{FFA0}]~u';
 
-    private const EMAIL = '~[\p{L}\p{N}._%+\-]+ ?@ ?[\p{L}\p{N}\-]+(?: ?\. ?[\p{L}\p{N}\-]+)+~u';
+    /**
+     * Up to five whitespace characters either side of the `@` and of each dot: "sara  @ gmail. com". The dot class adds the
+     * full stops NFKC leaves alone: ideographic, middle dot, Arabic, Armenian, Devanagari danda, hyphenation point, katakana middle dot.
+     */
+    private const EMAIL = '~(?<![\p{L}\p{N}._%+\-])[\p{L}\p{N}._%+\-]++\s{0,5}+@\s{0,5}[\p{L}\p{N}\-]+(?:\s{0,5}[.\x{3002}\x{00B7}\x{06D4}\x{0589}\x{0964}\x{2027}\x{30FB}]\s{0,5}[\p{L}\p{N}\-]+)+~u';
 
     private const URL_WITH_SCHEME = '~\b[a-z][a-z0-9+.\-]{1,15}://\S+~iu';
 
     private const URL_WWW = '~(?<![\p{L}\p{N}])www\.\S+~iu';
 
     /** A named ending after a dotted label. The dot may carry a space either side, but not only one after it ("it. Online"). */
-    private const NAMED_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+(?:\.| \.| \. ))+(?:com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|online|site|tech|link|page|club|shop|store|blog|live|news|pro|cloud|academy|wiki|name|mobi)(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
+    private const NAMED_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+(?:\.|[\x{3002}\x{00B7}\x{06D4}\x{0589}\x{0964}\x{2027}\x{30FB}]| \.| \. ))+(?:com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|online|site|tech|link|page|club|shop|store|blog|live|news|pro|cloud|academy|wiki|name|mobi)(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
 
     /** Any two-letter country code after a dotted label; dot-tight only, or "see you. Me too" would be hidden. */
     private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+\.)+[a-z]{2}(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';

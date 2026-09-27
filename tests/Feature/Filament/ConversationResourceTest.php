@@ -73,7 +73,8 @@ it('opens the view page from the table, so an open is always audited', function 
     $conversation = Conversation::factory()->create();
 
     Livewire::actingAs($this->admin)->test(ListConversations::class)
-        ->assertTableActionHasUrl('view', ViewConversation::getUrl(['record' => $conversation]), $conversation);
+        ->assertTableActionVisible('open', $conversation)
+        ->assertTableActionHasUrl('open', ViewConversation::getUrl(['record' => $conversation]), $conversation);
 
     expect(AuditLog::query()->where('action', 'conversation.viewed')->count())->toBe(0);
 });

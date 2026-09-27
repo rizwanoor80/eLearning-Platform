@@ -66,6 +66,17 @@ dataset('masking fixtures', [
 
 4567', MessageMasker::PLACEHOLDER],
     'stars' => ['050*123*4567', MessageMasker::PLACEHOLDER],
+    'hangul filler between digits' => ['050ㅤ123ㅤ4567', MessageMasker::PLACEHOLDER],
+    'half-width hangul filler' => ['050ﾠ123ﾠ4567', MessageMasker::PLACEHOLDER],
+    'khmer and jamo fillers' => ['050ᅟ123ᅠ4567឴', MessageMasker::PLACEHOLDER],
+    'email with double spaces around at and dot' => ['sara  @ gmail. com', MessageMasker::PLACEHOLDER],
+    'email with tabs and blank line' => ['sara	@
+
+gmail.com', MessageMasker::PLACEHOLDER],
+    'email with ideographic full stop' => ['sara@gmail。com', MessageMasker::PLACEHOLDER],
+    'email with middle dot' => ['sara@gmail·com', MessageMasker::PLACEHOLDER],
+    'email with arabic full stop' => ['sara@gmail۔com', MessageMasker::PLACEHOLDER],
+    'bare domain with ideographic full stop' => ['gmail。com', MessageMasker::PLACEHOLDER],
     'pipes' => ['050|123|4567', MessageMasker::PLACEHOLDER],
     'hashes' => ['050#123#4567', MessageMasker::PLACEHOLDER],
     'emoji between groups' => ['050😀123😀4567', MessageMasker::PLACEHOLDER],

@@ -13,6 +13,7 @@ export type User = {
 export type Auth = {
     user: User;
     home: string;
+    can_message: boolean;
 };
 
 export type Passkey = {
