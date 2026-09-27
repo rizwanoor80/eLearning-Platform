@@ -118,8 +118,20 @@ use RuntimeException;
  * the expensive pattern when it is absent can never turn a match into a non-match; it only skips inputs
  * that were already guaranteed not to match. `str_repeat('a.', n)` contains none of the three tokens (no
  * letter is ever followed immediately by another letter), so all three patterns are skipped and the whole
- * call is linear in practice. A PCRE engine failure in either the gate or the full pattern (backtrack
- * limit, bad UTF-8) still fails the message closed, via `hasCandidate()`/`orFail()` respectively.
+ * call is linear in that specific shape. This is a presence gate, not a cost bound: `hasCandidate()` only
+ * tells the caller whether the ending token is absent everywhere; once it is present anywhere in the body,
+ * the full backtracking pattern still runs over the whole message, and `-` sits in both the label class and
+ * the junk class, so `(?:label junk)+` is the classic `(a+)+` shape once the gate is open. Measured (not
+ * merely theoretical, see VERIFICATION/DEVIATION in CYCLE-LOG): a benign-looking `str_repeat('a-', 20).'
+ * ok'` (43 chars) already exhausts the default `pcre.backtrack_limit` and throws — failing the message
+ * closed (never unmasked), but refusing to deliver a legitimate short message. R144(b)'s four required
+ * shapes all happen to contain no gate token, so they measure the gate working, not the cost once it is
+ * open; that gap is disclosed rather than fixed here (R144(d) pre-ruled outcome — see ADR-019 and
+ * docs/reports/8b.md) because fixing it needs a real per-position cost bound (e.g. capping label-run
+ * *iterations*, not junk-gap width, and removing the `-` overlap between LABEL and JUNK), which is a new
+ * structural change, not a third revert/patch inside this already twice-reverted design. A PCRE engine
+ * failure in either the gate or the full pattern (backtrack limit, bad UTF-8) still fails the message
+ * closed, via `hasCandidate()`/`orFail()` respectively — confirmed for the gate-open dash-run case above.
  *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
  * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
@@ -221,7 +233,7 @@ class MessageMasker
     /** A word-like ending needs a tight gap — no whitespace at all — or "Ok. Online lessons are fine." would mask. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated the same way by `hasCandidate()`. */
     private const NAMED_DOMAIN_TIGHT = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::TIGHT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
-    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated by `hasCandidate()` on a bare `[\p{L}]{2}` presence check. */
+    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated by `hasCandidate()` on a bare `[a-z]{2}` presence check (see HAS_COUNTRY_ENDING below — not `[\p{L}]{2}`; the gate is ASCII-only, matching this pattern's own ending). */
     private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{Nd}])(?:[\p{L}\p{Nd}\-]+'.self::TIGHT_JUNK.')+[a-z]{2}(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
     /**
