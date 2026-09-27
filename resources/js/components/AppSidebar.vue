@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
+import { BookOpen, FolderGit2, LayoutGrid, MessageSquare } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -15,10 +15,15 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useUnreadCounts } from '@/composables/useUnreadCounts';
 import type { NavItem } from '@/types';
 
 const page = usePage();
 const home = computed(() => page.props.auth.home);
+
+// R133/R135: Messages shows when the server says the caller may message (feature on, parent or tutor); the badge is the polled unread count.
+const messagingOn = computed(() => page.props.auth.can_message);
+const { messages: unreadMessages } = useUnreadCounts(() => messagingOn.value);
 
 const mainNavItems = computed<NavItem[]>(() => [
     {
@@ -26,6 +31,7 @@ const mainNavItems = computed<NavItem[]>(() => [
         href: home.value,
         icon: LayoutGrid,
     },
+    ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
 ]);
 
 const footerNavItems: NavItem[] = [
