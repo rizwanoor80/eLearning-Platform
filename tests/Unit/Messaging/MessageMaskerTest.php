@@ -85,6 +85,7 @@ dataset('masking fixtures', [
     'bare domain with a newer ending' => ['mysite.email', MessageMasker::PLACEHOLDER],
     'bare domain with school ending' => ['sara.school', MessageMasker::PLACEHOLDER],
     'bare domain with a bullet' => ['example•com', MessageMasker::PLACEHOLDER],
+    'pinned over-masking: at-phrase with a time' => ['see you @ 5:30', 'see '.MessageMasker::PLACEHOLDER],
     'pinned over-masking: at-phrase with a comma' => ['see you @ school, then', 'see '.MessageMasker::PLACEHOLDER],
     'hangul filler between digits' => ['050ㅤ123ㅤ4567', MessageMasker::PLACEHOLDER],
     'half-width hangul filler' => ['050ﾠ123ﾠ4567', MessageMasker::PLACEHOLDER],
