@@ -1,23 +1,25 @@
-# STATUS — cycle 08 r1 (programme "CP7") — IN PROGRESS — written 2026-09-27 03:05 (machine clock) — Context: not measured by the tool — **step 2 (8a) merged; step 3 (8b) next**
+# STATUS — cycle 08 r1 (programme "CP7") — IN PROGRESS — written 2026-09-27 04:48 (machine clock) — Context: not measured by the tool — **step 3 (8b) built and gated; branch pushed, PR and review next**
 
-Tests: **1568/1568 passed on main at e4c762d** (8447 assertions, `php artisan test --parallel --processes=8`, 210.4 s warm); `ledger:verify` OK; smoke `/` `/login` `/admin/login` `/tutors` all 200. Advisor: 2 of 2 minimum for 8a, both disclosed as late and unable to name the model (§6 item A); 8a review: 1 Low–Medium found, fixed in loop 1, plus a CI failure fixed in loop 2, no Medium or High open. Resume count 0 of 8.
+Tests: **1701/1701 passed on `cp/8b-messaging` at `afc4970`** (8959 assertions, `php artisan test --parallel --processes=8`, 391.4 s; main had 1568, so +133); Pint, PHPStan (0 errors), RTL grep, `ledger:verify` and `npm run build` green; `npm run types:check` clean. Advisor: 5 consults for 8b (design, mid-build, masking, R140 audit, pre-PR; the plan minimum is 3 plus the two own consults), none able to name its model (§6 item A). 8b review: pending. Resume count 0 of 8.
 
 ## §1 Git state
-`main` = `e4c762d` (squash of PR #30, head `872f709`) on top of docs commits `1a2af62`, `17fe2ec`, `a1bc1ed`. `rehearsal` = `042f7c0` (unchanged this cycle so far). Branch `cp/8a-parallel-suite` merged, kept.
+`main` = `e4c762d` (squash of PR #30) plus docs-only commits to `dde63d9` and the ones logged after it (ADR-019/020, DATA_MODEL v1.7, CHECKPOINTS, CYCLE-LOG, this file). Branch `cp/8b-messaging` at `afc4970`, five commits on `main`, pushed for the PR. `rehearsal` = `042f7c0` (unchanged this cycle so far). Branch `cp/8a-parallel-suite` merged, kept.
 
 ## §2 Step map (cycle 08 r1)
 1. Docs-only commit of PLAN cycle 08 r1 and PRD (R127) — **done** (`a1bc1ed`).
 2. `cp/8a-parallel-suite` (R128) — **done**: PR #30 merged `e4c762d`; `composer test` and CI now run `artisan test --parallel`.
-3. `cp/8b-messaging` (R133–R135, R140) — **next**.
+3. `cp/8b-messaging` (R133–R135, R140) — **built and gated; PR, review, merge next**.
 4. `cp/8c-reviews` (R136) — not started.
 5. `cp/8d-safeguarding` (R137, R138) — not started.
 6. `cp/8e-notifications` (R139, `docs/reports/8e.md`) — not started.
 7. Deploy rehearsal under R111, then END — not started.
 
 ## §3 What changed this run
+- **8b (on the branch, not yet merged):** migration `2026_09_30_100000_create_conversations_and_messages.php` (`conversations` unique per account/tutor pair, `messages` append-only by trigger, idempotent backfill of `first_lesson_completed_at`); `Conversation`/`Message` models and factories; `App\Support\Messaging\MessageMasker` (pure, fails closed, ADR-019); `EnsureConversation`, `RecordFirstLessonCompleted`, `SendMessage`; queued listener `SyncConversationForLesson`; `ConversationPolicy`, `StoreMessageRequest`, `MessageController`, `UnreadCountsController`; throttle limiters (30/min per user); `dontFlash(['body'])`; Messages pages for both portals and a Messages nav item with a badge polled every 60 s while the tab is visible (no broadcasting, ADR-020); read-only Filament `ConversationResource` whose view page writes a `conversation.viewed` audit row on every open. Docs on main: ADR-019, ADR-020, DATA_MODEL v1.7, CHECKPOINTS (CP7 wording; CP8 additions R130, R131, R135). Tests added: 133 (masker fixture table 89, pages 24, Filament 6, the rest lifecycle and limits).
 - **8a:** `composer.json` `test` script runs `@php artisan test --parallel` and starts with `Composer\Config::disableProcessTimeout`; `.github/workflows/ci.yml` gains a `Migrate the CI database` step (parallel testing migrates only per-process databases, so the base database that `ledger:verify` reads was empty: CI run on `e052bf5` failed there); `tests/Pest.php` now holds the helpers two test files shared with others (`FAKE_WEBHOOK_SECRET`, `webhookBody`, `signedHeaders`, `postWebhook`, `lnChild`); the composer-script ordering guard in `LedgerServiceTest.php` matches the `--parallel` step. Local wall times: 8 processes 349 s then 210 s warm, 3 processes 462 s, versus serial 347–773 s before; CI (4 processes) ran Pest in 39.8 s. Details: CYCLE-LOG 2026-09-27.
 
 ## §4 Decisions and by whom
+- CC (8b): `first_lesson_completed_at` is set only on `completed`; non-parties get 404; the admin view stays on when messaging is off; masking fails closed and the counterpart's name is masked too; `dontFlash(['body'])`; the audit row is written synchronously in `mount()`; `notifications` count is 0 until 8e; `bootstrap/app.php`, the `AppServiceProvider` limiters and `features.messaging` count as 8b's area for R141 (DECISION in CYCLE-LOG). Five advisor consults, all logged.
 - CC (8a): no direct paratest dependency (transitive via Pest); `ci.yml` edited after all (migrate step); guard test fixed in loop 1; self-merge under R141 with CI green on `872f709` and the diff inside the area. Advisor consults: see §6 item A.
 - CC (7g): tokens remapped rather than components edited; explicit Filament ramp because `Color::hex` is pink; a derived dark scheme (the pack has none) with coral-400 as `text-primary` there, disclosed and flagged for the designer; both Mediums fixed in loop 1; self-merge under R123 (conditions quoted in CYCLE-LOG). No advisor consult for 7g.
 - CC (7f): pre-fill computed server-side from the caller's own learner, so nothing about the trial travels in a URL and one mechanism serves the email and the portal; timeline ordered by lesson date (advisor catch); 20-report cap; self-merge under R123 (conditions quoted in CYCLE-LOG). Advisor consult 1 of 1 for 7f.
@@ -38,12 +40,15 @@ Tests: **1568/1568 passed on main at e4c762d** (8447 assertions, `php artisan te
 
 
 ## §5 Why stopping
-Not stopped: the programme continues with 8b. This file was rewritten at the 8a step boundary (rule 5).
+Not stopped: 8b is built and gated; the PR, its review and the merge come next, then 8c. This file was rewritten at the 8b push (rule 5).
 
 ## §6 Mismatches
 A. **Advisor tool cannot name its model (R63).** Both 8a consults were answered, but the `advisor` tool does not report which model answered, so neither counts toward the minimum under R63; both are logged with that shortfall, and both fell after the work they should have preceded (design after the first edits, pre-PR after the PR opened). The 8b–8e consults will be logged the same way unless the tool starts returning a model name.
 B. **`composer test` as one unit exceeds the 10-minute line locally** (Pint + PHPStan + RTL + Pest 499 s in one run). Constituent steps are run separately from here (R110 precedent); under Git Bash `composer` is not on PATH and under PowerShell `bash` is WSL, so use `composer.bat` with `C:\Program Files\Git\bin` first on `PATH`.
 C. **`artisan test --parallel` rejects `--no-interaction`** (paratest); the one artisan call run without the flag.
+E. **8b masking limits and over-masking (ADR-019, disclosed).** Not caught: numbers or addresses spelled out ("zero five zero…", "name at gmail dot com", "(at)"/"(dot)"), digits split by words, lookalike letters, more than six separator units, a colon between digit groups ("050:123:4567"), social handles. Accepted over-masking, each pinned by a fixture: "27/09/2026", "Year 10, 11, 12, 13", "10,000,000". "16:00-17:00" and a sentence end before "Online" are left alone.
+F. **8b suite duration.** The first full run (default process count) took 716 s, over the 10-minute line, and finished on its own (1697/1697); the cause is unknown (`duration_ms` is Pest's own timer, the build had finished first). A rerun with `--processes=8` took 391 s (1701/1701), so no BLOCKER; the CYCLE-LOG explanation that blamed the machine was unsupported and is corrected there.
+G. **8b and R141 area.** Small edits sit outside the messaging files (`bootstrap/app.php`, `AppServiceProvider.php`, the shared `features.messaging` prop, `AppSidebar.vue`, `AppHeader.vue`, `NavMain.vue`, `navigation.ts`); all are needed by R133–R135 and are named in the PR body. If the reviewer disagrees, self-merge is off and it becomes an owner GO.
 D. **Owner action 2 (suite runner) is closed by R128.** CHECKPOINTS has no 8a box; R128 was the checklist.
 0h. **Correction:** `lessons:auto-release-reports` runs every five minutes (`routes/console.php:49`, `schedule:list`), not hourly as the 7e text in this file says. Forge redirects each scheduled job's output to /dev/null, so the "Released N unreported lesson(s)" line cannot be read from the server; with 0 lessons on rehearsal there was nothing to release. One stray ERROR in rehearsal's `laravel.log` is my own mistaken `artisan tail` call (no such command); harmless.
 0g. **7g review Lows and disclosures (none blocks).** (a) The active-item bar's radius may poke 1–2 px at the corners. (b) Both the colour and the white mark are fetched (one is `display:none`). (c) `sizes="143px"` is hard-coded in `BrandLockup.vue`. (d) `--input` (`#e7dede`, the designer's token) is about 1.3:1 as an input border. (e) The radius tokens reach every `rounded-md/lg/xl`. (f) `public/favicon.ico` holds PNG bytes. (g) `Vite::fonts('schibsted-grotesk')` throws on a stale manifest without the alias: run `npm run build` first. (h) Coral-400 is text in the derived dark scheme (about 7.6:1 on the dark ground); outside the pack's coral rule, flagged for the designer. (i) The `logo_path` / `favicon_path` site settings (CP1) are read by nothing, before or after 7g (Deferred).
@@ -88,7 +93,7 @@ Owner action 9: **UI developer's review of 7g (PR #29, branding) on rehearsal** 
 |---|---|---|---|---|---|
 | step 1 docs | done | `main` | — | — | docs-only |
 | 8a parallel suite | done | `cp/8a-parallel-suite` | #30 | 1 Low–Medium fixed (loop 1); CI failure fixed (loop 2); no Medium or High open | self-merged e4c762d (R141) |
-| 8b messaging | next | | | | |
+| 8b messaging | built and gated | `cp/8b-messaging` | opening | pending | pending |
 | 8c reviews | not started | | | | |
 | 8d safeguarding | not started | | | | |
 | 8e notifications | not started | | | | |
