@@ -17,6 +17,7 @@ use App\Models\Payment;
 use App\Models\RecurringSlot;
 use App\Models\User;
 use App\Services\Lessons\LessonStateMachine;
+use Illuminate\Support\Collection;
 use Throwable;
 
 /**
@@ -87,7 +88,7 @@ class CancelSuspendedAccountLessons
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, int>  $learnerIds
+     * @param  Collection<int, int>  $learnerIds
      * @param  array<int, int>  $skipped
      */
     private function cancelReservedLessons($learnerIds, ?User $actor, array &$skipped): int
@@ -102,6 +103,11 @@ class CancelSuspendedAccountLessons
         $cancelled = 0;
 
         foreach ($ids as $id) {
+            // pluck('id') is typed as a generic (mixed) Collection by Eloquent's stubs even
+            // though the column is always an integer id — narrow it once here so $skipped stays
+            // array<int, int>, matching its own docblock, rather than array<int, mixed>.
+            $id = (int) $id;
+
             if ($this->hasPendingAttempt($id)) {
                 $skipped[] = $id;
 
@@ -135,7 +141,7 @@ class CancelSuspendedAccountLessons
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, int>  $learnerIds
+     * @param  Collection<int, int>  $learnerIds
      * @return array<int, int>
      */
     private function confirmedLessonIds($learnerIds): array
@@ -149,7 +155,7 @@ class CancelSuspendedAccountLessons
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, int>  $learnerIds
+     * @param  Collection<int, int>  $learnerIds
      */
     private function pauseActiveSlots($learnerIds, ?User $actor): int
     {

@@ -2,9 +2,9 @@
 
 use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\ApproveTutor;
+use App\Actions\Tutor\CancelSuspendedTutorLessons;
 use App\Actions\Tutor\RejectTutor;
 use App\Actions\Tutor\RequestTutorChanges;
-use App\Actions\Tutor\CancelSuspendedTutorLessons;
 use App\Actions\Tutor\ReviewTutorDocument;
 use App\Actions\Tutor\SuspendTutor;
 use App\Enums\TutorDocumentStatus;

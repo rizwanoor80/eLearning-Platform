@@ -104,6 +104,11 @@ class CancelSuspendedTutorLessons
         $cancelled = 0;
 
         foreach ($ids as $id) {
+            // pluck('id') is typed as a generic (mixed) Collection by Eloquent's stubs even
+            // though the column is always an integer id — narrow it once here so $skipped stays
+            // array<int, int>, matching its own docblock, rather than array<int, mixed>.
+            $id = (int) $id;
+
             if ($this->hasPendingAttempt($id)) {
                 $skipped[] = $id;
 
@@ -150,6 +155,8 @@ class CancelSuspendedTutorLessons
         $cancelled = 0;
 
         foreach ($ids as $id) {
+            $id = (int) $id;
+
             try {
                 $lesson = Lesson::query()->whereKey($id)->firstOrFail();
 
