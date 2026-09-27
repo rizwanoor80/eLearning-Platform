@@ -19,8 +19,10 @@ use RuntimeException;
  * does not, even with `/u`.
  *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words ("zero five zero…",
- * "name at gmail dot com"), digits split by words, and social handles are not caught. The safe side is
- * over-masking: a date such as 27-09-2026 or a file name such as notes.pdf is masked too.
+ * "name at gmail dot com", "(at)"/"(dot)"), digits split by words or replaced by lookalike letters,
+ * separators of more than four characters or a colon, and social handles are not caught. The safe side
+ * is over-masking: dates (27-09-2026, 27/09/2026), "Year 10, 11, 12, 13", 10,000,000 and a file name such
+ * as solution.py are masked too; 16:00-17:00 and ordinary sentence ends are left alone.
  */
 class MessageMasker
 {
@@ -37,10 +39,18 @@ class MessageMasker
 
     private const URL_WWW = '~(?<![\p{L}\p{N}])www\.\S+~iu';
 
-    /** Any two-letter country code, or one of the common longer endings, after a dotted label. */
-    private const BARE_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+\.)+(?:com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|online|site|tech|link|page|club|shop|store|blog|live|news|pro|cloud|academy|wiki|name|mobi|[a-z]{2})(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
+    /** A named ending after a dotted label. The dot may carry a space either side, but not only one after it ("it. Online"). */
+    private const NAMED_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+(?:\.| \.| \. ))+(?:com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|online|site|tech|link|page|club|shop|store|blog|live|news|pro|cloud|academy|wiki|name|mobi)(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
 
-    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:[\s\p{M},.\-()\[\]/_\x{066B}\x{066C}]*\p{Nd})+\p{M}*~u';
+    /** Any two-letter country code after a dotted label; dot-tight only, or "see you. Me too" would be hidden. */
+    private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{N}])(?:[\p{L}\p{N}\-]+\.)+[a-z]{2}(?![\p{L}\p{N}])(?:[/:?#]\S*)?~iu';
+
+    /**
+     * Digits with up to four characters between them that are neither letters nor digits — spaces, line
+     * breaks, dots, dashes, brackets, commas, emoji keycap marks, `*`, `|`, `#`, anything. `:` is left out so
+     * a time range such as 16:00-17:00 survives; a number written 050:123:4567 is a disclosed limit.
+     */
+    private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:[^\p{L}\p{Nd}:]{0,4}\p{Nd})+\p{M}*~u';
 
     public function mask(string $body): MaskedMessage
     {
@@ -50,24 +60,37 @@ class MessageMasker
         $text = $this->orFail(Normalizer::normalize($text, Normalizer::FORM_KC));
         $text = $this->replace(self::INVISIBLE, '', $text);
 
+        $hidden = 0;
         $masked = $text;
 
-        foreach ([self::EMAIL, self::URL_WITH_SCHEME, self::URL_WWW, self::BARE_DOMAIN] as $pattern) {
-            $masked = $this->replace($pattern, self::PLACEHOLDER, $masked);
+        foreach ([self::EMAIL, self::URL_WITH_SCHEME, self::URL_WWW, self::NAMED_DOMAIN, self::COUNTRY_DOMAIN] as $pattern) {
+            $masked = $this->replace($pattern, self::PLACEHOLDER, $masked, $hidden);
         }
 
         $masked = $this->replaceCallback(
             self::PHONE_RUN,
-            fn (array $match): string => preg_match_all('~\p{Nd}~u', $match[0]) >= self::MIN_PHONE_DIGITS ? self::PLACEHOLDER : $match[0],
+            function (array $match) use (&$hidden): string {
+                if (preg_match_all('~\p{Nd}~u', $match[0]) < self::MIN_PHONE_DIGITS) {
+                    return $match[0];
+                }
+                $hidden++;
+
+                return self::PLACEHOLDER;
+            },
             $masked,
         );
 
-        return new MaskedMessage($masked, $masked !== $text);
+        // "masked" means something was hidden, not that NFKC or the invisible-character strip changed the text.
+        return new MaskedMessage($masked, $hidden > 0);
     }
 
-    private function replace(string $pattern, string $replacement, string $subject): string
+    private function replace(string $pattern, string $replacement, string $subject, int &$count = 0): string
     {
-        return $this->orFail(preg_replace($pattern, $replacement, $subject));
+        $done = 0;
+        $result = $this->orFail(preg_replace($pattern, $replacement, $subject, -1, $done));
+        $count += $done;
+
+        return $result;
     }
 
     private function replaceCallback(string $pattern, callable $callback, string $subject): string

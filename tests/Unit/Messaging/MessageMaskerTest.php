@@ -41,11 +41,8 @@ dataset('masking fixtures', [
     'circled digits' => ['⑤⓪①②③④⑤⑥', MessageMasker::PLACEHOLDER],
     'digits split by single spaces' => ['0 5 0 1 2 3 4 5 6 7', MessageMasker::PLACEHOLDER],
     'two numbers in one message' => ['0501234567 or 0509876543', MessageMasker::PLACEHOLDER.' or '.MessageMasker::PLACEHOLDER],
-    'newline between digit groups' => ['0501
-234567', MessageMasker::PLACEHOLDER],
-    'carriage return and newline' => ['050
-123
-4567', MessageMasker::PLACEHOLDER],
+    'newline between digit groups' => ["0501\n234567", MessageMasker::PLACEHOLDER],
+    'carriage return and newline' => ["050\r\n123\r\n4567", MessageMasker::PLACEHOLDER],
     'keycap digits' => ["0\u{FE0F}\u{20E3}5\u{FE0F}\u{20E3}0\u{FE0F}\u{20E3}1\u{FE0F}\u{20E3}2\u{FE0F}\u{20E3}3\u{FE0F}\u{20E3}4\u{FE0F}\u{20E3}", MessageMasker::PLACEHOLDER],
     'commas between digit groups' => ['050,123,4567', MessageMasker::PLACEHOLDER],
     'arabic decimal and thousands separators' => ["٠٥٠\u{066B}١٢٣\u{066C}٤٥٦٧", MessageMasker::PLACEHOLDER],
@@ -54,25 +51,52 @@ dataset('masking fixtures', [
     'zero-width joiner and word joiner' => ["050\u{200D}123\u{2060}4567", MessageMasker::PLACEHOLDER],
     'soft hyphen and bom' => ["\u{FEFF}050\u{00AD}1234567", MessageMasker::PLACEHOLDER],
     'slashes' => ['050/123/4567', MessageMasker::PLACEHOLDER],
+    'stars' => ['050*123*4567', MessageMasker::PLACEHOLDER],
+    'pipes' => ['050|123|4567', MessageMasker::PLACEHOLDER],
+    'hashes' => ['050#123#4567', MessageMasker::PLACEHOLDER],
+    'emoji between groups' => ['050😀123😀4567', MessageMasker::PLACEHOLDER],
+    'no-break space' => ['050 123 4567', MessageMasker::PLACEHOLDER],
+    'line separator' => ['050 123 4567', MessageMasker::PLACEHOLDER],
+    'brackets and plus' => ['+971 (50) 123-4567', MessageMasker::PLACEHOLDER],
+    'spaced bare domain' => ['visit mysite . com now', 'visit '.MessageMasker::PLACEHOLDER.' now'],
+    'spaced www domain' => ['www . mysite . com', MessageMasker::PLACEHOLDER],
+    'space before the dot only' => ['mysite .com', MessageMasker::PLACEHOLDER],
+    'percent-encoded at sign' => ['sara%40gmail.com', 'sara%'.MessageMasker::PLACEHOLDER],
 
     // Left alone
     'ordinary sentence' => ['See you on Tuesday at 5 pm, bring chapter 3.', 'See you on Tuesday at 5 pm, bring chapter 3.'],
     'six digits' => ['ref 123456', 'ref 123456'],
     'a price' => ['it costs AED 150', 'it costs AED 150'],
     'a time range' => ['from 16:00 to 18:00', 'from 16:00 to 18:00'],
+    'a time range with a dash' => ['lesson 16:00-17:00 on Monday', 'lesson 16:00-17:00 on Monday'],
+    'short numbers on separate lines' => ['chapter 3
+
+question 12
+45', 'chapter 3
+
+question 12
+45'],
+    'a sentence ending before a common ending word' => ['Ok. Online lessons are fine. Live is better.', 'Ok. Online lessons are fine. Live is better.'],
+    'a sentence ending before a country-code-like word' => ['see you. Me too', 'see you. Me too'],
     'abbreviation with dots' => ['e.g. fractions, i.e. the basics', 'e.g. fractions, i.e. the basics'],
     'a decimal' => ['I scored 3.5 out of 5', 'I scored 3.5 out of 5'],
     'a long word with a dot but no ending' => ['thanks.Really', 'thanks.Really'],
     'arabic text' => ['شكرا جزيلا على الدرس', 'شكرا جزيلا على الدرس'],
     'a lone at sign' => ['meet @ 5', 'meet @ 5'],
 
-    // Known false positives: the safe side is over-masking (ADR-003)
+    // Known false positives: the safe side is over-masking (ADR-019)
     'a date with dashes' => ['the exam is on 27-09-2026', 'the exam is on '.MessageMasker::PLACEHOLDER],
     'a file name that ends like a country code' => ['I attached solution.py', 'I attached '.MessageMasker::PLACEHOLDER],
+    'a date with slashes' => ['due 27/09/2026', 'due '.MessageMasker::PLACEHOLDER],
+    'year groups in a list' => ['Year 10, 11, 12, 13', 'Year '.MessageMasker::PLACEHOLDER],
+    'a large number with commas' => ['10,000,000', MessageMasker::PLACEHOLDER],
     'a pdf file name' => ['I attached notes.pdf', 'I attached notes.pdf'],
 
-    // Known limits (ADR-003): spelled out is not caught
+    // Known limits (ADR-019): spelled out is not caught
     'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
+    'colon-separated number' => ['050:123:4567', '050:123:4567'],
+    'lookalike letters for digits' => ['O5O l234567', 'O5O l234567'],
+    'at and dot in brackets' => ['sara (at) gmail (dot) com', 'sara (at) gmail (dot) com'],
     'spelled-out address' => ['sara at gmail dot com', 'sara at gmail dot com'],
 ]);
 
