@@ -2266,3 +2266,65 @@ confirmed it; no further action.
 Cross-cutting note from the subagent, disclosed here rather than hidden: CHECKPOINTS.md's checkbox state
 disagreed with its own prose on all 8 boxes before this edit (prose claimed done, boxes unchecked) —
 independent of the evidence findings above, now resolved by this edit.
+
+## [2026-09-28 21:38 machine clock] DEVIATION — repeated cycle 08's §6 compression mistake, self-caught via advisor, corrected
+
+The first draft of this cycle's STATUS.md §6 carried the mismatch register **by reference** ("see prior
+revision 93241a3:docs/STATUS.md") instead of in full — exactly the compression mistake cycle 08's own
+18:05 DEVIATION already named and corrected, and which that cycle's standing rule says never to repeat.
+Caught by the first 9a advisor consult (below), not by CC independently. Fixed before any branch was cut:
+STATUS.md §6 now carries items A–V, 0/0a–0h and 1–10 verbatim again, item T marked closed (accepted under
+R153), and new item W (CP0 empty-dashboard box) appended. Also corrected in the same pass: §1's stated
+`cp/9a-hardening` cut point (was `5697f27`, corrected to `5aee0c7` once STATUS's own push commit existed).
+Nothing here touches a domain invariant, a frozen file or a money path.
+
+## [2026-09-28 21:38 machine clock] ADVISOR — 9a design consult (first of cycle 09, counts under R63/ADR-010 addendum)
+
+Advisor: **Fable** (PROJECT_BRIEF.md:124, "Currently Fable (owner, 2026-09-28)" — the tool itself does not
+report which model answered, so R63's fixed phrase names the configured advisor from that file; under the
+ADR-010 addendum this entry counts toward the plan's stated minimum of 2 for 9a, corrected from cycle 08's
+mistaken "logged as not counting"). First consult this session — advisor answered (confirmed: a substantive,
+item-by-item response was returned, not a timeout or empty result).
+
+Asked for a design review of R149(a)-(h) before the first 9a edit, having already confirmed (a)'s exact
+code gap (`MessageController.php:85-94` only catches `ConversationClosedException`) and (a)'s reference
+pattern (`ReviewController::store()`). One line quoted verbatim: *"Don't catch bare `RuntimeException`.
+`QueryException` (via `PDOException`) and Symfony's `HttpException` both extend it. A DB failure inside
+SendMessage's transaction would then show up as 'could not be masked.'"*
+
+Full guidance acted on, item by item:
+- **Process, before design:** flagged the §6 compression mistake above (fixed); flagged that this consult
+  must itself count under R63/ADR-010 (fixed, this entry); flagged a timestamp cross-check against
+  `git log -1 --format=%ai` — checked: `5697f27` → `21:32:32 +0400`, `5aee0c7` → `21:33:26 +0400`, both
+  consistent with this entry's own labels, no correction needed this time.
+- **(h) reorder:** run `vue-tsc --noEmit` and check `ci.yml`'s node-install-before-`composer test` ordering
+  *first*, not last, since 7f's "zero errors" baseline predates 8b-8e's new Vue pages. Actioned next, before
+  any other item.
+- **(a):** do not catch bare `RuntimeException` (would also swallow `QueryException`/`HttpException`, both
+  subclasses) — throw a dedicated `MessageMaskingFailedException extends RuntimeException` from
+  `MessageMasker::orFail()`/`hasCandidate()` and catch only that; test via a container-bound masker double,
+  not real `a-` input (real input stops throwing once (b) lands); assert zero `messages` rows and the toast;
+  never `report()` it, since exception traces can carry string arguments and the class docblock promises the
+  body is never logged.
+- **(b):** whichever side (`LABEL` vs `JUNK`) loses `-` must be checked against the existing "dash for the
+  dot" fixture before shipping — removing `-` from `JUNK` risks the exact EMAIL/MAIL_PROVIDER partial-match
+  leak the class docblock already describes; removing it from `LABEL` should keep the fixture passing.
+  Iteration cap must add a fixture with *more* labels than the cap and assert the ending still masks (a full
+  pass-through, like the pre-R144(a) `sara@name.......com` failure, is not acceptable; a partial mask is).
+  Timing tests must open the gate (`str_repeat('a-', n)` alone opens none) — add n≈1000 variants ending
+  ` ok`, `.com`, `.shop` per gated pattern plus a mixed `a.`/`a-` run, since R154's reviewer checklist tests
+  exactly this. Class docblock to be rewritten once the shipped shape is known (it currently documents the
+  `-` overlap as intentional).
+- **(d):** the literal "ignored when unset" test is vacuous (already true today, no proxies trusted); add
+  the positive case — set `TRUSTED_PROXIES` to the test's `REMOTE_ADDR` and assert XFF is honoured — as the
+  only test that actually proves the wiring, including config-cache/env() timing.
+- **(e):** read the environment allow-list from the same source ADR-016's `PaymentGatewayServiceProvider`
+  already uses, so the video and payment allow-lists cannot drift apart; guard both activation and driver
+  resolution.
+- **(f):** write the test as a dataset over the panel's registered resources, not a hand-written list, so
+  9b's Disputes and 9d's Audit-log resources are covered automatically without a follow-up test.
+- **(g):** no behaviour change to the limit values; key the limiter by user id, not IP (IP depends on (d)
+  landing first).
+
+Build order this cycle, set by this consult: (h) first, then (a), (b), (d), (e), (f), (g), (c) — (c) last
+as a pure docblock reword with no behaviour change.
