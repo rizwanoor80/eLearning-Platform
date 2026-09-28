@@ -82,8 +82,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // keep reading or clearing their notifications, so the middleware's default logout-on-next-request
     // applies here same as everywhere else (cycle 08 DECISION).
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
-    Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
-    Route::post('notifications/{notification}/open', [NotificationController::class, 'open'])->name('notifications.open');
+    Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereUuid('notification')->name('notifications.read');
+    Route::post('notifications/{notification}/open', [NotificationController::class, 'open'])->whereUuid('notification')->name('notifications.open');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
 
     Route::middleware('feature:messaging')->group(function () {

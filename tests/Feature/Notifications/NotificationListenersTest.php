@@ -205,6 +205,17 @@ it('404s reading, marking read, and opening another users notification', functio
     actingAs($other)->post("/notifications/{$id}/open")->assertNotFound();
 });
 
+// R141 fix loop 1 (PR #34 round 1, Finding 1b): the notification id column is a uuid, and without a
+// ->whereUuid() route constraint a malformed segment reached the query builder and Postgres rejected the
+// literal at the database level (SQLSTATE 22P02), surfacing as an uncaught 500 rather than the 404 this
+// codebase's IDOR convention promises. Mirrors the existing ->whereNumber('conversation') precedent.
+it('404s a malformed (non-uuid) notification id, on both read and open, instead of a database error', function () {
+    $owner = User::factory()->create();
+
+    actingAs($owner)->post('/notifications/not-a-uuid/read')->assertNotFound();
+    actingAs($owner)->post('/notifications/not-a-uuid/open')->assertNotFound();
+});
+
 it('renders the notification centre for a tutor-portal user', function () {
     $tutor = TutorProfile::factory()->approved()->create();
     ['lesson' => $lesson] = notifLesson();
