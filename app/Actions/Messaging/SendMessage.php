@@ -2,6 +2,7 @@
 
 namespace App\Actions\Messaging;
 
+use App\Events\Messaging\MessageSent;
 use App\Exceptions\ConversationClosedException;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -13,9 +14,10 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * R133/R134: posts one message. Before the pair's first completed lesson the body is masked HERE,
- * before the row is written, so the original exists nowhere — not in the row, a log, a job payload or
- * an event (this action dispatches none). The caller's authorisation is the policy; the party check is
- * repeated so the action is safe on its own.
+ * before the row is written, so the original exists nowhere — not in the row, a log, or a job payload:
+ * `MessageSent` is dispatched after the transaction commits, but it carries ids only, never the body
+ * (masked or not). The caller's authorisation is the policy; the party check is repeated so the action is
+ * safe on its own.
  *
  * @throws AuthorizationException when the sender is not a party to the conversation
  * @throws ConversationClosedException when either side is suspended
@@ -41,7 +43,7 @@ class SendMessage
             ? new MaskedMessage($body, false)
             : $this->masker->mask($body);
 
-        return DB::transaction(function () use ($sender, $conversation, $stored): Message {
+        $message = DB::transaction(function () use ($sender, $conversation, $stored): Message {
             $message = Message::query()->create([
                 'conversation_id' => $conversation->id,
                 'sender_user_id' => $sender->id,
@@ -53,5 +55,9 @@ class SendMessage
 
             return $message;
         });
+
+        MessageSent::dispatch($message->id, $conversation->id, $sender->id);
+
+        return $message;
     }
 }

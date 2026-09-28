@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, MessageSquare, Search } from '@lucide/vue';
+import { Bell, BookOpen, Folder, LayoutGrid, Menu, MessageSquare, Search } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import BrandLockup from '@/components/BrandLockup.vue';
@@ -54,8 +54,10 @@ const activeItemStyles =
     'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100';
 
 // R133/R135: Messages shows when the server says the caller may message (feature on, parent or tutor); the badge is the polled unread count.
+// CP7 8e: notifications poll unconditionally (not gated on `can_message`) — the server zeroes
+// `messages` itself when messaging is off, so polling always is simplest and costs nothing extra.
 const messagingOn = computed(() => auth.value.can_message);
-const { messages: unreadMessages } = useUnreadCounts(() => messagingOn.value);
+const { messages: unreadMessages, notifications: unreadNotifications } = useUnreadCounts();
 
 const mainNavItems = computed<NavItem[]>(() => [
     {
@@ -64,6 +66,8 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: LayoutGrid,
     },
     ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
+    // CP7 8e (R139): the notification centre bell, always shown (not gated on `can_message`).
+    { title: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications.value },
 ]);
 
 const rightNavItems: NavItem[] = [

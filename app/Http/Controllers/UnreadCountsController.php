@@ -9,8 +9,9 @@ use Illuminate\Http\Request;
 
 /**
  * R135: the one small JSON endpoint the badges poll every 60 seconds while a tab is visible. It
- * answers `{messages, notifications}`; messaging counts 0 while `features.messaging` is off, and
- * `notifications` is 0 until the notification centre (8e) fills it. No broadcasting is involved.
+ * answers `{messages, notifications}`; messaging counts 0 while `features.messaging` is off.
+ * `notifications` is the signed-in user's own unread database-notification count (8e). No broadcasting
+ * is involved.
  */
 class UnreadCountsController extends Controller
 {
@@ -26,6 +27,6 @@ class UnreadCountsController extends Controller
                 ->count()
             : 0;
 
-        return response()->json(['messages' => $messages, 'notifications' => 0]);
+        return response()->json(['messages' => $messages, 'notifications' => $user->unreadNotifications()->count()]);
     }
 }
