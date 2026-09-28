@@ -2221,3 +2221,48 @@ itself at the start of this continuation). STATUS.md rewritten below as the hand
 next, ruled out). Four Owner actions carried from 93ede93/cf6581f (3, 4, 8, 9, unchanged wording, numbers
 kept) plus one new non-blocking walkthrough item (12) are in STATUS §7, one per line, each with option 1
 recommended. Ending STATUS §7 with the exact reply instruction per rule 13.
+
+## [2026-09-28 21:32 machine clock] START — cycle 09 r1, programme "CP8-pre"
+
+Owner said "go ahead with recommendations" (R148) on the planner's CP8 pre-production proposal;
+`update` received. `git fetch` + fast-forward: `main` already at `93241a3`, nothing to fast-forward.
+PLAN.md's own CYCLE-LOG has no END for this revision (r1, first appearance) — not refused under rule 1.
+Executing from step 1 (docs-only commit, R153).
+
+## [2026-09-28 21:32 machine clock] VERIFICATION — step 1, CHECKPOINTS.md evidence (fresh-subagent Explore, no prior context)
+
+A fresh Explore subagent (no prior context, per rule 2's "independence comes from a fresh subagent")
+checked all 5 CP0 and all 3 CP4 open acceptance boxes against test files and source on `main` HEAD
+`93241a3`, read-only (no files modified, no migrations or tests executed). Full citations now inline in
+docs/CHECKPOINTS.md next to each box; summary:
+
+CP0 — ticked 4 of 5:
+- Parent register/verify/login/empty-dashboard: **stays unticked**. Each step has its own test
+  (`RegistrationTest.php:27`, `EmailVerificationTest.php:33`, `AuthenticationTest.php:23`) but no test
+  chains all four, and `DashboardTest.php:19` asserts 200 only, not an empty dashboard for a fresh
+  parent specifically. Logged in STATUS.md §6 per R153's "no halt" clause, not a BLOCKER.
+- Tutor register → onboarding: ticked. `TutorRegistrationTest.php:21` (redirect to `tutor.onboarding`),
+  `TutorOnboardingWizardTest.php:14` (fresh tutor lands on `personal` step). "Placeholder" wording is
+  stale doc language (CP1 built a full wizard) — the substance (register→onboarding redirect) holds.
+- Admin Filament login: ticked. `RoleAccessTest.php:136` (real-credential login redirects to
+  `filament.admin.pages.dashboard`), `:103` (200 on `/admin`).
+- Money unit tests: ticked. `MoneyTest.php:5,11,22,58,103` cover add/subtract/percentage-rounding/
+  no-float-leakage/format. The literal string "AED 120.00" isn't in this file — `format()` is proven on
+  equivalent values (`Money::fils(12000)->format('USD')` → `'USD 120.00'`) — substance holds, doc's
+  parenthetical example is illustrative, not a fixture requirement.
+- RTL CI grep: ticked. `composer.json`'s `test` script runs `@rtl:check` before Pest, wired into
+  `.github/workflows/ci.yml`; `RtlCheckTest.php:18` (ml-4 → exit 1), `:31` (ms-4 → exit 0), `:43`
+  (violation not masked by the R9 keyframe exemption).
+
+CP4 — ticked 3 of 3:
+- Tutor 7-day notice + 24h-only strike: `RecurringSlotActionsTest.php:477,509`.
+- Parent end (reserved free / confirmed follows §4): `RecurringSlotActionsTest.php:434`,
+  `AutoChargeTest.php:227`.
+- Two-parent slot collision: `RecurringSlotSchemaTest.php:50,58,66`, `RecurringSlotActionsTest.php:397`.
+
+CP7 notification-centre box (STATUS §6 T, added in `a464950`): **accepted** per R153 — the planner
+confirmed it; no further action.
+
+Cross-cutting note from the subagent, disclosed here rather than hidden: CHECKPOINTS.md's checkbox state
+disagreed with its own prose on all 8 boxes before this edit (prose claimed done, boxes unchecked) —
+independent of the evidence findings above, now resolved by this edit.
