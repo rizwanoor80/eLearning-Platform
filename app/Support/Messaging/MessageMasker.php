@@ -2,9 +2,9 @@
 
 namespace App\Support\Messaging;
 
+use App\Exceptions\MessageMaskingFailedException;
 use IntlChar;
 use Normalizer;
-use RuntimeException;
 
 /**
  * R134: the one place a message body is masked. Pure — no database, no clock, no I/O — so its fixture
@@ -359,7 +359,7 @@ class MessageMasker
         $result = preg_match($gate, $subject);
 
         if ($result === false) {
-            throw new RuntimeException('The message could not be masked, so it was not stored.');
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
         }
 
         return $result === 1;
@@ -372,7 +372,7 @@ class MessageMasker
     private function orFail(string|false|null $result): string
     {
         if ($result === false || $result === null) {
-            throw new RuntimeException('The message could not be masked, so it was not stored.');
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
         }
 
         return $result;

@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\MessageMaskingFailedException;
 use App\Support\Messaging\MaskedMessage;
 use App\Support\Messaging\MessageMasker;
 
@@ -291,6 +292,11 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
 // R144(b): a genuine PCRE engine failure — forced here via a backtrack limit far below what any real
 // match needs, rather than relying on accidentally hitting the default limit — must still fail the
 // message closed (`orFail()`/`hasCandidate()`), never let the original text through unmasked.
+//
+// R149(a): asserts the concrete `MessageMaskingFailedException`, not the bare `RuntimeException` it
+// extends. `MessageController::store()` catches only the subclass; a bare-`RuntimeException` assertion
+// here would stay green even if a throw site regressed to `throw new RuntimeException(...)`, while the
+// controller's catch silently stopped firing.
 it('still fails closed on a genuine PCRE engine failure', function () {
     $original = ini_get('pcre.backtrack_limit');
     ini_set('pcre.backtrack_limit', '1');
@@ -298,7 +304,7 @@ it('still fails closed on a genuine PCRE engine failure', function () {
     try {
         (new MessageMasker)->mask('sara@gmail.com');
         expect(false)->toBeTrue('expected mask() to throw when PCRE cannot complete the match');
-    } catch (RuntimeException $e) {
+    } catch (MessageMaskingFailedException $e) {
         expect($e->getMessage())->toContain('could not be masked');
     } finally {
         ini_set('pcre.backtrack_limit', $original);

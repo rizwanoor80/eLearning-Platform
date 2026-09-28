@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Messaging;
 use App\Actions\Messaging\SendMessage;
 use App\Enums\AbuseReportReason;
 use App\Exceptions\ConversationClosedException;
+use App\Exceptions\MessageMaskingFailedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Messaging\StoreMessageRequest;
 use App\Models\Conversation;
@@ -88,6 +89,15 @@ class MessageController extends Controller
             $sendMessage($request->user(), $conversation, $request->validated('body'));
         } catch (ConversationClosedException $e) {
             return back()->withErrors(['body' => $e->getMessage()]);
+        } catch (MessageMaskingFailedException) {
+            // R149(a): the masker's fail-closed failure (a PCRE engine failure, never a partial mask)
+            // previously reached here as an uncaught 500. Mirrors `ReviewController::store()`'s pattern:
+            // nothing is written, the sender sees a toast, never a stack trace. The toast text is the
+            // exception's own fixed NOTICE, not `$e->getMessage()` — so it can never change to something
+            // engine-specific just because a throw site's constructor argument changes later.
+            Inertia::flash('toast', ['type' => 'error', 'message' => MessageMaskingFailedException::NOTICE]);
+
+            return back();
         }
 
         return redirect()->route('messages.show', $conversation);
