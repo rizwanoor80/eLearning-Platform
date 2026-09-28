@@ -2484,3 +2484,81 @@ per the `config/seeding.php` convention this file follows.
 Step 2 progress: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0` done locally on
 `cp/9a-hardening`; not yet pushed/merged. Continuing directly into (e) per the advisor's build
 order.
+
+## [2026-09-28 22:40 machine clock] VERIFICATION — step 2, item (e) fake video-provider allow-list built, tested, committed (R149(e), R131, ADR-022)
+
+Built directly from the 21:38 design consult (no new consult needed — the guidance was complete:
+"read the environment allow-list from the same source ADR-016's `PaymentGatewayServiceProvider`
+already uses, so the video and payment allow-lists cannot drift apart; guard both activation and
+driver resolution.").
+
+**Read before writing (rule 12):** `App\Providers\PaymentGatewayServiceProvider` (the
+`FAKE_ENVIRONMENTS` constant and `fakeGatewayAllowed()`), `App\Models\VideoProvider` in full
+(confirmed the existing check was a deny-list, `app()->environment('production')`, at
+`activationProblem()`), `App\Services\Video\VideoProviderManager` in full (confirmed `forRow()` had
+*no* environment check at all — the fake driver is instantiated unconditionally for any row whose
+code is `fake`, regardless of `is_active` or environment), `App\Enums\VideoProviderCode`,
+`App\Actions\Video\ActivateVideoProvider` (confirmed it holds no environment logic of its own — it
+calls `activationProblem()`, the single source of truth for the activation half), the
+`video_providers` migration (confirmed a *third*, independent deny-list at the row's initial seed:
+`'is_active' => ! app()->environment('production')` — disclosed, not fixed, see below), and
+`tests/Feature/Video/VideoProviderRegistryTest.php` in full (17 existing cases, confirmed exactly
+one, `'refuses to activate the fake provider in production'`, exercises the check under change).
+
+**Built — two guarded choke points, matching the consult's "activation and driver resolution":**
+- `VideoProvider::activationProblem()` — the deny-list replaced with
+  `! app()->environment(PaymentGatewayServiceProvider::FAKE_ENVIRONMENTS)`. Message changed from
+  "cannot be active in production" to "cannot be active outside local, testing and rehearsal" (a
+  deny-list message naming the one thing refused would be false once `staging` is refused too).
+- `VideoProviderManager::forRow()` — a second, independent guard, not present before at all: before
+  the `match` that constructs a driver, refuses (`VideoProviderException`) to build a
+  `FakeVideoProvider` when the current environment is not on the same allow-list. This is the single
+  place `active()`, `forCode()` and `forRow()` itself all funnel through, so it covers a row already
+  `is_active = true` before an environment changed, or written active by a raw database update below
+  the model — the existing `'enforces one active row in the database itself'` test in the same file
+  already proves a raw `DB::table()->update()` past the model is possible for this table.
+- Both read the *same* constant, `App\Providers\PaymentGatewayServiceProvider::FAKE_ENVIRONMENTS`
+  (`local`, `testing`, `rehearsal`) — not a second, independently-maintained list — so the video and
+  payment allow-lists cannot drift apart, per the consult's explicit instruction.
+
+**Tests — `tests/Feature/Video/VideoProviderRegistryTest.php`:**
+1. Updated the existing production-refusal test's assertion for the new message text (behaviour
+   unchanged: production is still refused).
+2. New: refuses activation in an *unlisted* environment (`staging`) — the case a deny-list would
+   have let through, since `staging !== 'production'`. Named per R149(e)'s literal "tests for
+   activation refused in production and in an unlisted env."
+3. New: `VideoProviderManager` refuses to resolve the fake driver (both `active()` and
+   `forCode('fake')`) in `production` and in `staging` even when the row is already `is_active =
+   true` via a raw update — proving the second, independent choke point — then resolves normally
+   again once back on an allow-listed environment (`testing`), proving the guard is a live
+   environment check, not a one-time activation-time stamp.
+
+Result: `php artisan test tests/Feature/Video/VideoProviderRegistryTest.php` →
+`{"tests":17,"passed":17,"assertions":57,"duration_ms":9473}` (14 original + 3 new). Full directory
+regression: `php artisan test tests/Feature/Video` → `{"tests":89,"passed":89,"assertions":370,
+"duration_ms":68903}` — no regression in lesson-room creation, webhook or join-token tests that
+depend on `VideoProviderManager`.
+
+**Style:** `vendor/bin/pint --test` on all four touched files → `{"tool":"pint","result":"passed"}`.
+
+**Disclosed, not fixed (out of R149(e)'s literal scope):** the `video_providers` migration's own
+seed check (`'is_active' => ! app()->environment('production')`, CP6 7b) is still a deny-list, not
+an allow-list — in an unlisted environment such as `staging`, the migration would still seed the
+`fake` row as `is_active = true`. Not fixed this cycle: it only sets the row's *initial* flag, and
+the new `VideoProviderManager::forRow()` guard now makes that seed functionally inert regardless —
+resolving the fake driver in `staging` still throws, exactly as if the row were inactive. Migrations
+are forward-only once CP0 is merged (CLAUDE.md), so fixing a now-cosmetic mismatch would need a new
+migration; judged not worth the fix-loop cost alongside a merge-window guard-hardening change.
+Carried to STATUS §6 as a new low-priority item, non-blocking, same disposition as item (a)'s
+disclosed `Conversation::counterpartNameFor()` gap.
+
+**Committed:** `f97c119` on `cp/9a-hardening` (not yet merged) — `app/Models/VideoProvider.php`,
+`app/Services/Video/VideoProviderManager.php`,
+`tests/Feature/Video/VideoProviderRegistryTest.php` (all modified), `docs/DECISIONS.md` (ADR-022
+written, per the established precedent that a DECISIONS.md amendment documenting code not yet
+merged ships with that code, not with the docs-only commits on `main`). 4 files changed, 74
+insertions, 7 deletions.
+
+Step 2 progress: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0`, (e) `f97c119` done
+locally on `cp/9a-hardening`; not yet pushed/merged. Continuing directly into (f) per the advisor's
+build order.
