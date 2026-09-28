@@ -10,6 +10,7 @@ use App\Http\Controllers\Lessons\LessonRoomController;
 use App\Http\Controllers\Lessons\ProgressReportController;
 use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\Messaging\MessageController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\TestCardController;
 use App\Http\Controllers\Payments\WeeklySlotController;
@@ -74,6 +75,16 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
 // conversations; ConversationPolicy answers anyone else with a 404. The badge counts are one JSON endpoint.
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('unread-counts', UnreadCountsController::class)->middleware('throttle:unread-counts')->name('unread-counts');
+
+    // CP7 8e (R139): the notification centre. Deliberately NOT added to
+    // `EnsureAccountActive::EXCLUDED_ROUTE_PREFIXES` — unlike a closed conversation, which must stay
+    // viewable so the parties can see why it closed, there is no requirement that a suspended user
+    // keep reading or clearing their notifications, so the middleware's default logout-on-next-request
+    // applies here same as everywhere else (cycle 08 DECISION).
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereUuid('notification')->name('notifications.read');
+    Route::post('notifications/{notification}/open', [NotificationController::class, 'open'])->whereUuid('notification')->name('notifications.open');
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
 
     Route::middleware('feature:messaging')->group(function () {
         Route::get('messages', [MessageController::class, 'index'])->name('messages.index');

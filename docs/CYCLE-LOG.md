@@ -1981,3 +1981,74 @@ lesson end, +20h)" row vs §2's "Tutor is prompted at lesson end and by email. R
 `docs/PRD.md:67` vs `:161`) which the report now discloses under "Known limits" rather than silently
 building either reading. Proceeding to commit, push `cp/8e-notifications`, open the PR, and run the
 fresh-subagent adversarial review under R141/R147.
+
+## [2026-09-28 17:35 machine clock] REVIEW — PR #34 (cp/8e-notifications), round 1, fresh subagent
+
+Fresh, independent adversarial reviewer (no prior context), R141-adapted checklist for 8e's scope (IDOR,
+mark-all-read isolation, notification `data` payload leakage across all five classes, recipient
+correctness, dedup/throttle race conditions, lesson-cancelled union-of-conditions correctness against the
+three mail listeners it mirrors, queued-listener discipline, frontend leakage, RTL). The reviewer ran the
+real test suite against the live DB, not just read it: `NotificationListenersTest` 18/18 (36 assertions),
+`NewMessageMailThrottleTest` 5/5 (17 assertions), full `Messaging` filter 216/216 (644 assertions, no
+regression from the `Conversation::counterpartNameFor()` extraction), full `Lesson` filter 759/759 (4364
+assertions, no regression from the four new lesson listeners). Frozen files (ledger/state-machine/payments)
+confirmed untouched.
+
+Verdicts: 1 PASS (IDOR row-scoping) + 1 **FAIL(Medium, routes/web.php:85-86, malformed notification id →
+500 not 404)** + 7 PASS (mark-all-read isolation; all five notifications' `data` payloads leak nothing;
+NewMessageNotification recipient correctness; lesson-cancelled union-of-conditions verified branch-by-
+branch against the three mirrored mail listeners; queued-listener discipline; frontend leakage/RTL; no N+1,
+Learner never Notifiable, MessageSent body-absence) + 3 PASS WITH NOTE (progress-report dedup guard is a
+real but low-consequence TOCTOU — cosmetic duplicate bell only, no money/security impact, disclosed not
+fixed; `notifications.data` being `text` not `jsonb` is a footgun for the next JSON-path query, already
+documented in-code; no dedicated happy-path test for single-row `markRead`, though covered by inspection).
+
+Finding 1b detail: `notifications/{notification}/read` and `notifications/{notification}/open` have no
+route-parameter constraint (every other bare-id route in this codebase uses `->whereNumber(...)`; this
+table's id is a UUID). A malformed id (e.g. `/notifications/not-a-uuid/read`) reaches
+`$request->user()->notifications()->whereKey('not-a-uuid')`, and Postgres's `uuid` column type rejects the
+literal at the DB level (`SQLSTATE[22P02]`) before Eloquent can 404 it — reproduced directly by the
+reviewer against the live DB. `bootstrap/app.php` has no `QueryException` render mapping, so this is an
+uncaught 500 in production, not the 404 this codebase's own convention and the controller's own docblock
+promise.
+
+MERGE: no — fix required (one Medium). Fix loop attempt 1 of 2: add `->whereUuid('notification')` to both
+routes, matching the existing `whereNumber('conversation')` precedent (`routes/web.php:91-92`); add a
+regression test for a malformed id on both actions.
+
+## [2026-09-28 14:27 machine clock] VERIFICATION — fix loop attempt 1 (PR #34 Finding 1b)
+
+Applied the fix: `->whereUuid('notification')` added to both `notifications/{notification}/read` and
+`notifications/{notification}/open` in `routes/web.php`, matching the existing `->whereNumber('conversation')`
+precedent (`routes/web.php:91-92`). Added a regression test to `tests/Feature/Notifications/NotificationListenersTest.php`:
+`'404s a malformed (non-uuid) notification id, on both read and open, instead of a database error'`.
+
+Verification: `NotificationListenersTest` 19/19 passed (38 assertions) — the new malformed-id test passes
+(clean 404 on both actions, confirming the fix closes Finding 1b) and the pre-existing IDOR test still
+passes (no regression). Broader `Notifications`+`Messaging` filter (routes.php was touched) 235/235 passed
+(682 assertions) — no regression elsewhere. Pint on the two touched files: passed. Phpstan on the two
+touched files in isolation surfaced one pre-existing, unrelated `missingType.iterableValue` note on
+`notifLesson()`'s `$overrides` parameter (line 28, not part of this fix, not newly introduced) — this is an
+artifact of analysing a file subset outside full-project context; a full-project run
+(`--memory-limit=1G`, needed because parallel workers otherwise hit the default 128M limit and crash) passed
+clean: `{"tool":"phpstan","result":"passed","errors":0}`. Proceeding to commit, push, and launch a scoped
+fresh-subagent re-review of Finding 1b only.
+
+## [2026-09-28 14:30 machine clock] REVIEW — PR #34 (cp/8e-notifications), fix loop 1 scoped re-review, fresh subagent
+
+Fresh, independent reviewer (no prior context), scoped narrowly to Finding 1b's fix (commit `9cbbcd9`) per
+R141 fix-loop protocol — not a full re-review of the parts that already passed round 1. Checked: (1) the
+diff itself — `->whereUuid('notification')` added to both routes in the same style as the existing
+`->whereNumber('conversation')` precedent, and the new regression test genuinely exercises both `read` and
+`open` with a non-uuid segment; (2) ran `NotificationListenersTest` empirically — 19/19 passed (38
+assertions), matching the claimed count, new malformed-id test passes clean-404, pre-existing IDOR test
+still passes; (3) searched for any other unconstrained notification-id access path (`NotificationController`
+fully read, `routes/web.php` grepped, `DatabaseNotification`/`notifications()` usage grepped project-wide)
+— none found, `markAllRead` and `index` take no id input; (4) ran the broader `Notifications`+`Messaging`
+filter — 235/235 passed (682 assertions), matching the claimed count, Messaging routes confirmed untouched;
+(5) `routes/web.php` hygiene — no syntax issues, no duplicate constraints, route shapes stay disjoint.
+
+Verdicts: 5 PASS, 0 FAIL, 0 PASS WITH NOTE.
+
+MERGE: yes. Finding 1b is closed with no new regression. Proceeding to check CI on commit `9cbbcd9` and
+attempt self-merge under R141/R147.

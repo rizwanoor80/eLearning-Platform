@@ -9,12 +9,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Messaging\StoreMessageRequest;
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Models\User;
 use App\Support\Messaging\MessageMasker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -43,7 +41,7 @@ class MessageController extends Controller
         return Inertia::render('messages/Index', [
             'conversations' => $conversations->map(fn (Conversation $conversation): array => [
                 'id' => $conversation->id,
-                'counterpart' => $this->counterpartName($user, $conversation),
+                'counterpart' => $conversation->counterpartNameFor($user),
                 'unread_count' => (int) $conversation->unread_count,
                 'last_message_at' => $conversation->last_message_at?->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
                 'closed' => $conversation->isClosed(),
@@ -64,7 +62,7 @@ class MessageController extends Controller
         return Inertia::render('messages/Show', [
             'conversation' => [
                 'id' => $conversation->id,
-                'counterpart' => $this->counterpartName($user, $conversation),
+                'counterpart' => $conversation->counterpartNameFor($user),
                 'closed' => $conversation->isClosed(),
                 'closed_notice' => ConversationClosedException::NOTICE,
                 'contact_hidden' => ! $conversation->contactIsVisible(),
@@ -93,23 +91,5 @@ class MessageController extends Controller
         }
 
         return redirect()->route('messages.show', $conversation);
-    }
-
-    /**
-     * The other side's name as this viewer may see it: a tutor's first name (as everywhere on the
-     * public site), an account holder's name for the tutor. No email, no phone: until the first lesson a
-     * name that carries one (a user can type anything into it) is masked like a message.
-     */
-    private function counterpartName(User $viewer, Conversation $conversation): string
-    {
-        $name = $viewer->id === $conversation->account_user_id
-            ? $conversation->tutorProfile->displayName()
-            : $conversation->account->name;
-
-        if (! $conversation->contactIsVisible()) {
-            $name = app(MessageMasker::class)->mask($name)->text;
-        }
-
-        return Str::limit($name, 60);
     }
 }
