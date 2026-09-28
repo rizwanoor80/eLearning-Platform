@@ -73,4 +73,16 @@ class LessonPolicy
     {
         return $user->role === Role::AccountOwner && $lesson->learner->account_user_id === $user->id;
     }
+
+    /**
+     * The lesson's account holder only (CP8, R150) — the same shape as `review()`, its own
+     * gate deliberately, since eligibility (status, the 48h window, one dispute per lesson) is
+     * `OpenDispute::problemFor`'s job, re-checked on the locked row; this is the controller's
+     * first, generic refusal, so opening a dispute 404s for anyone but the parent who owns the
+     * lesson.
+     */
+    public function openDispute(User $user, Lesson $lesson): bool
+    {
+        return $user->role === Role::AccountOwner && $lesson->learner->account_user_id === $user->id;
+    }
 }

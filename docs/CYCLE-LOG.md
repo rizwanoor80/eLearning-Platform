@@ -3000,3 +3000,71 @@ Remaining from the 02:05 ADVISOR consult, not yet done: correcting the stale `//
 (done, folded into this commit's test edits), the PR-gate literal-`composer test` reminder (carried
 to the pre-PR step, not yet reached), the Earnings-page DECISION + §6 entry (still open, carried
 forward to before the PR per the same consult).
+
+## [2026-09-29 02:35 machine clock] DECISION — Earnings-page "On hold" requirement cannot be built in 9b (no such page exists)
+
+R150 (docs/PLAN.md) says "the tutor's Earnings shows it under **On hold**." CLAUDE.md's own
+convention section declares the five-bucket balance computation (pending, on hold, available,
+processing, paid to date) as an invariant, but `grep -rln "on_hold\|onHold\|EarningsController\|
+Earnings" app resources/js` (php+vue) returns nothing anywhere in the repo — no Earnings page, no
+balance-bucket controller/component, no "on hold" concept exists yet to extend. Building that whole
+page is CP5/payouts-scope work (the five buckets need `payouts`, which does not exist until CP5),
+not something 9b can add as a side effect of disputes.
+
+Decision: 9b implements `disputed`/`settled` as real `LessonStatus` values with a real
+`LedgerService::settle()`, fully queryable (`Lesson::where('status', LessonStatus::Disputed)`) --
+whatever Earnings page CP5 eventually builds can compute "on hold" from that with no further schema
+change. Nothing further is built in 9b. This is a plan-repo gap (R150 assumes a page that doesn't
+exist yet), not a deviation from a correct plan -- to be disclosed in docs/STATUS.md §6 verbatim,
+recommending CP5's Earnings page treat `LessonStatus::Disputed` as its "on hold" bucket when it is
+built.
+
+## [2026-09-29 02:38 machine clock] VERIFICATION — OpenDispute action + HTTP layer built, two bugs found and fixed, gate set green
+
+`app/Actions/Lessons/OpenDispute.php` (the account holder opens a dispute on their own `completed`/
+`completed_reported` lesson, once, within `WINDOW_HOURS = 48` of `ends_at`) built following
+`SubmitReview`/`CancelLesson`'s own conventions: `LessonPolicy::openDispute` as the controller-level
+gate, `problemFor()` as the reusable eligibility check (UI + re-checked inside the locked
+transition), `DisputeException` for every rejectable input, translated from the `disputes.lesson_id`
+unique-index violation as defense in depth (the state machine's own row lock + edge assert already
+serialises two concurrent opens). Full stack: `Lesson::dispute()` relation, `StoreDisputeRequest`,
+`DisputeController` (create/store), a new `disputes` rate limiter (5/hour, matching
+`abuse-reports`), `lessons.dispute.create`/`.store` routes (no `feature:` gate — no `disputes` flag
+exists anywhere in PRD/PLAN, confirmed by grep), `resources/js/pages/lessons/Dispute.vue`, and a new
+`can_dispute` boolean in `LessonRoomView::for()` surfaced on `lessons/Show.vue` as a dispute prompt
+mirroring the review prompt. No new `DisputeReason` case, no Filament page yet (next slice).
+
+Two real bugs found and fixed while building `tests/Feature/Lessons/OpenDisputeTest.php` (16 new
+tests, all failing-before/passing-after their own fix, not pre-existing coverage):
+
+1. **`OpenDispute.php`** — `Dispute::query()->create([...])` never set `status` (deliberately not
+   `$fillable`: it is set once, only by the DB's own default `DisputeStatus::Open`, never chosen by
+   the caller), so the returned in-memory model's `status` attribute was simply unset — `null`, not
+   `DisputeStatus::Open` — since Eloquent's `create()` does not re-read the row after an insert.
+   Fixed with an explicit `$dispute->refresh()` right after `create()`. Caught by the "right up to
+   the 48h edge" happy-path test asserting `$dispute->status->value === 'open'`.
+2. **`tests/Feature/Lessons/OpenDisputeTest.php`**, in `disputeSetup()` — a `static $slot` offset
+   (`+= 120` minutes per call), added defensively against a scheduling collision that cannot
+   actually happen here (each call gets its own fresh `TutorProfile`/`Learner`; grepped every
+   `unique(` in `database/migrations` and confirmed no index keys lessons on time alone), was being
+   added on top of `now()->subMinutes($minutesAgo)` for `starts_at`/`ends_at`/`completed_at`. That
+   shifted `ends_at` away from `now()` by the same amount, silently corrupting the precise
+   "$hoursAgo since real now()" the 48h-boundary tests depend on — the "48h and 1 minute after
+   ends_at" dataset case ended up only ~36h stale (well inside the window), so `problemFor()`
+   correctly returned eligible and the test's own expectation was wrong, not the code. Fixed by
+   dropping the slot offset entirely.
+
+Both were caught by re-running the suite after the Carbon-fractional-hours and Pest-`toThrow`
+gotchas noted in the prior (pre-compaction) segment were fixed, plus `npm run build` regenerating
+the Vite manifest for the new `Dispute.vue` page — `tests/Feature/Lessons/OpenDisputeTest.php`:
+`{"tool":"pest","result":"passed","tests":16,"passed":16,"assertions":97,"duration_ms":5276}`.
+
+Gate set: `php artisan ledger:verify` → "Ledger OK: every lesson sums to zero." `bash
+scripts/rtl-check.sh` → "RTL check passed: no physical-direction utilities found..." Pint →
+`{"tool":"pint","result":"passed"}`. PHPStan → `{"tool":"phpstan","result":"passed","errors":0}`.
+`npm run build` → "✓ built in 11.41s" (this segment's run, for the new `Dispute.vue` page).
+
+Full suite (via the Bash tool, not PowerShell):
+`{"tool":"pest","result":"passed","tests":1941,"passed":1941,"assertions":9902,"duration_ms":489659}`
+— +16 tests, +97 assertions over the 02:18 VERIFICATION's baseline (1925/9805), matching
+`tests/Feature/Lessons/OpenDisputeTest.php`'s 16 `it()` blocks exactly. Suite did not shrink.
