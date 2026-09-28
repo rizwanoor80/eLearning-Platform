@@ -3214,3 +3214,57 @@ Ledger OK: every lesson sums to zero.
 (`1941`/`9902`, from the earlier `b230v3nx5` background run, which is now superseded and was not used
 for this VERIFICATION per the advisor's own instruction not to use a pre-fix count). Suite did not
 shrink. `vue-tsc --noEmit` produced no errors. All gates green; ready to commit and push per rule 7.
+
+## [2026-09-29 03:20 machine clock] NOTE — correcting the 03:09 VERIFICATION and 03:00 ADVISOR entries: the bug-discovery consult was a separate, fifth, un-logged call (advisor point 5, this cycle's post-push consult)
+
+Caught by the post-push advisor consult, checked directly against the raw transcript rather than
+taken on trust: the session's advisor calls on `cp/9b-disputes` are `21:54:18Z` (line 5521, the
+01:36 design consult — matches), `22:43:51Z` (line 6489) and `22:53:15Z` (line 6706) UTC. Commit
+`2c57699` ("OpenDispute action + HTTP layer") landed at `2026-09-29T02:43:26+04:00` = `22:43:26Z` —
+25 seconds *before* line 6489's call. That is exactly the "commit, then re-read the now-stale
+`docs/STATUS.md`, then consult about the rewrite" sequence the 03:00 entry itself describes. So
+**line 6489 (22:43Z) is the stale-STATUS-rewrite consult already logged as the 03:00 ADVISOR entry
+— not line 6706 (22:53Z) as that entry states.** Line 6706, ten minutes later, is a distinct, fifth
+consult that was never given its own ADVISOR entry; it is the one whose result was immediately
+followed by `Grep "LessonTransitionException"` and the read of `CancelLessonController.php`, i.e.
+the actual bug-discovery consult the 03:09 VERIFICATION credited to "the 22:53 consult... the same
+single consult, not a second one." That claim is wrong — it was a second, separate consult, simply
+one whose content this session failed to distinguish from the first when it checked the transcript
+under compaction pressure.
+
+Corrections, disclosed rather than silently fixed:
+- 03:00 ADVISOR's opening line ("This consult happened at 22:53") should read 22:43.
+- 03:09 VERIFICATION's opening parenthetical ("found by the 22:53/02:53-machine-clock advisor
+  consult (already logged above as the 03:00 ADVISOR entry... it is the same single consult, not a
+  second one)") is wrong on both counts: the bug-discovery consult is line 6706 (22:53Z), a
+  different call from the one logged at 03:00, and no ADVISOR entry has existed for it until the
+  next entry, below.
+- STATUS.md's header line ("5 consults this cycle") was numerically correct (5 calls total on
+  `cp/9b-disputes`: 5521, 6489, 6706, plus the two pre-branch calls at 4634/4835 already logged as
+  the 00:35 and 01:20 ADVISOR entries — 5 in the cp/9b-disputes-relevant window once 6706 is counted
+  — but its own body text only named 4, an omission of the same un-logged 6706 call, now fixed by
+  the entry below).
+
+No fabrication: the raw content of the 6706 call is `encrypted_content` ciphertext in the transcript
+(same limitation as 03:00's), unquotable directly. One line of it survives verbatim in the
+pre-compaction handoff summary that opened this segment (written while that call was still live in
+an unsummarized context, before the encryption boundary applied) — used, not invented, in the
+ADVISOR entry below, per rule 11's naming-the-model requirement and rule 12's "cite quoted output".
+
+## [2026-09-29 03:20 machine clock] ADVISOR — bug-discovery consult, line 6706/22:53Z, logged late (rule 11 minimum, corrected per the NOTE above)
+
+Fifth consult on `cp/9b-disputes`, immediately following the 22:43Z stale-STATUS consult (03:00
+entry) in the same pre-compaction segment. Model: not reported by the tool; configured advisor per
+PROJECT_BRIEF.md is Fable 5.1 (owner, 2026-09-28) — configured, not measured, same standing
+disclosure as every other entry this cycle. Confirmed answering: its result is present in the
+transcript as a real (encrypted) tool result, not a timeout or tool failure.
+
+Content not fully recoverable (ciphertext, per the NOTE above). One line survives verbatim, quoted
+in this segment's own pre-compaction handoff summary: *"After the fix in point 1, run literal
+`composer test` once, in the background, once the current run has finished. That one run covers
+every gate and gives you the rule-7 count... The count from the run already in progress is pre-fix,
+so don't use it in VERIFICATION."* This matches exactly what happened next in the transcript (a
+`Grep` for `LessonTransitionException`, the read of `CancelLessonController.php`, the widened catch
+in `DisputeController.php`, and — after the fix — a fresh background `composer test` run rather than
+reusing the pre-fix `b230v3nx5` count), so the guidance was acted on in full even though only this
+one line is quotable. Disclosed here rather than reconstructed or invented.
