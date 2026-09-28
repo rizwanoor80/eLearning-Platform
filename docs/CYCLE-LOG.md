@@ -2413,3 +2413,74 @@ mid-cycle), not the general "docs go to main" rule, since this entry documents c
 Remaining for step 2: (d) trusted proxies, (e) fake video-provider allow-list, (f) `RequiresActiveAdmin`
 dataset, (g) named rate limiter, (c) `EnsureAccountActive` docblock reword — advisor order (d)→(e)→(f)→
 (g)→(c). Pre-PR advisor consult and the 9a PR process itself remain after those five.
+
+## [2026-09-28 22:33 machine clock] VERIFICATION — step 2, item (d) trusted proxies built, tested, committed (R149(d), R130)
+
+Built directly from the 21:38 design consult (no new consult needed — item (d)'s guidance was
+already complete and unambiguous: add the positive case, since "ignored when unset" alone is
+vacuous).
+
+**Investigation before writing code (rule 12 — read the actual framework, don't assume):**
+- Read `bootstrap/app.php` in full (46 lines): confirms no `->trustProxies()` call exists anywhere.
+- Read `vendor/laravel/framework/.../Configuration/Middleware.php` (`getGlobalMiddleware()`,
+  line 457): `Illuminate\Http\Middleware\TrustProxies` is unconditionally in the framework's
+  default global middleware stack, whether or not `bootstrap/app.php` calls `->trustProxies()`.
+- Read `vendor/laravel/framework/.../Http/Middleware/TrustProxies.php` in full (203 lines):
+  `setTrustedProxyIpAddresses()` does `$trustedIps = $this->proxies() ?: config('trustedproxy.proxies')`
+  — the framework's own fallback config key, not an app invention. The literal token `"REMOTE_ADDR"`
+  is substituted per-request for the connecting address. A Forge/Vapor auto-trust fallback exists
+  but only fires when `$trustedIps` is null AND the host ends in `.on-forge.com`/`.on-vapor.com` —
+  confirmed not applicable here (this app's hosts are custom domains: `project-elearning.test`
+  locally, `rehearsal.trustutor.com` on rehearsal).
+- Ran the background search `grep -rln "X-Forwarded\|::forwarded\|trustProxies\|setTrustedProxies\|
+  TrustHosts" --include="*.php" . | grep -v vendor` — zero hits outside vendor, confirming no
+  existing forwarded-header handling anywhere in the app to conflict with or duplicate.
+
+**Built:**
+- `config/trustedproxy.php` — new file, single `'proxies' => env('TRUSTED_PROXIES')` key, empty by
+  default (PLAN.md's literal "empty by default" requirement). `env()` read only inside this config
+  file, never in `bootstrap/app.php` or a provider, per the `config/seeding.php` convention (config
+  file's own docblock cites it).
+- `.env.example` — `TRUSTED_PROXIES=` added after `BCRYPT_ROUNDS=12`, three-line comment explaining
+  the empty default and the `"REMOTE_ADDR"` token.
+- No change to `bootstrap/app.php` or any service provider — the framework's own config fallback is
+  the entire wiring; nothing else needed touching.
+
+**Tests — `tests/Unit/Http/TrustedProxiesTest.php`, 4 cases, `uses(TestCase::class)`, no DB:**
+Constructs an `Illuminate\Http\Request` directly (`Request::create()`, `REMOTE_ADDR` +
+`HTTP_X_FORWARDED_FOR` server vars) and runs it through the real, container-resolved
+`app(TrustProxies::class)->handle()` — the exact code path a real request takes, since that
+middleware is unconditionally global. No route exists that echoes `$request->ip()`, so a full HTTP
+round trip couldn't observe the result; this does, without adding a route.
+1. `trustedproxy.proxies` unset → XFF ignored, `$request->ip()` is the REMOTE_ADDR. (The vacuous
+   case the consult warned about — kept for completeness, not relied on alone.)
+2. `trustedproxy.proxies = 'REMOTE_ADDR'` → XFF honoured. This is the case the consult required:
+   proves the `.env.example`-documented token actually works end to end.
+3. `trustedproxy.proxies` = explicit comma-separated IP list including the connecting address → XFF
+   honoured (proves the non-token, explicit-list path too).
+4. `trustedproxy.proxies` = an IP list that does *not* include the connecting address → XFF ignored
+   (proves the trust check is address-specific, not "any non-empty config trusts everything").
+`afterEach()` calls `TrustProxies::flushState()` for isolation (belt-and-suspenders — this app
+never calls the static `::at()`/`::withHeaders()` overrides, so nothing actually sets that state,
+but it costs nothing to flush).
+
+Result: `php artisan test tests/Unit/Http/TrustedProxiesTest.php` → `{"tests":4,"passed":4,
+"assertions":4,"duration_ms":2128}`.
+
+**Config-cache timing (the consult's explicit concern):** ran `php artisan config:clear`, then
+`php artisan config:cache`, then re-ran the same test file with the config cached →
+`{"tests":4,"passed":4,"assertions":4,"duration_ms":2062}`, then `php artisan config:clear` again
+to restore local state. Confirms `config/trustedproxy.php`'s `env()` call is resolved once at cache
+build (not re-read per-request) and the resulting cached value is what the middleware sees, exactly
+per the `config/seeding.php` convention this file follows.
+
+**Style:** `vendor/bin/pint --test config/trustedproxy.php tests/Unit/Http/TrustedProxiesTest.php`
+→ `{"tool":"pint","result":"passed"}` (checked without modifying, both files already compliant).
+
+**Committed:** `59942d0` on `cp/9a-hardening` (not yet merged) — `.env.example` (modified),
+`config/trustedproxy.php` (new), `tests/Unit/Http/TrustedProxiesTest.php` (new). 3 files changed,
+118 insertions.
+
+Step 2 progress: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0` done locally on
+`cp/9a-hardening`; not yet pushed/merged. Continuing directly into (e) per the advisor's build
+order.
