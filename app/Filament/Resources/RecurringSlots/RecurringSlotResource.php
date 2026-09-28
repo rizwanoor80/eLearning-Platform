@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RecurringSlots;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\RecurringSlots\Pages\ListRecurringSlots;
 use App\Filament\Resources\RecurringSlots\Pages\ViewRecurringSlot;
 use App\Filament\Resources\RecurringSlots\Schemas\RecurringSlotInfolist;
@@ -17,10 +18,13 @@ use Filament\Tables\Table;
  * The admin view of weekly slots: list, view, pause, resume, end, and set up a slot with the
  * trial override (R96). Every action goes through the slot Actions, which audit themselves.
  * There is no create or edit page: a slot is set up from the list's header action and is never
- * edited, only paused, resumed or ended.
+ * edited, only paused, resumed or ended. `RecurringSlotPolicy::viewAny()`/`view()` already gate
+ * on active-admin status too; the trait keeps this resource consistent with the rest.
  */
 class RecurringSlotResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = RecurringSlot::class;
 
     protected static ?string $navigationLabel = 'Weekly slots';
