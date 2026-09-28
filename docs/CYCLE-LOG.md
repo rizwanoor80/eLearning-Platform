@@ -2091,3 +2091,21 @@ docs-only, `[skip ci]`, matching the established "deploy the code commit, not th
 from cycle 07 r1). `rehearsal` is currently at `042f7c0` (7g branding, last deployed cycle 07). `git
 merge-base --is-ancestor 042f7c0 d3c8a0a` confirmed true — fast-forward safe, 84 commits ahead. Deploying
 `d3c8a0a` via `git push origin d3c8a0a:refs/heads/rehearsal`, no `--force`.
+
+## [2026-09-28 18:47 machine clock] VERIFICATION — step 7, trustutor-rehearsal deployed to d3c8a0a (R111)
+
+Push-to-deploy landed: server `git log -1 --format=%h` in `/home/forge/rehearsal.trustutor.com/current`
+showed `042f7c0` at 18:44, `d3c8a0a` at 18:47 (within the 15-minute window, no Owner-action fallback
+needed). R91 read-only checks over the allow-listed ssh shape:
+- `php8.4 artisan about` — env `rehearsal`, debug OFF, Laravel 13.32.0, PHP 8.4.25, pgsql, queue redis,
+  mail log, storage LINKED, Filament v5.8.2, broadcasting reverb — no prompt.
+- `migrate:status` — every migration Ran, including `2026_10_04_100000_create_notifications_table`.
+- `db:show --counts` — `notifications` table exists, 0 rows (expected: no activity yet on rehearsal, same
+  as `conversations`/`messages`/`reviews`/`abuse_reports` at 0 from their own first deploys).
+- `schedule:list` — 9 entries, all `Next Due` in the near future (nothing stalled).
+- `ledger:verify` — "Ledger OK: every lesson sums to zero."
+- `curl` against the live site: guest `/messages` → 302 to `/login`; `/tutors` → 200; `/tutors/1` → 200
+  (one of the 7 demo tutors seeded in cycle 07, R121).
+
+Step 7 deploy leg closed. `rehearsal` = `d3c8a0a` = `main`'s code-bearing tip. Proceeding to END: advisor
+consult for the cycle-close summary, then closing STATUS.md and this programme (CP7, cycle 08).
