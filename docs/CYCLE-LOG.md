@@ -2033,3 +2033,22 @@ artifact of analysing a file subset outside full-project context; a full-project
 (`--memory-limit=1G`, needed because parallel workers otherwise hit the default 128M limit and crash) passed
 clean: `{"tool":"phpstan","result":"passed","errors":0}`. Proceeding to commit, push, and launch a scoped
 fresh-subagent re-review of Finding 1b only.
+
+## [2026-09-28 14:30 machine clock] REVIEW — PR #34 (cp/8e-notifications), fix loop 1 scoped re-review, fresh subagent
+
+Fresh, independent reviewer (no prior context), scoped narrowly to Finding 1b's fix (commit `9cbbcd9`) per
+R141 fix-loop protocol — not a full re-review of the parts that already passed round 1. Checked: (1) the
+diff itself — `->whereUuid('notification')` added to both routes in the same style as the existing
+`->whereNumber('conversation')` precedent, and the new regression test genuinely exercises both `read` and
+`open` with a non-uuid segment; (2) ran `NotificationListenersTest` empirically — 19/19 passed (38
+assertions), matching the claimed count, new malformed-id test passes clean-404, pre-existing IDOR test
+still passes; (3) searched for any other unconstrained notification-id access path (`NotificationController`
+fully read, `routes/web.php` grepped, `DatabaseNotification`/`notifications()` usage grepped project-wide)
+— none found, `markAllRead` and `index` take no id input; (4) ran the broader `Notifications`+`Messaging`
+filter — 235/235 passed (682 assertions), matching the claimed count, Messaging routes confirmed untouched;
+(5) `routes/web.php` hygiene — no syntax issues, no duplicate constraints, route shapes stay disjoint.
+
+Verdicts: 5 PASS, 0 FAIL, 0 PASS WITH NOTE.
+
+MERGE: yes. Finding 1b is closed with no new regression. Proceeding to check CI on commit `9cbbcd9` and
+attempt self-merge under R141/R147.
