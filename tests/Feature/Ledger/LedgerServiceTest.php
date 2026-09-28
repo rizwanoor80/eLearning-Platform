@@ -4,6 +4,7 @@ use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\LessonStatus;
 use App\Exceptions\LedgerException;
+use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\TutorStrike;
@@ -192,9 +193,8 @@ it('records who did it', function () {
     expect(LedgerEntry::query()->pluck('created_by_user_id')->unique()->all())->toBe([$admin->id]);
 });
 
-it('declares settle and payout for CP5/CP8 and refuses to run them', function () {
-    expect(fn () => lgLedger()->settle())->toThrow(LogicException::class, 'CP8')
-        ->and(fn () => lgLedger()->payout())->toThrow(LogicException::class, 'CP5');
+it('declares payout for CP5 and refuses to run it', function () {
+    expect(fn () => lgLedger()->payout())->toThrow(LogicException::class, 'CP5');
 });
 
 // ---- append-only (invariant #1) ----------------------------------------------------------------
@@ -297,6 +297,115 @@ it('keeps floats and rounding out of the money code', function () {
 
         expect($source)->not->toMatch('/\bround\s*\(|\bfloor\s*\(|\bceil\s*\(|\(float\)|\bfloatval\s*\(|\bdoubleval\s*\(/');
     }
+});
+
+// ---- settle: two-dial dispute resolution (R150) ---------------------------------------------
+
+it('settles a still-held lesson (never released): three SETTLE leg-pairs, no reversal, sums to zero', function () {
+    $lesson = lgLesson(); // price 10000, tutor_amount 7500, commission_amount 2500
+    lgLedger()->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    $result = lgLedger()->settle($lesson, $dispute, 100, 0);
+
+    expect($result)->toBe(['refund' => 10000, 'tutor' => 0, 'platform_delta' => 0])
+        ->and(array_slice(lgLegs($lesson), 2))->toBe([
+            ['escrow', 'refund', -10000], ['refund', 'refund', 10000],
+            ['escrow', 'release_tutor', 0], ['tutor', 'release_tutor', 0],
+            ['escrow', 'release_commission', 0], ['platform', 'release_commission', 0],
+        ])
+        ->and(lgLedger()->sum($lesson))->toBe(0)
+        ->and(lgLedger()->unbalancedLessons())->toBeEmpty();
+});
+
+it('settles an already-released lesson (completed_reported): typed reversal legs first, then the same SETTLE pairs, sums to zero', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    lgLedger()->release($lesson); // escrow now 0 -- exactly the no_show_student -> completed_reported trap
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    $result = lgLedger()->settle($lesson, $dispute, 0, 100); // PRD's student-no-show default
+
+    expect($result)->toBe(['refund' => 0, 'tutor' => 7500, 'platform_delta' => 2500])
+        ->and(array_slice(lgLegs($lesson), 6))->toBe([
+            ['escrow', 'release_reversal', 7500], ['tutor', 'release_reversal', -7500],
+            ['escrow', 'release_reversal', 2500], ['platform', 'release_reversal', -2500],
+            ['escrow', 'refund', 0], ['refund', 'refund', 0],
+            ['escrow', 'release_tutor', -7500], ['tutor', 'release_tutor', 7500],
+            ['escrow', 'release_commission', -2500], ['platform', 'release_commission', 2500],
+        ])
+        ->and(lgLedger()->sum($lesson))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Escrow))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Tutor))->toBe(7500)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Platform))->toBe(2500)
+        ->and(lgLedger()->unbalancedLessons())->toBeEmpty();
+});
+
+it('settles a negative platform delta as goodwill', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    $result = lgLedger()->settle($lesson, $dispute, 100, 100); // 0/0 dial
+
+    expect($result)->toBe(['refund' => 10000, 'tutor' => 7500, 'platform_delta' => -7500])
+        ->and(array_slice(lgLegs($lesson), 2, 2))->toBe([['escrow', 'refund', -10000], ['refund', 'refund', 10000]])
+        ->and(array_slice(lgLegs($lesson), 6))->toBe([['escrow', 'goodwill', 7500], ['platform', 'goodwill', -7500]])
+        ->and(lgLedger()->sum($lesson))->toBe(0);
+});
+
+it('tags every leg it writes with the dispute id', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    lgLedger()->settle($lesson, $dispute, 50, 50);
+
+    expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->where('type', LedgerEntryType::Refund)->pluck('dispute_id')->unique()->all())
+        ->toBe([$dispute->id])
+        ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->whereIn('type', [LedgerEntryType::Hold])->value('dispute_id'))
+        ->toBeNull();
+});
+
+it('sums to zero at every PRD default, 0/0, 100/100 and a rounding case, whether or not the lesson was already released', function (int $refundPct, int $tutorPct) {
+    foreach ([false, true] as $alreadyReleased) {
+        $lesson = lgLesson(12347, 33); // prime price -- exercises the rounding
+        lgLedger()->hold($lesson);
+        if ($alreadyReleased) {
+            lgLedger()->release($lesson);
+        }
+        $dispute = Dispute::factory()->for($lesson)->create();
+
+        lgLedger()->settle($lesson, $dispute, $refundPct, $tutorPct);
+
+        expect(lgLedger()->sum($lesson))->toBe(0);
+    }
+})->with([
+    'trial default 100/0' => [100, 0],
+    'student no-show default 0/100' => [0, 100],
+    '0/0' => [0, 0],
+    '100/100' => [100, 100],
+    '37/63' => [37, 63],
+]);
+
+it('refuses dials outside 0-100, writing nothing', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 101, 0))->toThrow(LedgerException::class, '0-100')
+        ->and(fn () => lgLedger()->settle($lesson, $dispute, 0, -1))->toThrow(LedgerException::class, '0-100')
+        ->and(lgLedger()->sum($lesson))->toBe(0)
+        ->and($lesson->ledgerEntries()->count())->toBe(2);
+});
+
+it('refuses to settle a lesson whose escrow is neither the full price nor zero', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    DB::table('ledger_entries')->insert(['lesson_id' => $lesson->id, 'account' => 'escrow', 'type' => 'goodwill', 'amount' => -1, 'created_at' => now()]);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 100, 0))->toThrow(LedgerException::class, 'neither the price nor zero');
 });
 
 it('links strikes to a tutor and, optionally, a lesson', function () {
