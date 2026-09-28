@@ -2328,3 +2328,55 @@ Full guidance acted on, item by item:
 
 Build order this cycle, set by this consult: (h) first, then (a), (b), (d), (e), (f), (g), (c) — (c) last
 as a pure docblock reword with no behaviour change.
+
+21:52 ADVISOR — 9a item (a), mid-build consult (2 of the cycle's 2-minimum; the "once before the PR"
+consult per rule 11 is still owed separately). Advisor: Fable. Quoted line: "Check what the toast
+actually shows... If that text is a PCRE error like 'Backtrack limit exhausted', you are showing engine
+internals to a parent." Findings acted on:
+1. Read both `MessageMasker.php` throw sites (`hasCandidate()` line 362, `orFail()` line 375): both
+   already pass the generic 'The message could not be masked, so it was not stored.' — never PCRE
+   internals, never the input text. No leak existed, but the flash relied on `$e->getMessage()`
+   matching that string only by convention. Fixed: added `MessageMaskingFailedException::NOTICE`
+   (mirrors `ConversationClosedException::NOTICE`), both throw sites and the controller now reference
+   the constant, so a future edit to a throw site's constructor argument can never silently change the
+   toast text.
+2. `MessageMaskerTest.php`'s existing fail-closed PCRE test asserted the catch as bare `RuntimeException`
+   — tightened to `MessageMaskingFailedException` so a regression to `throw new RuntimeException(...)` in
+   `orFail()`/`hasCandidate()` would fail this test instead of staying green while the controller's typed
+   catch silently stopped firing.
+3. `MessageMasker` confirmed not `final` (`class MessageMasker` at `MessageMasker.php:153`) — a
+   container-bound Mockery double is usable directly; the `pcre.backtrack_limit` trick was avoided in
+   the new feature test per the advisor's warning that it would also break Laravel's own routing regexes
+   at HTTP level. New test: `tests/Feature/Messaging/MessageMaskingFailureTest.php`, binds a throwing
+   `MessageMasker` double, asserts the error toast (`toast.type`/`toast.message` via the project's
+   `assertInertiaFlash` macro) and zero `messages` rows written.
+4. `Conversation::counterpartNameFor()` (`Conversation.php:132`) also calls `MessageMasker::mask()`,
+   unguarded, reused by `MessageController::index()`/`show()` and the 8e email path — a genuine gap, but
+   PLAN.md R149(a)'s wording names `MessageController::store()` only (quoted: "`MessageController::store()`
+   catches the masker's fail-closed `RuntimeException`..."). Per the advisor and rule that scope-widening
+   needs the owner's yes, not fixed this cycle: disclosed in STATUS §6 as a new item with a recommended
+   Owner action, not blocking 9a.
+5. Read `SubmitReview.php:53-57`: the `try` wraps only `$this->masker->mask($comment)->text`, not the
+   `DB::transaction` starting at line 60 — a bare `RuntimeException` catch there cannot swallow a
+   `QueryException`. No bug; the earlier internal note flagging this as "the same risk" as
+   `MessageController` was wrong before reading the lines (rule 12) and is corrected here rather than
+   carried into STATUS §6.
+
+21:59 NOTE — advisor-count correction (self-caught only via re-consulting, not independently) and
+background-test result. The 21:52 ADVISOR entry said the mid-build consult was "2 of the cycle's
+2-minimum": wrong. The 9a plan line names two specific slots — a design consult before the first edit
+and one before the PR — and a mid-build consult fills neither; it is additional, not one of the two.
+Corrected here rather than edited in place (append-only). Still owed: the pre-PR consult.
+Test result: `php artisan test tests/Unit/Messaging/MessageMaskerTest.php
+tests/Feature/Messaging/MessageMaskingFailureTest.php` (run detached after a 120s foreground timeout,
+completed on its own at 16.3s actual runtime, no stall) — 2 passed, 9 assertions, exit 0. Confirms the
+tightened unit test (now pinning `MessageMaskingFailedException`, not bare `RuntimeException`) and the
+new feature test (container-bound throwing double, asserts the toast and zero `messages` rows) both
+pass. Also observed while diagnosing the apparent delay: two unrelated `php.exe -S 127.0.0.1:8010`
+processes serving `docs/reports/billing-closeout-audit/harness/router.php` are running on this machine
+(PIDs 26524/10844) — not started by this session, no command line resembling this cycle's work; not
+touched, since rule 9's "only stop this session's own background IDs" and rule 2's "one window, no
+worktrees" both counsel against acting on a process this session didn't start without knowing its
+owner. Disclosed here for visibility, not treated as a BLOCKER — nothing in this session's own run was
+actually blocked by them (the real delay was `artisan test`'s own paratest bootstrap, not a lock wait;
+the run finished cleanly in 16.3s of actual work once done).
