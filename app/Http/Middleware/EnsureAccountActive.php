@@ -19,10 +19,19 @@ use Symfony\Component\HttpFoundation\Response;
  * `Fortify::authenticateUsing` (`FortifyServiceProvider`), which checks `status` before issuing a
  * new session at all — this middleware only ever sees a session that predates the suspension.
  *
- * Two named-route families are excluded because they already handle a suspended party correctly,
- * on their own, and a blanket redirect here would pre-empt that:
- * - `admin.*` — `access-admin-area` (`AppServiceProvider::configureGates()`) already checks
- *   `status === Active` and answers 403, which `TutorDocumentAccessTest` (R28) asserts by name.
+ * Two named-route families are excluded so this middleware's blanket redirect does not pre-empt a
+ * more specific check that already exists on that family. The exclusion itself grants nothing —
+ * each excluded family is still protected, just by something else. Despite the name, `admin.*`
+ * here is **not** the Filament admin panel: the panel's routes are named `filament.admin.*` and
+ * run through `AdminPanelProvider`'s own separate middleware stack, which never includes this
+ * middleware at all — the panel is protected by the `access-admin-area` gate
+ * (`AppServiceProvider::configureGates()`) via Filament's own `authMiddleware`, not by anything
+ * excluded here.
+ * - `admin.*` matches exactly one route, `admin.documents.show` (`routes/web.php`), which sits in
+ *   the default `web` group and so does reach this middleware. That route already carries
+ *   `can:access-admin-area` directly, which checks `status === Active` and answers 403 — asserted
+ *   by `TutorDocumentAccessTest` (R28). The exclusion only stops this middleware's blanket
+ *   redirect-to-`login` from firing first and pre-empting that gate's own 403.
  * - `messages.*` — a suspended party's conversation is deliberately still viewable, closed, with a
  *   "This conversation is closed." notice (`MessagingPagesTest`), not hidden behind a login wall.
  *

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users;
 
 use App\Enums\Role;
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Resources\Users\Schemas\UserForm;
@@ -22,6 +23,8 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class UserResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = User::class;
 
     protected static ?string $modelLabel = 'admin user';
@@ -29,6 +32,14 @@ class UserResource extends Resource
     protected static ?string $navigationLabel = 'Admin users';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedUsers;
+
+    // RequiresActiveAdmin does not cover create (R149(f)): this resource has a create page and,
+    // without a User policy, Filament's no-policy default is allow, so a disabled admin would
+    // otherwise still be able to create another admin user through an already-open Livewire tab.
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
 
     public static function getEloquentQuery(): Builder
     {

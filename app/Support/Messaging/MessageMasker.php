@@ -2,9 +2,9 @@
 
 namespace App\Support\Messaging;
 
+use App\Exceptions\MessageMaskingFailedException;
 use IntlChar;
 use Normalizer;
-use RuntimeException;
 
 /**
  * R134: the one place a message body is masked. Pure — no database, no clock, no I/O — so its fixture
@@ -92,6 +92,11 @@ use RuntimeException;
  * non-catastrophic backtrack (a fixed-class run backtracking against a single following gap is linear, not
  * exponential — the class has no internal repeated ambiguity of its own) without reopening Finding 2, whose
  * cost came from the *outer* group's iteration count, not from backtracking inside one label.
+ * (R149(b): `NAMED_DOMAIN_LOOSE`, `NAMED_DOMAIN_TIGHT` and `COUNTRY_DOMAIN` no longer share this label class
+ * with `JUNK` — see `BARE_DOMAIN_LABEL` below and the R149(b) docblock paragraph further down. Only `EMAIL`
+ * keeps `-` in its label class today; the "gmail-com" fixture above is still `EMAIL`'s, unaffected by
+ * R149(b), which touches none of `EMAIL`'s constants. The label run stays greedy, not possessive, in all
+ * four patterns regardless — R149(b) changed the label *class*, not this quantifier choice.)
  * 2. The local part (`[\p{L}\p{Nd}._%+\-]++`) and the `@` run (`@++`) stay possessive as planned: nothing
  * after them shares their class the way a label shares `-` with `JUNK`, so there is no separator to steal.
  *
@@ -132,6 +137,20 @@ use RuntimeException;
  * structural change, not a third revert/patch inside this already twice-reverted design. A PCRE engine
  * failure in either the gate or the full pattern (backtrack limit, bad UTF-8) still fails the message
  * closed, via `hasCandidate()`/`orFail()` respectively — confirmed for the gate-open dash-run case above.
+ *
+ * R149(b) (cycle 09 r1): closes the gate-open gap the previous paragraph disclosed, exactly the way it
+ * named — removing the `-` overlap between LABEL and JUNK, and capping label-run *iterations* — for
+ * NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT and COUNTRY_DOMAIN only (`JUNK`, `EMAIL` and `MAIL_PROVIDER` are
+ * untouched: see BARE_DOMAIN_LABEL/MAX_BARE_DOMAIN_LABELS above for why EMAIL never had this shape). These
+ * three patterns' label runs now use `BARE_DOMAIN_LABEL` (`[\p{L}\p{Nd}]+`, no `-`) instead of the shared
+ * `[\p{L}\p{Nd}\-]+`, so letter/digit and junk are disjoint character classes for them — a label and its
+ * following gap can no longer both claim the same character, which forecloses the `(a+)+` shape rather than
+ * bounding its cost. The outer `(?:gap label)` group is additionally capped at `MAX_BARE_DOMAIN_LABELS`
+ * iterations, belt-and-suspenders against an unbounded chain of one-character labels once the overlap is
+ * gone. `str_repeat('a-', 20).' ok'`, the exact repro above, now completes well inside the 50ms budget (see
+ * the "gate-open" timing fixtures added alongside this paragraph); so does a domain built from more labels
+ * than the cap allows, which now matches its last `MAX_BARE_DOMAIN_LABELS` labels and the ending rather than
+ * failing the message closed or passing through unmasked.
  *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
  * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
@@ -199,6 +218,35 @@ class MessageMasker
     /** Junk and whitespace freely interspersed, at least one junk character — used for bare-domain non-word endings only. Unbounded and possessive (R144, see LABEL_GAP above); structurally identical to LABEL_GAP now that both caps are gone. */
     private const LOOSE_DOT_JUNK = '\s*+(?:'.self::JUNK.'\s*+)++';
 
+    /**
+     * R149(b): the bare-domain label used only by NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT and
+     * COUNTRY_DOMAIN. Unlike EMAIL's label class, this one drops `-`: `JUNK` (above) already accepts `-`
+     * as a separator, and while the label shared it too, a label and the gap that followed it could each
+     * read the same dash run in more than one way once the pattern's ending token made a match possible at
+     * all (`hasCandidate()`'s gate open) — the classic `(a+)+` shape, catastrophic only once the gate is
+     * open (see the class docblock's R144 paragraphs). Letter/digit and junk are now fully disjoint
+     * character classes for these three patterns, so a label and the gap after it can never both claim the
+     * same character: every position in the subject belongs to exactly one side of that boundary, which
+     * forecloses the ambiguity rather than merely bounding its cost. `EMAIL` keeps `-` in its label class
+     * (see DEVIATION 1 below) because, unlike these three, it is anchored by a leading `@`, possessive
+     * throughout, and never fully backtracking — it was never the shape Finding 2 described.
+     */
+    private const BARE_DOMAIN_LABEL = '[\p{L}\p{Nd}]+';
+
+    /**
+     * R149(b): bounds how many labels NAMED_DOMAIN_LOOSE/_TIGHT/COUNTRY_DOMAIN's outer group can iterate,
+     * on top of BARE_DOMAIN_LABEL above — belt and suspenders, not a second fix for the same hole: disjoint
+     * label/junk classes remove the exponential shape, but an unbounded outer group is still needless work
+     * against a message built from thousands of one-character labels ("a.a.a.a…com"), which is linear-cost
+     * but still worth bounding once nothing legitimate is that long. A real domain name is very rarely more
+     * than five or six labels; 16 leaves generous headroom (subdomains, a long marketing domain) without
+     * leaving the cap effectively unbounded. A domain with more labels than this is not left unmasked: each
+     * pattern is anchored at the ending, not at the first label, so `preg_replace` still matches starting
+     * from a later label — the earliest labels fall outside the match, never the whole address leaking
+     * unmasked (see the "more labels than the cap" fixture).
+     */
+    private const MAX_BARE_DOMAIN_LABELS = 16;
+
     private const NON_WORD_ENDINGS = 'com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|pro|mobi|link|page';
 
     private const WORD_ENDINGS = 'online|site|tech|club|shop|store|blog|live|news|cloud|academy|wiki|name|email|school|chat|space|world|education|ninja|network|agency|digital|media|life|today|tutor|tutors|zone|team|group';
@@ -218,23 +266,25 @@ class MessageMasker
     private const URL_WWW = '~(?<![\p{L}\p{Nd}])www\.\S+~iu';
 
     /**
-     * A non-word ending after a loose, dot-shaped gap: "mysite . com", "mysite[.]com", "mysite,,com" all mask. Both
-     * the outer `(?:gap label)*` group and the label runs stay greedy, not possessive (R144, see class docblock):
-     * a lookahead-guarded possessive outer group was tried and reverted (DEVIATION, see CYCLE-LOG) — it breaks a
+     * A non-word ending after a loose, dot-shaped gap: "mysite . com", "mysite[.]com", "mysite,,com" all mask. The
+     * outer `(?:gap label)` group and the label runs stay greedy, not possessive (R144, see class docblock): a
+     * lookahead-guarded possessive outer group was tried and reverted (DEVIATION, see CYCLE-LOG) — it breaks a
      * short first label that itself looks like a complete ending ("wa.me/971501234567" stopped matching, because
      * the lookahead refused to let the loop consume "wa" once it saw "me" could be read as the final code — but
      * "wa" was never meant to be final here, there was more domain after it). Reproducing greedy longest-match
      * exactly, with no risk of a new under- or unmask, needs real backtracking; Finding 2's cost is instead bounded
-     * the other way — see `hasCandidate()` below, which skips this pattern entirely when none of its ending words
-     * appear anywhere in the message, so pure-junk input (no "com"/"net"/… substring anywhere) never reaches it.
+     * two ways — `hasCandidate()` below skips this pattern entirely when none of its ending words appear anywhere
+     * in the message, and (R149(b)) the label class no longer overlaps `JUNK` and the outer group is capped at
+     * `MAX_BARE_DOMAIN_LABELS` iterations, so even once the gate is open the match is linear, not exponential, in
+     * the gap-open case the gate alone cannot bound (see BARE_DOMAIN_LABEL/MAX_BARE_DOMAIN_LABELS above).
      */
-    private const NAMED_DOMAIN_LOOSE = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::LOOSE_DOT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::LOOSE_DOT_JUNK.'(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
+    private const NAMED_DOMAIN_LOOSE = '~(?<![\p{L}\p{Nd}])'.self::BARE_DOMAIN_LABEL.'(?:'.self::LOOSE_DOT_JUNK.self::BARE_DOMAIN_LABEL.'){0,'.self::MAX_BARE_DOMAIN_LABELS.'}'.self::LOOSE_DOT_JUNK.'(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
-    /** A word-like ending needs a tight gap — no whitespace at all — or "Ok. Online lessons are fine." would mask. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated the same way by `hasCandidate()`. */
-    private const NAMED_DOMAIN_TIGHT = '~(?<![\p{L}\p{Nd}])[\p{L}\p{Nd}\-]+(?:'.self::TIGHT_JUNK.'[\p{L}\p{Nd}\-]+)*'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
+    /** A word-like ending needs a tight gap — no whitespace at all — or "Ok. Online lessons are fine." would mask. Greedy throughout, same reasoning and same R149(b) overlap/iteration bound as NAMED_DOMAIN_LOOSE above; gated the same way by `hasCandidate()`. */
+    private const NAMED_DOMAIN_TIGHT = '~(?<![\p{L}\p{Nd}])'.self::BARE_DOMAIN_LABEL.'(?:'.self::TIGHT_JUNK.self::BARE_DOMAIN_LABEL.'){0,'.self::MAX_BARE_DOMAIN_LABELS.'}'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.')(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
-    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. Greedy throughout, same reasoning as NAMED_DOMAIN_LOOSE above; gated by `hasCandidate()` on a bare `[a-z]{2}` presence check (see HAS_COUNTRY_ENDING below — not `[\p{L}]{2}`; the gate is ASCII-only, matching this pattern's own ending). */
-    private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{Nd}])(?:[\p{L}\p{Nd}\-]+'.self::TIGHT_JUNK.')+[a-z]{2}(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
+    /** Any two-letter country code after a tight-junk label; tight only, or "see you. Me too" would be hidden. Greedy throughout, same reasoning and same R149(b) overlap/iteration bound as NAMED_DOMAIN_LOOSE above; gated by `hasCandidate()` on a bare `[a-z]{2}` presence check (see HAS_COUNTRY_ENDING below — not `[\p{L}]{2}`; the gate is ASCII-only, matching this pattern's own ending). */
+    private const COUNTRY_DOMAIN = '~(?<![\p{L}\p{Nd}])(?:'.self::BARE_DOMAIN_LABEL.self::TIGHT_JUNK.'){1,'.self::MAX_BARE_DOMAIN_LABELS.'}[a-z]{2}(?![\p{L}\p{Nd}])(?:[/:?#]\S*+)?~iu';
 
     /**
      * Presence gates for NAMED_DOMAIN_LOOSE/TIGHT/COUNTRY_DOMAIN (R144(b), see class docblock): each is a fixed,
@@ -359,7 +409,7 @@ class MessageMasker
         $result = preg_match($gate, $subject);
 
         if ($result === false) {
-            throw new RuntimeException('The message could not be masked, so it was not stored.');
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
         }
 
         return $result === 1;
@@ -372,7 +422,7 @@ class MessageMasker
     private function orFail(string|false|null $result): string
     {
         if ($result === false || $result === null) {
-            throw new RuntimeException('The message could not be masked, so it was not stored.');
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
         }
 
         return $result;

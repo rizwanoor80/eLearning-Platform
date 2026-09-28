@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\VideoProviderCode;
+use App\Providers\PaymentGatewayServiceProvider;
 use Database\Factories\VideoProviderFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -114,9 +115,13 @@ class VideoProvider extends Model
     }
 
     /**
-     * Why this row may not be the active provider, or null when it may. The fake provider is
-     * refused in production (R125); a code with no driver and a driver with missing credentials
-     * are refused everywhere.
+     * Why this row may not be the active provider, or null when it may. The fake provider is an
+     * allow-list, not a deny-list (R131, ADR-022): only `PaymentGatewayServiceProvider::
+     * FAKE_ENVIRONMENTS` (`local`, `testing`, `rehearsal`) may activate it, mirroring ADR-016, so
+     * the video and payment allow-lists cannot drift apart — a typo or a new environment name
+     * (`staging`, a missing `APP_ENV`) fails closed instead of silently being treated as safe the
+     * way a `!== 'production'` deny-list would. A code with no driver and a driver with missing
+     * credentials are refused everywhere.
      */
     public function activationProblem(): ?string
     {
@@ -126,8 +131,8 @@ class VideoProvider extends Model
             return "There is no driver for {$this->name} yet, so it cannot be made active.";
         }
 
-        if ($code === VideoProviderCode::Fake && app()->environment('production')) {
-            return 'The fake video provider cannot be active in production.';
+        if ($code === VideoProviderCode::Fake && ! app()->environment(PaymentGatewayServiceProvider::FAKE_ENVIRONMENTS)) {
+            return 'The fake video provider cannot be active outside local, testing and rehearsal.';
         }
 
         if (! $this->hasCompleteCredentials()) {

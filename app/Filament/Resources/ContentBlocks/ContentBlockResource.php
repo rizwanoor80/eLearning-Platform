@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ContentBlocks;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\ContentBlocks\Pages\EditContentBlock;
 use App\Filament\Resources\ContentBlocks\Pages\ListContentBlocks;
 use App\Filament\Resources\ContentBlocks\Schemas\ContentBlockForm;
@@ -19,6 +20,8 @@ use Filament\Tables\Table;
  */
 class ContentBlockResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = ContentBlock::class;
 
     protected static ?string $navigationLabel = 'Site content';

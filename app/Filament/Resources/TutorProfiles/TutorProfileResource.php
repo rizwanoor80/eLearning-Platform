@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TutorProfiles;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\TutorProfiles\Pages\ListTutorProfiles;
 use App\Filament\Resources\TutorProfiles\Pages\ViewTutorProfile;
 use App\Filament\Resources\TutorProfiles\RelationManagers\TutorDocumentsRelationManager;
@@ -14,8 +15,13 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 
+// R149(f): `App\Policies\TutorProfilePolicy` exists (it covers `reportAbuse` only) but has no
+// viewAny/view/update methods, so Filament's no-policy-method default was allow — this trait is
+// this resource's only guard against a disabled admin, not a belt-and-suspenders addition.
 class TutorProfileResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = TutorProfile::class;
 
     protected static ?string $navigationLabel = 'Tutor approvals';

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\PriceBands;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\PriceBands\Pages\CreatePriceBand;
 use App\Filament\Resources\PriceBands\Pages\EditPriceBand;
 use App\Filament\Resources\PriceBands\Pages\ListPriceBands;
@@ -19,9 +20,19 @@ use Illuminate\Database\Eloquent\Model;
 
 class PriceBandResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = PriceBand::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBanknotes;
+
+    // RequiresActiveAdmin does not cover create (R149(f)): this resource has a create page and,
+    // without a PriceBand policy, Filament's no-policy default is allow, so a disabled admin
+    // would otherwise still be able to create one through an already-open Livewire tab.
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
 
     public static function form(Schema $schema): Schema
     {

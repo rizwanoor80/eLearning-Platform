@@ -102,7 +102,7 @@ jobs:
       - name: Migrate the CI database
         run: php artisan migrate --force --no-interaction
 
-      - name: Run composer test (Pint, PHPStan, RTL check, Pest)
+      - name: Run composer test (Pint, PHPStan, vue-tsc, RTL check, Pest)
         run: composer test
 
       - name: Prove Horizon boots on Linux

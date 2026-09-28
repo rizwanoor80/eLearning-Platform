@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SitePages;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\SitePages\Pages\EditSitePage;
 use App\Filament\Resources\SitePages\Pages\ListSitePages;
 use App\Filament\Resources\SitePages\RelationManagers\VersionsRelationManager;
@@ -21,6 +22,8 @@ use Filament\Tables\Table;
  */
 class SitePageResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = Page::class;
 
     protected static ?string $navigationLabel = 'Pages';

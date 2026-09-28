@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\MessageMaskingFailedException;
 use App\Support\Messaging\MaskedMessage;
 use App\Support\Messaging\MessageMasker;
 
@@ -215,6 +216,20 @@ question 12
     'R144 country-code domain, 500 dots' => ['mysite'.str_repeat('.', 500).'ae', MessageMasker::PLACEHOLDER],
     'R144 country-code domain, mixed junk run (tight, no whitespace)' => ['mysite'.str_repeat('.,-', 5).'ae', MessageMasker::PLACEHOLDER],
 
+    // R149(b): NAMED_DOMAIN_LOOSE/_TIGHT/COUNTRY_DOMAIN's outer group is now capped at
+    // MAX_BARE_DOMAIN_LABELS (16) iterations (see MessageMasker's class docblock and the
+    // MAX_BARE_DOMAIN_LABELS constant). A domain with more labels than the cap allows is not left fully
+    // unmasked: the pattern is anchored at the ending, not the first label, so it still matches starting
+    // from a later label — here 19 single-letter labels ("a" through "s") before ".com", one more than
+    // the 18-label window (1 + 16 additional) the pattern can cover in one match, so the leftmost
+    // starting position that fits is the third label ("c"): "a." and "b." are left unmasked, "c" through
+    // "s" and "com" are one placeholder. Confirmed against the live pattern, not just reasoned about (see
+    // CYCLE-LOG VERIFICATION).
+    'R149(b) more bare-domain labels than the cap: masks the ending and the labels the cap allows, not the whole chain, and never passes through unmasked' => [
+        'a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.com',
+        'a.b.'.MessageMasker::PLACEHOLDER,
+    ],
+
     // Known limits (ADR-019): spelled out is not caught
     'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
     'colon-separated number' => ['050:123:4567', '050:123:4567'],
@@ -286,11 +301,28 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
     'finding-1 shape padded to 2000 chars (dots)' => ['padded dots', 'sara@name'.str_repeat('.', 2000).'com'],
     'finding-1 shape padded to 2000 chars (spaces)' => ['padded spaces', 'sara@name'.str_repeat(' ', 2000).'.com'],
     'mixed adversarial: junk and non-ending words' => ['mixed junk', str_repeat('word- . ,text', 150)],
+
+    // R149(b): the class docblock's disclosed gate-open gap, measured empirically at the time (a
+    // benign-looking `str_repeat('a-', 20).' ok'`, 43 chars, already exhausted the default
+    // `pcre.backtrack_limit`) — every case above deliberately contains none of NAMED_DOMAIN_LOOSE/
+    // _TIGHT/COUNTRY_DOMAIN's ending tokens, so `hasCandidate()`'s gate stays closed and they only ever
+    // measure the gate working, not the cost once it opens. These four open the gate on purpose (the
+    // ending token IS present) while still containing a long dash run, the exact `(a+)+` shape
+    // BARE_DOMAIN_LABEL/MAX_BARE_DOMAIN_LABELS now forecloses rather than merely bounds.
+    'gate-open repro: the exact disclosed shape, a country-code-like ending' => ['gate-open repro', str_repeat('a-', 20).' ok'],
+    'gate-open, long dash run before a non-word ending' => ['gate-open non-word', str_repeat('a-', 1000).'.com'],
+    'gate-open, long dash run before a word-like ending' => ['gate-open word-like', str_repeat('a-', 1000).'.shop'],
+    'gate-open, mixed dot/dash run before a non-word ending' => ['gate-open mixed', str_repeat('a-', 500).str_repeat('a.', 500).'.com'],
 ]);
 
 // R144(b): a genuine PCRE engine failure — forced here via a backtrack limit far below what any real
 // match needs, rather than relying on accidentally hitting the default limit — must still fail the
 // message closed (`orFail()`/`hasCandidate()`), never let the original text through unmasked.
+//
+// R149(a): asserts the concrete `MessageMaskingFailedException`, not the bare `RuntimeException` it
+// extends. `MessageController::store()` catches only the subclass; a bare-`RuntimeException` assertion
+// here would stay green even if a throw site regressed to `throw new RuntimeException(...)`, while the
+// controller's catch silently stopped firing.
 it('still fails closed on a genuine PCRE engine failure', function () {
     $original = ini_get('pcre.backtrack_limit');
     ini_set('pcre.backtrack_limit', '1');
@@ -298,7 +330,7 @@ it('still fails closed on a genuine PCRE engine failure', function () {
     try {
         (new MessageMasker)->mask('sara@gmail.com');
         expect(false)->toBeTrue('expected mask() to throw when PCRE cannot complete the match');
-    } catch (RuntimeException $e) {
+    } catch (MessageMaskingFailedException $e) {
         expect($e->getMessage())->toContain('could not be masked');
     } finally {
         ini_set('pcre.backtrack_limit', $original);

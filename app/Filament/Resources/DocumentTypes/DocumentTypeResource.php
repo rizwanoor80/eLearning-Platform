@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\DocumentTypes;
 
+use App\Filament\Concerns\RequiresActiveAdmin;
 use App\Filament\Resources\DocumentTypes\Pages\CreateDocumentType;
 use App\Filament\Resources\DocumentTypes\Pages\EditDocumentType;
 use App\Filament\Resources\DocumentTypes\Pages\ListDocumentTypes;
@@ -16,9 +17,19 @@ use Filament\Tables\Table;
 
 class DocumentTypeResource extends Resource
 {
+    use RequiresActiveAdmin;
+
     protected static ?string $model = DocumentType::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    // RequiresActiveAdmin does not cover create (R149(f)): this resource has a create page and,
+    // without a DocumentType policy, Filament's no-policy default is allow, so a disabled admin
+    // would otherwise still be able to create one through an already-open Livewire tab.
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
 
     public static function form(Schema $schema): Schema
     {
