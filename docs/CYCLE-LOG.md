@@ -2865,3 +2865,138 @@ Empirically confirmed (this segment and the one before, reading `SubmitProgressR
 Built per the two DECISIONs above: `database/migrations/2026_10_05_100000_create_disputes_table.php` (DATA_MODEL's `disputes` schema, string+CHECK columns matching `abuse_reports`' pattern, unique `lesson_id`), `2026_10_05_100100_add_dispute_fk_to_ledger_entries.php` (the FK `ledger_entries.dispute_id -> disputes.id` that table's own migration comment invited), `App\Enums\DisputeReason`/`DisputeStatus`, one new `LedgerEntryType::ReleaseReversal` case, `App\Models\Dispute` + `DisputeFactory` (Safeguarding/AbuseReport pattern: `withTrashed()` on both user FKs, no morph map), and `LedgerService::settle(Lesson, Dispute, int, int, ?User): array` replacing the `LogicException` stub — validates both dials 0-100, computes `r`/`t` from the lesson's frozen `price`/`tutor_amount` via `Money::percentage()` (half-up on fils) before the lock, then inside `operate()`'s lock reads the escrow balance and either writes the reversal legs first (balance 0, already released) or skips them (balance == price), then always writes the three SETTLE leg-pairs, tagging every leg with `dispute_id`; any other escrow balance throws. Not a literal red-then-green sequence — the reversal trap was already proven by reading every code path into `completed_reported` (this segment and the one before) rather than by a failing test run first, so the implementation and its tests were written together; disclosed here rather than silently claimed as red-first, per rule 12.
 
 Deviation disclosed and worked around, not a regression: `php artisan test` run through PowerShell reported 3 failures, all in `tests/Feature/RtlCheckTest.php` ("execvpe(/bin/bash) failed... WSL (9 - Relay)" — the same error `composer test`'s `rtl:check` step hit first, both trying to resolve a bare `bash` that PowerShell's PATH points at a broken WSL relay stub, not Git Bash). `git status --short` at the time showed only this step's own files touched (no `resources/`, no `scripts/`) — ruled out as a regression. Re-run of the identical command through the Bash tool (Git Bash, where `bash` resolves correctly): `{"tool":"pest","result":"passed","tests":1921,"passed":1921,"assertions":9735,"duration_ms":459941}` — full suite green, literal count 1921 (was 1910 before this step; +11 matches the 7 new `it()` blocks plus the 5-case dial-matrix dataset minus the 1 old combined settle/payout test removed). Process note for future steps on this machine: run `php artisan test` (and anything invoking `scripts/rtl-check.sh`) via the Bash tool, never PowerShell — PowerShell's `bash` is not Git Bash here. `php artisan ledger:verify --no-interaction`: "Ledger OK: every lesson sums to zero." `bash scripts/rtl-check.sh`: "RTL check passed", exit 0. `npm run build`: "✓ built in 17.23s". `./vendor/bin/pint --test`: passed. `./vendor/bin/phpstan analyse`: 0 errors. All six gates green on this slice; the full feature (actions, event/mail/notification, Filament resource, dispute-opening tests, `docs/reports/9b.md`, ADR-021, CP8 box) is still to come before this step's own PR gate set is run again in full.
+
+## [2026-09-29 02:05 machine clock] ADVISOR — settle() money-path consult (R150, rule 11 minimum)
+
+Model: the advisor tool's backing reviewer (stronger model, full-transcript consult). Consulted
+per the design-consult's own point 7 ("hold the dedicated money-path/dial-arithmetic consult once
+settle() and the dial matrix tests are green") and per rule 11 (money/ledger code).
+
+Findings, most severe first:
+
+1. **BLOCKS.** `ledger_entries.type` is a Postgres CHECK constraint built by the
+   `create_ledger_entries_table` migration from `array_column(LedgerEntryType::cases(), 'value')`
+   at the time it ran. `RefreshDatabase` rebuilds from the *current* enum in tests, masking this,
+   but any already-migrated database (local, rehearsal) still carries the frozen six-value list.
+   Verified locally:
+   `select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid='ledger_entries'::regclass and contype='c'`
+   → `ledger_entries_type_check: CHECK (((type)::text = ANY ((ARRAY['hold'::character varying,
+   'release_tutor'::character varying, 'release_commission'::character varying,
+   'refund'::character varying, 'goodwill'::character varying,
+   'payout'::character varying])::text[]))))` — no `release_reversal`. Any `settle()` call against
+   this DB throws a CHECK violation today. Fix: new forward-only migration dropping this
+   constraint by its real name and re-adding it with a hardcoded value list (not built from the
+   enum, matching `abuse_reports`' pattern) including `release_reversal`. Also hardcode the
+   `disputes` migration's `reason`/`status` CHECK lists rather than building them from
+   `DisputeReason`/`DisputeStatus` cases, for the same reason.
+2. **BLOCKS.** `settle()` does not guard against being called twice, or against a never-held
+   lesson. After one settle, escrow is 0 — indistinguishable from "already released", so a second
+   call claws back `tutor_amount`/`commission_amount` that were never paid out that way, then
+   refunds again; every leg pair is zero-sum so `ledger:verify` stays green while the money is
+   wrong. Fix inside the lock: refuse if any existing entry for the lesson has `dispute_id` set or
+   type `ReleaseReversal`; in the escrow==0 branch, assert `balance(Tutor) === tutor_amount` and
+   `balance(Platform) === commission_amount` before writing reversals (this also rejects a
+   never-held lesson); assert `$dispute->lesson_id === $lesson->id`. Add tests: second settle
+   refused, no-hold lesson refused, both leaving entry count unchanged.
+3. The 01:41 trial-default DECISION misapplied CLAUDE.md's precedence rule — that rule is PRD vs
+   `docs/reference/`, not PRD vs PLAN, and there is no real conflict: prefilling 100/0 (R150) is
+   still admin-editable, satisfying PRD's "decided separately by admin". Corrected below.
+4. `no_show_student → completed_reported` (unlike `no_show_tutor`) IS disputable — check for a
+   persisted record of that transition (audit log / status history) before folding it into "empty
+   prefill"; if none exists, disclose in §6 rather than assume.
+5. Dial-matrix tests only prove `sum==0`, which holds by zero-sum construction regardless of
+   correctness. Need exact r/t/d values and final per-account balances asserted, both held and
+   already-released paths.
+
+Non-blocking, logged for the same pass: zero-amount legs (e.g. a 0% `release_tutor` leg still
+carrying `tutor_profile_id`) will misread as a real release in any later per-type count — switching
+to skip-zero-pairs, or disclosing the choice in ADR-021; a stale `// 0/0 dial` comment on what is
+actually the 100/100 test case; `DisputeFactory::resolved()`'s 100/0/refund_amount=0 combination is
+internally inconsistent and should be corrected or have its amounts dropped; the VERIFICATION
+entry's "+11" arithmetic double-counted (real breakdown: 6 plain + 5 dataset, with the old
+settle/payout stub test replaced, not added to) — correcting here per rule 12; PR gate must run the
+literal `composer test` (check how 9a did this on this machine), not a substituted command list;
+Earnings-page gap still not logged as a DECISION + §6 entry.
+
+Action: fix 1 and 2 with tests as one commit before starting `OpenDispute`; revert the trial
+default to 100/0 per point 3; check `no_show_student` traceability per point 4; strengthen the
+dial-matrix assertions per point 5; address the non-blocking list in the same pass.
+
+## [2026-09-29 02:10 machine clock] NOTE — correcting the 01:41 trial-default DECISION (advisor point 3)
+
+The 01:41 DECISION applied CLAUDE.md's "if it conflicts with docs/reference/, the PRD wins" to a
+PRD-vs-PLAN reading. That rule is scoped to PRD vs `docs/reference/`, not PRD vs `docs/PLAN.md`/R150
+— and on inspection there is no real conflict: R150's 100/0 trial prefill is still admin-editable
+before resolution, which is exactly what PRD line 48 ("tutor payment on that trial is decided
+separately by admin") asks for. Correcting: the Filament `DisputeResource`'s trial prefill will be
+100/0 exactly as R150 states, not left blank. The PRD's "decided separately" language is a UX/wording
+nuance (the admin should see it's a distinct decision, not that it starts empty) — to be disclosed in
+docs/STATUS.md §6, not treated as a deviation from the plan.
+
+## [2026-09-29 02:11 machine clock] NOTE — no_show_student traceability checked (advisor point 4)
+
+Checked whether a disputable `no_show_student -> completed_reported` lesson (app/Actions/Lessons/
+MarkNoShow.php:59-70, `student()`) leaves any persisted record an admin's dial-prefill could read.
+`grep -rl "audit_logs\|status_histor\|RecordAuditLog"` over app/ + database/migrations does not
+include MarkNoShow.php — no audit-log row, and no status-history table exists in this schema at all
+(DATA_MODEL.md has no such table). `LessonStatusChanged` (app/Services/Lessons/LessonStateMachine.php)
+is dispatched but not itself persisted by any listener that logs it. So by the time a dispute opens,
+the lesson's `status` is already `completed_reported` (or later) and nothing on the lesson or
+anywhere else distinguishes "went through no_show_student" from "completed normally, then reported".
+The bare `no_show` reason with both dials still empty (no reachable default) stance from 01:41 is
+therefore correct, but it is a genuine plan-repo gap (no admin-facing "this had a no-show mark"
+signal to prefill from), not a design choice — to be disclosed in docs/STATUS.md §6.
+
+## [2026-09-29 02:18 machine clock] VERIFICATION — advisor findings 1 and 2 fixed, gate set green again
+
+Both blocking findings from the 02:05 ADVISOR consult fixed, with tests, in one pass:
+
+1. New forward-only migrations `2026_10_05_100200_hardcode_disputes_check_constraints.php` and
+   `2026_10_05_100300_add_release_reversal_to_ledger_entries_type_check.php` (the `disputes`
+   migration itself is not edited in place, per "migrations are forward-only" — even though it has
+   not merged to `main` yet, it was already committed, pushed, and migrated locally). Verified
+   before: `ledger_entries_type_check` had 6 values, no `release_reversal` (quoted in the ADVISOR
+   entry). Verified after, local: `ledger_entries_type_check: CHECK (((type)::text = ANY (ARRAY[
+   'hold', 'release_tutor', 'release_commission', 'refund', 'goodwill', 'payout',
+   'release_reversal'])))`; `disputes_reason_check`/`disputes_status_check` now hardcoded literal
+   lists matching `abuse_reports`' pattern. Both migrations ran DONE locally
+   (10.80ms/3.70ms).
+2. `LedgerService::settle()` (app/Services/Ledger/LedgerService.php) now: refuses a second call
+   (checks for any existing `dispute_id`-tagged or `ReleaseReversal`-typed entry on the lesson,
+   inside the lock, before doing anything else); in the escrow==0 branch, asserts
+   `balance(Tutor) === tutor_amount` and `balance(Platform) === commission_amount` before writing
+   reversal legs (this also refuses a never-held lesson, whose escrow is 0 trivially but whose
+   tutor/platform balances are 0 too, not matching the frozen split); asserts
+   `$dispute->lesson_id === $lesson->id` up front. Also switched to skipping a zero-amount leg pair
+   entirely (refund/tutor/platform each independently) rather than writing it — the non-blocking
+   finding about a stray zero `release_tutor` leg misreading as a real release in a later per-type
+   count.
+
+Tests: 4 new (`tests/Feature/Ledger/LedgerServiceTest.php`) — second settle refused (still-held and
+already-released paths), never-held lesson refused, mismatched dispute refused. The three existing
+settle tests updated for the skip-zero-leg change (still-held 100/0 now writes only the refund pair;
+already-released 0/100 now skips the refund pair but keeps the unconditional reversal legs). The
+dial-matrix test strengthened per advisor point 5: asserts exact `r`/`t`/`d` fils and final
+Escrow/Refund/Tutor/Platform balances (not just `sum==0`) for all 5 cases, both held and
+already-released, computed by hand and cross-checked against the advisor's own arithmetic for the
+37/63 case (commission_amount 4075, tutor_amount 8272 on price 12347 at 33%; r=4568, t=5211,
+d=2568 — matched). `DisputeFactory::resolved()`'s inconsistent fabricated amounts dropped (advisor's
+non-blocking finding); not used by any test yet, confirmed by grep.
+
+Full suite (via the Bash tool, not PowerShell — see the 01:53 VERIFICATION's environment note):
+`{"tool":"pest","result":"passed","tests":1925,"passed":1925,"assertions":9805,"duration_ms":492037}`
+— +4 tests, +70 assertions over the pre-consult baseline (1921/9735), matching the 4 new it() blocks
+exactly (the three edited tests and the dial-matrix test were modified in place, not added).
+`php artisan ledger:verify` → "Ledger OK: every lesson sums to zero." RTL check → "RTL check passed"
+exit 0. `npm run build` → "✓ built in 40.62s". Pint → `{"tool":"pint","result":"passed"}`. PHPStan →
+`{"tool":"phpstan","result":"passed","errors":0}`.
+
+Two NOTE entries logged (02:10, 02:11) correcting the 01:41 DECISION's misapplied precedence rule
+(trial prefill reverts to R150's 100/0) and confirming (not just asserting) that
+`no_show_student`'s transition leaves no persisted trace anywhere in the schema — both to be carried
+into docs/STATUS.md §6 as disclosed plan-repo gaps.
+
+Remaining from the 02:05 ADVISOR consult, not yet done: correcting the stale `// 0/0 dial` comment
+(done, folded into this commit's test edits), the PR-gate literal-`composer test` reminder (carried
+to the pre-PR step, not yet reached), the Earnings-page DECISION + §6 entry (still open, carried
+forward to before the PR per the same consult).

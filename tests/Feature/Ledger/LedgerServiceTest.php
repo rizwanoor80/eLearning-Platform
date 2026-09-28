@@ -301,7 +301,7 @@ it('keeps floats and rounding out of the money code', function () {
 
 // ---- settle: two-dial dispute resolution (R150) ---------------------------------------------
 
-it('settles a still-held lesson (never released): three SETTLE leg-pairs, no reversal, sums to zero', function () {
+it('settles a still-held lesson (never released): a 0% dial writes no leg pair, sums to zero', function () {
     $lesson = lgLesson(); // price 10000, tutor_amount 7500, commission_amount 2500
     lgLedger()->hold($lesson);
     $dispute = Dispute::factory()->for($lesson)->create();
@@ -309,12 +309,15 @@ it('settles a still-held lesson (never released): three SETTLE leg-pairs, no rev
     $result = lgLedger()->settle($lesson, $dispute, 100, 0);
 
     expect($result)->toBe(['refund' => 10000, 'tutor' => 0, 'platform_delta' => 0])
+        // tutor and platform_delta are both 0 for this dial: no release_tutor/release_commission/goodwill leg is written at all.
         ->and(array_slice(lgLegs($lesson), 2))->toBe([
             ['escrow', 'refund', -10000], ['refund', 'refund', 10000],
-            ['escrow', 'release_tutor', 0], ['tutor', 'release_tutor', 0],
-            ['escrow', 'release_commission', 0], ['platform', 'release_commission', 0],
         ])
         ->and(lgLedger()->sum($lesson))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Escrow))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Refund))->toBe(10000)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Tutor))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Platform))->toBe(0)
         ->and(lgLedger()->unbalancedLessons())->toBeEmpty();
 });
 
@@ -327,10 +330,10 @@ it('settles an already-released lesson (completed_reported): typed reversal legs
     $result = lgLedger()->settle($lesson, $dispute, 0, 100); // PRD's student-no-show default
 
     expect($result)->toBe(['refund' => 0, 'tutor' => 7500, 'platform_delta' => 2500])
+        // refund is 0 for this dial: the refund leg pair is skipped, unlike the unconditional reversal legs.
         ->and(array_slice(lgLegs($lesson), 6))->toBe([
             ['escrow', 'release_reversal', 7500], ['tutor', 'release_reversal', -7500],
             ['escrow', 'release_reversal', 2500], ['platform', 'release_reversal', -2500],
-            ['escrow', 'refund', 0], ['refund', 'refund', 0],
             ['escrow', 'release_tutor', -7500], ['tutor', 'release_tutor', 7500],
             ['escrow', 'release_commission', -2500], ['platform', 'release_commission', 2500],
         ])
@@ -346,12 +349,14 @@ it('settles a negative platform delta as goodwill', function () {
     lgLedger()->hold($lesson);
     $dispute = Dispute::factory()->for($lesson)->create();
 
-    $result = lgLedger()->settle($lesson, $dispute, 100, 100); // 0/0 dial
+    $result = lgLedger()->settle($lesson, $dispute, 100, 100); // 100/100 dial -- refund and tutor both paid in full, platform ends up short
 
     expect($result)->toBe(['refund' => 10000, 'tutor' => 7500, 'platform_delta' => -7500])
         ->and(array_slice(lgLegs($lesson), 2, 2))->toBe([['escrow', 'refund', -10000], ['refund', 'refund', 10000]])
+        ->and(array_slice(lgLegs($lesson), 4, 2))->toBe([['escrow', 'release_tutor', -7500], ['tutor', 'release_tutor', 7500]])
         ->and(array_slice(lgLegs($lesson), 6))->toBe([['escrow', 'goodwill', 7500], ['platform', 'goodwill', -7500]])
-        ->and(lgLedger()->sum($lesson))->toBe(0);
+        ->and(lgLedger()->sum($lesson))->toBe(0)
+        ->and(lgLedger()->balance($lesson, LedgerAccount::Platform))->toBe(-7500);
 });
 
 it('tags every leg it writes with the dispute id', function () {
@@ -367,26 +372,81 @@ it('tags every leg it writes with the dispute id', function () {
         ->toBeNull();
 });
 
-it('sums to zero at every PRD default, 0/0, 100/100 and a rounding case, whether or not the lesson was already released', function (int $refundPct, int $tutorPct) {
+it('computes the exact r/t/d fils and final per-account balances at every PRD default, 0/0, 100/100 and a rounding case, whether or not the lesson was already released', function (int $refundPct, int $tutorPct, int $refund, int $tutor, int $platformDelta) {
+    // price 12347, commission_pct 33 -> commission_amount 4075, tutor_amount 8272 (frozen split, R53).
     foreach ([false, true] as $alreadyReleased) {
-        $lesson = lgLesson(12347, 33); // prime price -- exercises the rounding
+        $lesson = lgLesson(12347, 33); // prime price -- exercises rounding on both the split and the dials
         lgLedger()->hold($lesson);
         if ($alreadyReleased) {
             lgLedger()->release($lesson);
         }
         $dispute = Dispute::factory()->for($lesson)->create();
 
-        lgLedger()->settle($lesson, $dispute, $refundPct, $tutorPct);
+        $result = lgLedger()->settle($lesson, $dispute, $refundPct, $tutorPct);
 
-        expect(lgLedger()->sum($lesson))->toBe(0);
+        // Whether or not the lesson was already released, the reversal (when present) exactly
+        // undoes the prior release first, so the final balances are the same either way.
+        expect($result)->toBe(['refund' => $refund, 'tutor' => $tutor, 'platform_delta' => $platformDelta])
+            ->and(lgLedger()->sum($lesson))->toBe(0)
+            ->and(lgLedger()->balance($lesson, LedgerAccount::Escrow))->toBe(0)
+            ->and(lgLedger()->balance($lesson, LedgerAccount::Refund))->toBe($refund)
+            ->and(lgLedger()->balance($lesson, LedgerAccount::Tutor))->toBe($tutor)
+            ->and(lgLedger()->balance($lesson, LedgerAccount::Platform))->toBe($platformDelta);
     }
 })->with([
-    'trial default 100/0' => [100, 0],
-    'student no-show default 0/100' => [0, 100],
-    '0/0' => [0, 0],
-    '100/100' => [100, 100],
-    '37/63' => [37, 63],
+    'trial default 100/0' => [100, 0, 12347, 0, 0],
+    'student no-show default 0/100' => [0, 100, 0, 8272, 4075],
+    '0/0' => [0, 0, 0, 0, 12347],
+    '100/100' => [100, 100, 12347, 8272, -8272],
+    '37/63' => [37, 63, 4568, 5211, 2568],
 ]);
+
+// ---- settle: guarded against a second call and a mismatched dispute (advisor consult) --------
+
+it('refuses a second settle on a still-held lesson, writing nothing more', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+    lgLedger()->settle($lesson, $dispute, 100, 0);
+    $countAfterFirst = $lesson->ledgerEntries()->count();
+
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 100, 0))->toThrow(LedgerException::class, 'already been settled')
+        ->and($lesson->ledgerEntries()->count())->toBe($countAfterFirst)
+        ->and(lgLedger()->sum($lesson))->toBe(0);
+});
+
+it('refuses a second settle on an already-released lesson, writing nothing more', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    lgLedger()->release($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+    lgLedger()->settle($lesson, $dispute, 0, 100);
+    $countAfterFirst = $lesson->ledgerEntries()->count();
+
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 0, 100))->toThrow(LedgerException::class, 'already been settled')
+        ->and($lesson->ledgerEntries()->count())->toBe($countAfterFirst)
+        ->and(lgLedger()->sum($lesson))->toBe(0);
+});
+
+it('refuses to settle a lesson that was never held at all', function () {
+    $lesson = lgLesson();
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    // Escrow is 0 (no entries at all), which alone looks like "already released" -- but the
+    // tutor/platform balances (also 0) don't match the frozen split, so this is refused too.
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 100, 0))->toThrow(LedgerException::class, 'never released')
+        ->and($lesson->ledgerEntries()->count())->toBe(0);
+});
+
+it('refuses to settle a lesson with a dispute that belongs to a different lesson', function () {
+    $lesson = lgLesson();
+    lgLedger()->hold($lesson);
+    $otherLesson = lgLesson();
+    $dispute = Dispute::factory()->for($otherLesson)->create();
+
+    expect(fn () => lgLedger()->settle($lesson, $dispute, 100, 0))->toThrow(LedgerException::class, 'does not belong to lesson')
+        ->and($lesson->ledgerEntries()->count())->toBe(2);
+});
 
 it('refuses dials outside 0-100, writing nothing', function () {
     $lesson = lgLesson();

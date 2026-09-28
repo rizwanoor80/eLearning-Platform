@@ -28,15 +28,19 @@ class DisputeFactory extends Factory
         ];
     }
 
+    /**
+     * The trial default (R150): 100% refund, 0% tutor pay. `refund_amount` matches (the lesson's
+     * frozen price is not known here, so this state is for tests that only need a resolved status
+     * and consistent dials, not for asserting real ledger amounts — pass explicit amounts via
+     * `->state()` when a test needs those to match a real `settle()` call).
+     */
     public function resolved(): static
     {
         return $this->state(fn (): array => [
             'status' => DisputeStatus::Resolved,
             'parent_refund_pct' => 100,
             'tutor_pay_pct' => 0,
-            'refund_amount' => 0,
             'tutor_paid_amount' => 0,
-            'platform_delta' => 0,
             'admin_note' => fake()->sentence(),
             'resolved_by' => User::factory(),
             'resolved_at' => now(),
