@@ -2380,3 +2380,36 @@ worktrees" both counsel against acting on a process this session didn't start wi
 owner. Disclosed here for visibility, not treated as a BLOCKER — nothing in this session's own run was
 actually blocked by them (the real delay was `artisan test`'s own paratest bootstrap, not a lock wait;
 the run finished cleanly in 16.3s of actual work once done).
+
+22:24 VERIFICATION — 9a(b) built, tested and committed (`bd0a42a` on `cp/9a-hardening`): closes the
+gate-open catastrophic-backtracking gap R144(b) disclosed but did not fix, exactly the way that
+disclosure named (class docblock, MessageMasker.php:129-139 pre-change).
+Design (per the advisor consult that produced it, prior entry this cycle): new `BARE_DOMAIN_LABEL`
+(`[\p{L}\p{Nd}]+`, no `-`) replaces the label class shared with `JUNK` in `NAMED_DOMAIN_LOOSE`,
+`NAMED_DOMAIN_TIGHT` and `COUNTRY_DOMAIN` only — `JUNK`, `EMAIL` and `MAIL_PROVIDER` untouched, confirmed
+byte-identical by diff. New `MAX_BARE_DOMAIN_LABELS` (16) bounds the outer group's iterations,
+belt-and-suspenders once the overlap is gone.
+Verified empirically, not just reasoned, before writing fixtures (scratch scripts under the session
+scratchpad, not committed):
+- The exact disclosed repro, `str_repeat('a-', 20).' ok'`, against the OLD `COUNTRY_DOMAIN` pattern:
+  `PREG_BACKTRACK_LIMIT_ERROR`, ~27ms. Against the NEW pattern: matches/fails cleanly, <1ms.
+- `preg_match` on the new `NAMED_DOMAIN_LOOSE` pattern for the "19 single-letter labels then .com"
+  fixture returns `c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.com` — confirms the cap leaves "a." and "b."
+  unmasked and masks the rest, not a full pass-through — before the fixture was written into the test.
+- Three more gate-open shapes (long dash run before a non-word/word-like ending, mixed dot/dash run):
+  0.5-11ms each, all well inside the 50ms R144(b) budget.
+Every existing dash-related fixture re-checked by grep against the new label class before touching the
+regex (prior entry this cycle's investigation): `sara@gmail-com` is `EMAIL`'s (untouched constant,
+unaffected); `visit mysite - com now` and `visit mysite•ae now` use `-`/`•` only as a separator between
+plain-letter labels, never inside one, so `BARE_DOMAIN_LABEL` doesn't change their match — confirmed by
+running the full suite, not just by this reasoning.
+Test result: `php artisan test --filter=MessageMaskerTest` — 175 passed, 194 assertions, 3.5s.
+`php artisan test --filter=Messaging` (full unit+feature messaging surface) — 222 passed, 665
+assertions, 158.8s. `vendor/bin/pint --dirty --test` — clean.
+Class docblock (MessageMasker.php) and ADR-019 (`docs/DECISIONS.md`) both amended to record the shipped
+fix, on the feature branch alongside the code — matching the R143/R144 precedent (`00d22a2`, confirmed
+via `git merge-base --is-ancestor` to have landed via the `cp/8b-messaging` PR, not pushed to `main`
+mid-cycle), not the general "docs go to main" rule, since this entry documents code not yet merged.
+Remaining for step 2: (d) trusted proxies, (e) fake video-provider allow-list, (f) `RequiresActiveAdmin`
+dataset, (g) named rate limiter, (c) `EnsureAccountActive` docblock reword — advisor order (d)→(e)→(f)→
+(g)→(c). Pre-PR advisor consult and the 9a PR process itself remain after those five.
