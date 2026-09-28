@@ -2076,3 +2076,18 @@ all → 200.
 Step 6 (8e) closed. `cp/8e-notifications` kept (not deleted), matching the 8-checkpoint pattern. Proceeding
 to tick a new CP7 acceptance box for the notification centre, rewrite STATUS.md at this step boundary, then
 start step 7 (deploy `trustutor-rehearsal` under R111).
+
+## [2026-09-28 18:42 machine clock] DECISION — step 7, rehearsal deploy authorisation quoted before acting (rule 8)
+
+R111 (PLAN cycle 05 r4, standing, rehearsal only, restated unchanged through cycles 06-08): "CC deploys
+trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only. This is the owner's standing
+named authorisation (rule 8) for every rehearsal deploy and the migrations that run inside it; CC quotes
+this ruling in the log before each deploy." CLAUDE.local.md's own repository section confirms: "CC deploys
+rehearsal itself per PLAN R111 by fast-forwarding rehearsal to a green main commit — owner ruling
+2026-09-26."
+
+Precondition check: `main`'s code-bearing tip is `d3c8a0a` (the PR #34 merge commit; `a464950` above it is
+docs-only, `[skip ci]`, matching the established "deploy the code commit, not the docs-only tip" precedent
+from cycle 07 r1). `rehearsal` is currently at `042f7c0` (7g branding, last deployed cycle 07). `git
+merge-base --is-ancestor 042f7c0 d3c8a0a` confirmed true — fast-forward safe, 84 commits ahead. Deploying
+`d3c8a0a` via `git push origin d3c8a0a:refs/heads/rehearsal`, no `--force`.
