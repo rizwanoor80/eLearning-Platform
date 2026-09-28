@@ -2052,3 +2052,27 @@ Verdicts: 5 PASS, 0 FAIL, 0 PASS WITH NOTE.
 
 MERGE: yes. Finding 1b is closed with no new regression. Proceeding to check CI on commit `9cbbcd9` and
 attempt self-merge under R141/R147.
+
+## [2026-09-28 18:52 machine clock] VERIFICATION — post-merge record, PR #34 merged (main at d3c8a0a)
+
+PR #34 self-merged under R141/R147: no open Medium/High (Finding 1b closed by the scoped re-review's
+`MERGE: yes`), CI 0/0 (no GitHub Actions workflow configured for this repo — consistent with PRs #30-33's
+own history), `mergeStateStatus: CLEAN`, diff stayed in R139's scope. `gh pr merge 34 --merge` (branch kept,
+not deleted) → merge commit `d3c8a0a421a786d454e31e8cae96887f51e93e2e`, merged 2026-09-28T14:31:20Z (`gh pr
+view 34 --json state,mergedAt,mergeCommit`). `git fetch` + `git checkout main` + `git merge --ff-only
+origin/main` → local `main` fast-forwarded to `d3c8a0a` cleanly.
+
+Full post-merge gate re-run on `main` at `d3c8a0a`: pint — passed; phpstan — 0 errors (full-project run
+needs `--memory-limit=1G`, the default 128M crashes the parallel workers; an isolated two-file run earlier
+in this cycle had surfaced one `missingType.iterableValue` note on `notifLesson()`'s pre-existing
+`$overrides` param — confirmed an artifact of subset analysis, not a real regression, since the full-project
+run is clean); RTL check — passed; Pest **1869/1869 passed, 9547 assertions** (reconciles exactly: 1868
+pre-merge baseline + 1 new malformed-id regression test from fix loop 1, 9545 + 2 new `assertNotFound()`
+assertions). `php artisan ledger:verify --no-interaction` → "Ledger OK: every lesson sums to zero."
+`npm run build` → built in 52.43s, exit 0. R141 smoke checks via `curl` against the local app (`APP_URL`
+read via `php artisan config:show app.url`, not `.env` directly): `/`, `/login`, `/admin/login`, `/tutors`
+all → 200.
+
+Step 6 (8e) closed. `cp/8e-notifications` kept (not deleted), matching the 8-checkpoint pattern. Proceeding
+to tick a new CP7 acceptance box for the notification centre, rewrite STATUS.md at this step boundary, then
+start step 7 (deploy `trustutor-rehearsal` under R111).
