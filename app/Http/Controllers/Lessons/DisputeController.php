@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Lessons;
 use App\Actions\Lessons\OpenDispute;
 use App\Enums\DisputeReason;
 use App\Exceptions\DisputeException;
+use App\Exceptions\LessonTransitionException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Lessons\StoreDisputeRequest;
 use App\Models\Lesson;
@@ -44,7 +45,7 @@ class DisputeController extends Controller
                 'tutor_display_name' => $lesson->tutorProfile->displayName(),
                 'starts_at_label' => $lesson->starts_at->copy()->setTimezone($this->user($request)->timezone)->format('D, j M Y, g:i A'),
             ],
-            'reasons' => array_map(fn (DisputeReason $reason) => ['value' => $reason->value, 'label' => $reason->name], DisputeReason::cases()),
+            'reasons' => DisputeReason::options(),
         ]);
     }
 
@@ -54,7 +55,13 @@ class DisputeController extends Controller
 
         try {
             $open($this->user($request), $lesson, DisputeReason::from($request->validated('reason')), $request->validated('description'));
-        } catch (DisputeException $e) {
+        } catch (DisputeException|LessonTransitionException $e) {
+            // `LessonTransitionException` is the state machine's own edge-assert rejecting a
+            // status this lesson can no longer move from (e.g. a stale tab resubmitting on an
+            // already-disputed or since-settled lesson) — `problemFor()` inside the locked
+            // transition catches the ordinary cases first, but the assert can still fire before
+            // `$work` ever runs. Caught here the same way `CancelLessonController` catches it for
+            // the same race, so a double-click flashes a toast instead of a 500.
             Inertia::flash('toast', ['type' => 'error', 'message' => $e->getMessage()]);
 
             return to_route('lessons.show', $lesson);

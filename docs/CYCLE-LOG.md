@@ -3068,3 +3068,149 @@ Full suite (via the Bash tool, not PowerShell):
 `{"tool":"pest","result":"passed","tests":1941,"passed":1941,"assertions":9902,"duration_ms":489659}`
 — +16 tests, +97 assertions over the 02:18 VERIFICATION's baseline (1925/9805), matching
 `tests/Feature/Lessons/OpenDisputeTest.php`'s 16 `it()` blocks exactly. Suite did not shrink.
+
+## [2026-09-29 03:00 machine clock] ADVISOR — pre-compaction consult on the stale docs/STATUS.md rewrite (Fable), logged late
+
+This consult happened at 22:53 (this cycle, before the auto-compaction that split this window),
+right after `docs/STATUS.md` was read in full and found stale since 9a's close (§2/§8 still showing
+step 3 as "not started" despite `a5c7fd2`/`b1f609e`/`2c57699` all being real 9b work). It was never
+logged before the compaction cut the segment — logged now, late, rather than silently. R63: the tool
+does not report which model answered, so this entry carries PROJECT_BRIEF.md's fixed phrase naming
+the configured advisor, currently Fable (owner, 2026-09-28).
+
+The consult's guidance cannot be quoted verbatim here: the raw transcript
+(`255b69d1-7f5f-4672-934b-71f3f655f574.jsonl`, the `advisor_tool_result` at the `srvtoolu_01VcADcfr7nnqELFgLruTrEW`
+call) stores the advisor's answer as `encrypted_content`, not plain text — grepping it returns
+ciphertext, not a quotable line. The guidance was read and acted on in full inside that segment
+itself (the model was live in context then, before compaction), and its substance survived into the
+post-compaction summary handed to this segment: (1) `docs/CYCLE-LOG.md` had already diverged 221
+lines from `origin/main` on this branch — keep 9b's docs on `cp/9b-disputes` until merge and log a
+DEVIATION; (2) the 02:38 VERIFICATION's Carbon-truncation causal claim needed direct verification,
+not just restating; (3) the auto-release sweep's disputed-lesson safety, and the report_late_at/
+late-strike safety, were asserted but never actually checked against the code; (4) `DisputeController`
+was showing the raw enum case name (`$reason->name`, e.g. "NoShow") instead of a label. All four are
+addressed below and in this session's edits — this entry exists so the consult itself is on the
+record even though its exact wording is not recoverable, per rule 11 ("an entry that cannot name the
+model is a tool failure, not a consultation" — this one names the model; what it lacks is a verbatim
+quote, disclosed here rather than fabricated).
+
+## [2026-09-29 03:02 machine clock] NOTE — correcting the 02:38 VERIFICATION's Carbon-truncation claim
+
+That entry (and the pre-compaction segment's own summary before it) claimed Carbon's `subHours()`/
+`addHours()` "truncate" a fractional hour argument, and framed switching `disputeSetup()` to
+whole-minute arithmetic as part of the fix. Tested directly and disproved:
+
+```
+php -r 'require "vendor/autoload.php"; echo Carbon\Carbon::parse("2026-01-01 12:00")->subHours(48 + 1/60)->toDateTimeString();'
+```
+
+prints `2025-12-30 11:59:00` — correct to the minute, not truncated to `12:00:00`. Carbon accepts and
+correctly applies a float hour count. The real, sole cause of the original "48h and 1 minute" test
+failure was the `static $slot` offset in `disputeSetup()` (see the 02:38 entry's bug 2) shifting
+`ends_at` away from real `now()` by the slot amount — already fixed by removing the offset entirely.
+The whole-minute-arithmetic change was cosmetic, not the fix. `tests/Feature/Lessons/OpenDisputeTest.php`'s
+`disputeSetup()` docblock now points here instead of repeating the false claim. Own mistake, corrected
+in plain words per rule 12.
+
+## [2026-09-29 03:04 machine clock] NOTE — auto-release/late-strike safety confirmed, dropdown label fixed, no new test needed
+
+Two safety properties the advisor asked to have checked against the code, not just asserted, both
+confirmed clean:
+
+1. **The auto-release sweep already excludes a disputed lesson.** `AutoReleaseLesson::due()`
+   (`app/Actions/Lessons/AutoReleaseLesson.php:57-67`) queries only `where('status', LessonStatus::Completed)`
+   — a `disputed` lesson never matches. Even in a race (a dispute opens between the sweep's query and
+   its per-lesson lock), `LessonStateMachine::transition($lesson, LessonStatus::CompletedReported, ...)`
+   has no `disputed -> completed_reported` edge, throws `LessonTransitionException`, and
+   `AutoReleaseReports::handle()` (`app/Console/Commands/AutoReleaseReports.php:29-38`) catches that
+   exception per-lesson and moves on without releasing.
+2. **Disputing can never cause a false late-report strike.** `report_late_at` (the sole input to
+   `ReviewLateReports`'s strike count) is written only by `AutoReleaseLesson.php:36`, only when an
+   auto-release actually completes — which point 1 shows a disputed lesson can never reach. A parent
+   disputing a lesson can only ever prevent a late flag, never cause one.
+
+**Correcting the advisor's own "the hold has no test" claim (its point 3a from the pre-compaction
+consult):** it is wrong. `tests/Feature/Lessons/AutoReleaseReportsTest.php:144-162`
+("`leaves a disputed, an already-reported and a not-yet-due lesson alone`"), added in `da03062`
+(cycle 7e, 2026-09-26 — well before 9b started), already disputes a `completed` lesson past its
+`auto_release_at`, runs the sweep, and asserts the lesson's status is still `disputed`,
+`report_late_at` stays null, no ledger entries change, and the command exits successfully — exactly
+the coverage the advisor described as missing. Re-ran it standalone this segment:
+`{"tool":"pest","result":"passed","tests":1,"passed":1,"assertions":6,"duration_ms":2641}`. No new
+test written; the "add an auto-release-skip test" item is dropped from this cycle's remaining work.
+
+Also fixed this segment: `DisputeController::create()` was passing `'label' => $reason->name` to the
+frontend `<select>` — raw, machine-cased case names (e.g. "NoShow") shown to a parent filing a
+dispute, instead of a readable label. `app/Enums/DisputeReason.php` gained `label()`/`options()`
+matching `AbuseReportReason`'s established pattern; `DisputeController` now passes
+`DisputeReason::options()`. Re-ran `tests/Feature/Lessons/OpenDisputeTest.php` after the change:
+`{"tool":"pest","result":"passed","tests":16,"passed":16,"assertions":97,"duration_ms":10499}` — the
+existing "shows the dispute form..." test only asserts the option count, not label text, so this was
+not caught by any test; no dedicated label-content test was added, since no other reason-select in
+the codebase has one either (checked `AbuseReportReasonTest`-style coverage: none exists).
+
+## [2026-09-29 03:06 machine clock] DEVIATION — 9b's docs stay on `cp/9b-disputes`, not `main`, until merge (rule 6)
+
+Rule 6: "Docs-only commits (PLAN revision, STATUS, CYCLE-LOG, reports, DECISIONS when authorised,
+post-merge record) go to main and push immediately, with `[skip ci]` in the message." This cycle has
+not followed that: `git diff --stat origin/main...HEAD -- docs/` shows `docs/CYCLE-LOG.md` and
+`docs/STATUS.md` have diverged from `origin/main` (still at `9dbd70b`, unchanged since before 9b
+started) by hundreds of lines, entirely from 9b-cycle STATUS/CYCLE-LOG writes committed straight onto
+`cp/9b-disputes` alongside the code, instead of being split onto `main` as their own docs-only
+commits per rule 6's normal path.
+
+Decision: keep it that way until this cycle's PR merges, rather than now splitting `main`- and
+branch-only doc commits apart mid-cycle. Reasoning: (1) every 9b commit so far (`a5c7fd2`, `b1f609e`,
+`2c57699`, and this one) already carries its own STATUS/CYCLE-LOG updates in the same commit as the
+code — unwinding that onto separate `main` pushes now would rewrite already-pushed history on a
+branch other sessions may read; (2) `docs/CYCLE-LOG.md` and `docs/STATUS.md` on `origin/main` still
+show the 9a-close state and will need a real merge (not a fast-forward) with 9b's own docs changes
+the moment this branch's PR lands — splitting mid-cycle only guarantees that conflict happens twice
+instead of once; (3) nothing about keeping docs on the feature branch violates any invariant or
+loses information — the full history is still in git, just not yet on `main`. `origin/main`'s
+`docs/STATUS.md` stays at the 9a-close version; the live, current copy is on `cp/9b-disputes` and
+will land on `main` as part of this cycle's merge. Flagged for the next cycle's START: resume
+splitting doc-only commits onto `main` immediately per rule 6's normal path once 9b merges — this
+DEVIATION is for 9b only, not a standing change to the rule.
+
+## [2026-09-29 03:09 machine clock] VERIFICATION — `LessonTransitionException` bug fixed, full gate set green (1943/1943)
+
+**The bug, found by the 22:53/02:53-machine-clock advisor consult (already logged above as the 03:00
+ADVISOR entry — checked directly this entry: it is the same single consult, not a second one; the
+grep-for-`LessonTransitionException` and the read of `CancelLessonController.php` that followed it in
+that same turn are what actually surfaced the fix below, so this VERIFICATION entry is where that
+finding gets its concrete record).** `DisputeController::store()` could 500 on a stale or double-submit
+POST: `LessonStateMachine::transition()` asserts the required status edge (throwing
+`LessonTransitionException`) *before* running the closure that contains `OpenDispute`'s own
+`problemFor()` eligibility check, so a lesson already `disputed`/`settled`/`in_progress` (i.e. not
+`completed`/`completed_reported`) throws a `LessonTransitionException` the controller's
+`catch (DisputeException $e)` never caught — and `bootstrap/app.php` has no global handler for it
+either (checked in full: only `dontFlash` and `shouldRenderJsonWhen`). Fixed by widening the catch to
+`catch (DisputeException|LessonTransitionException $e)`, matching the identical pattern already used
+by `CancelLessonController.php:46` for the same race.
+
+Verified with two new HTTP tests in `tests/Feature/Lessons/OpenDisputeTest.php`: a stale POST to an
+`InProgress` lesson, and a stale second POST to an already-`Disputed` lesson — both now
+`assertRedirect(route('lessons.show', $lesson))` instead of 500. Also retitled the existing
+`'refuses a second dispute...'` unit test (was `'..., converted from the unique index, not a 500'`) to
+`'refuses a second dispute for the same lesson once it is already disputed'` with an explanatory
+comment: in a single process the state machine's own edge assert refuses the second attempt before
+`problemFor()` or the `disputes.lesson_id` unique index is ever reached, so the old title claimed a
+path (the unique-index conversion) this test never actually exercised. Body/assertions unchanged.
+
+Full `composer test` gate set, run once on the current tree (config:clear, Pint, PHPStan, `vue-tsc`,
+RTL check, Pest parallel, `ledger:verify`), literal output:
+
+```
+{"tool":"pint","result":"passed"}
+{"tool":"phpstan","result":"passed","errors":0}
+RTL check passed: no physical-direction utilities found in resources/ (excluding the animate plugin's
+fixed slide-in-from-left/right keyframe names, R9).
+{"tool":"pest","result":"passed","tests":1943,"passed":1943,"assertions":9909,"duration_ms":376190}
+Ledger OK: every lesson sums to zero.
+```
+
+1943 tests / 1943 passed / 9909 assertions — exactly +2 tests / +7 assertions over the pre-fix baseline
+(`1941`/`9902`, from the earlier `b230v3nx5` background run, which is now superseded and was not used
+for this VERIFICATION per the advisor's own instruction not to use a pre-fix count). Suite did not
+shrink. `vue-tsc --noEmit` produced no errors. All gates green; ready to commit and push per rule 7.

@@ -23,11 +23,11 @@ use function Pest\Laravel\actingAs;
  */
 function disputeSetup(LessonStatus $status = LessonStatus::Completed, float $hoursAgo = 2.0, array $overrides = []): array
 {
-    // Minutes, not fractional subHours(): Carbon's subHours()/addHours() only accept an int, so a
-    // fractional hour count (e.g. the "48h and 1 minute ago" edge case) would silently truncate.
-    // No slot offset here: each call gets its own fresh tutor and learner (no shared-time unique
-    // index applies), and an offset added on top of `now()` would shift `ends_at` away from the
-    // exact `$hoursAgo` the window-boundary tests depend on.
+    // Minutes, computed once: no slot offset here (unlike some other lesson-factory test helpers
+    // in this codebase) — each call gets its own fresh tutor and learner, so nothing needs to keep
+    // times apart, and an offset added on top of `now()` would shift `ends_at` away from the exact
+    // `$hoursAgo` the window-boundary tests below depend on (this was a real bug here once: see the
+    // 02:38/NOTE CYCLE-LOG entries — Carbon's subHours()/addHours() do accept a float correctly).
     $minutesAgo = (int) round($hoursAgo * 60);
 
     $tutor = TutorProfile::factory()->approved()->create();
@@ -127,7 +127,13 @@ it('attributes the dispute to the account holder, never the learner, and only th
 
 // ---- once, even under a race ---------------------------------------------------------------------
 
-it('refuses a second dispute for the same lesson, converted from the unique index, not a 500', function () {
+// In a single process the second attempt is refused by `LessonStateMachine`'s own edge assert
+// (the lesson is already `disputed`, so `completed`/`completed_reported` -> `disputed` no longer
+// applies) before `$work`, and so before `problemFor()` or the unique index, ever runs — the
+// index only guards a true concurrent race across two connections, which this test cannot drive.
+// Named for what it actually proves, not for the index (see the two HTTP tests below for the
+// bug this once was: the assert's `LessonTransitionException` reaching the controller uncaught).
+it('refuses a second dispute for the same lesson once it is already disputed', function () {
     ['lesson' => $lesson, 'parent' => $parent] = disputeSetup();
     app(OpenDispute::class)($parent, $lesson, DisputeReason::Quality, 'First complaint.');
 
@@ -167,6 +173,28 @@ it('opens the dispute over HTTP and redirects to the lesson page with a success 
     $dispute = Dispute::query()->where('lesson_id', $lesson->id)->sole();
     expect($dispute->reason)->toBe(DisputeReason::NoShow)
         ->and($lesson->fresh()->status)->toBe(LessonStatus::Disputed);
+});
+
+// ---- a stale form POST hits the state machine's own edge assert, not a 500 (advisor-caught) -----
+
+it('flashes a toast and redirects, not a 500, when a stale POST targets an ineligible lesson', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = disputeSetup(LessonStatus::InProgress);
+
+    actingAs($parent)->post(route('lessons.dispute.store', $lesson), ['reason' => 'quality', 'description' => 'x'])
+        ->assertRedirect(route('lessons.show', $lesson));
+
+    expect(Dispute::query()->count())->toBe(0);
+});
+
+it('flashes a toast and redirects, not a 500, when a stale POST re-submits an already-disputed lesson', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = disputeSetup();
+    app(OpenDispute::class)($parent, $lesson, DisputeReason::Quality, 'First complaint.');
+
+    actingAs($parent)->post(route('lessons.dispute.store', $lesson), ['reason' => 'technical', 'description' => 'Second complaint.'])
+        ->assertRedirect(route('lessons.show', $lesson));
+
+    expect(Dispute::query()->where('lesson_id', $lesson->id)->count())->toBe(1)
+        ->and(Dispute::query()->where('lesson_id', $lesson->id)->sole()->description)->toBe('First complaint.');
 });
 
 it('validates the reason and description over HTTP', function () {

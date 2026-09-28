@@ -15,4 +15,24 @@ enum DisputeReason: string
     case Quality = 'quality';
     case Technical = 'technical';
     case Other = 'other';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::NoShow => 'A no-show',
+            self::Quality => 'Quality of the lesson',
+            self::Technical => 'A technical problem',
+            self::Other => 'Other',
+        };
+    }
+
+    /**
+     * The dispute form's select (CP8, R150) — same shape as `AbuseReportReason::options()`.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    public static function options(): array
+    {
+        return array_map(fn (self $reason): array => ['value' => $reason->value, 'label' => $reason->label()], self::cases());
+    }
 }
