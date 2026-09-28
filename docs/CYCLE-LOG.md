@@ -2562,3 +2562,107 @@ insertions, 7 deletions.
 Step 2 progress: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0`, (e) `f97c119` done
 locally on `cp/9a-hardening`; not yet pushed/merged. Continuing directly into (f) per the advisor's
 build order.
+
+## [2026-09-28 18:46 machine clock] ADVISOR — step 2, item (f) design consult, model claude-opus-5-5 (R149(f), rule 11)
+
+Consulted before writing any test code, per rule 11's mandate to consult on an auth-code judgment
+call. Confirmed the vacuity risk found by primary-source reading beforehand (`User::canAccessPanel()`
+already blocks every panel HTTP route for a suspended admin via Filament's own `Authenticate`
+middleware, so an HTTP-based "disabled admin gets 403" test would pass whether or not a resource's
+own guard was applied — the same shape of vacuity flagged for R149(d)'s trusted-proxies test) and
+redirected the design onto the actual gap: this app has no published `config/livewire.php`, so
+Livewire's `/livewire/update` endpoint runs Livewire's default `web`-only middleware, not the panel's
+`authMiddleware` — an admin's already-open tab can keep firing Livewire actions after being disabled
+mid-session unless the resource's own `can*()` methods refuse independently. Returned a 6-point build
+checklist, executed in full: (1) grep every resource for a `canDelete`/`canDeleteAny` override the
+trait's blanket `false` would silently remove — found and preserved YearGroupResource's guarded,
+audited delete; (2) confirm `MatchRequestResource::canAccess()` composes through
+`parent::canAccess()` rather than replacing it; (3) read every existing policy for the touched
+resources in full before assuming the trait is additive, not a narrowing; (4) audit `canCreate()`
+coverage separately, since the trait does not include it; (5) prove the dataset-source mechanics
+empirically before writing the real test file, given Pest evaluates a `with()` closure at collection
+time before Laravel boots; (6) assert both the positive control (active admin keeps access) and the
+negative case per resource, plus `canCreate()` only where a create page is actually registered. Quote
+of the returned guidance, as paraphrased into the shipped test file's docblock at the time (the
+advisor's own transcript text is end-to-end encrypted at rest and is not retrievable verbatim after
+the fact — recorded here from the contemporaneous paraphrase rather than invented after the event, in
+keeping with rule 12): "a test built on an HTTP request would pass whether or not a resource has its
+own guard, the same vacuity the design consult flagged for R149(d)'s trusted-proxies test... [so]
+this file calls those methods directly, bypassing HTTP and `canAccessPanel()` entirely." First advisor
+consultation of this cycle's step 2 to be logged with this correction noted — confirmed the advisor
+answered (6-point checklist, all 6 executed and visible in the item (f) commit) rather than timing out.
+
+## [2026-09-28 23:05 machine clock] VERIFICATION — step 2, item (f) RequiresActiveAdmin (or equivalent) on every Filament resource built, tested, committed (R149(f))
+
+Built from the 18:46 advisor consult above. Applied `App\Filament\Concerns\RequiresActiveAdmin` to
+the 7 resources that lacked it (`ContentBlockResource`, `DocumentTypeResource`, `PriceBandResource`,
+`SitePageResource` — no prior policy at all; `TutorProfileResource` — a policy exists but has no
+`viewAny`/`view`/`update` method, so Filament's no-policy-method default was allow; `UserResource` —
+no prior policy; `YearGroupResource` — no prior policy) plus, for consistency/defense-in-depth,
+`MatchRequestResource` and `RecurringSlotResource`, whose own policies (`MatchRequestPolicy`,
+`RecurringSlotPolicy`) already gated active-admin status for every path reachable through the panel
+(their `AccountOwner`/`Tutor` branches are dead code in-panel, since `canAccessPanel()` already
+excludes non-admins) — confirmed by reading both policies in full before touching either resource, so
+applying the trait here does not loosen anything.
+
+**`canCreate()` — not covered by the trait, audited separately per the consult's point (4):** added an
+explicit override (`return static::canViewAny();`) to `DocumentTypeResource`, `PriceBandResource`,
+`UserResource`, and `YearGroupResource` — each registers a create page and, with no policy (or, for
+User, one that doesn't cover `create`), was otherwise still open to a disabled admin through the
+Livewire loophole. `TutorProfileResource` has no create page (irrelevant). `ContentBlockResource`,
+`RecurringSlotResource`, `SitePageResource` already had `canCreate()` hard-`false` with no create
+route registered — confirmed, no change needed.
+
+**DECISION — preserve `YearGroupResource`'s delete feature rather than accept the trait's blanket
+`false`:** reading `EditYearGroup` in full (rule 12) found a real, already-shipped, guarded delete
+(offered only while `! $record->isReferenced()`, with a before-cancel guard and an audited `after()`
+hook). The trait's `canDelete`/`canDeleteAny` are hard-`false`, which would have silently removed this
+feature for every admin, not just a disabled one. Overrode both to `return static::canViewAny();` on
+`YearGroupResource` so an active admin keeps the feature and a disabled one is still refused.
+
+**Test — `tests/Feature/Filament/DisabledAdminAccessTest.php` (new file):** dataset-driven per the
+plan's explicit instruction ("write the test as a dataset over the panel's registered resources, not
+a hand-written list, so 9b's Disputes and 9d's Audit-log resources are covered automatically without
+a follow-up test"). The dataset is a pure-PHP `glob(__DIR__.'/../../../app/Filament/Resources/*/*Resource.php')`,
+not a call to the `Filament` facade or `app_path()` — both throw inside a Pest `with()`/`dataset()`
+closure, confirmed empirically via three throwaway test files (created, run, deleted; confirmed absent
+from `git status --short` afterward): `Filament::getPanel(...)` → "A facade root has not been set.";
+`app_path(...)` → "Call to undefined method Container::path()" — because Pest evaluates a dataset
+closure at collection time, before Laravel boots. A second, ordinary (non-dataset) test asserts the
+glob's class list equals `Filament::getPanel('admin')->getResources()`'s sorted list at runtime (where
+Laravel *is* booted), so the two can never silently drift. The per-resource test calls
+`canViewAny()`/`canAccess()`/`canView()`/`canEdit()`/`canCreate()` directly on a disabled admin
+(expecting `false` on all of them) and, as a positive control, on an active admin first (expecting
+`true`) — bypassing HTTP and `canAccessPanel()` entirely, since an HTTP-based test would pass
+vacuously regardless of whether the resource-level guard exists (the consult's core finding, above).
+`canCreate()` is asserted only where the resource actually registers a `create` page.
+
+Result: `tests/Feature/Filament/DisabledAdminAccessTest.php` →
+`{"tool":"pest","result":"passed","tests":15,"passed":15,"assertions":89,"duration_ms":6312}` (1
+registry-match test + 14 resources × 1 dataset case each). Full `tests/Feature/Filament` directory
+regression: `{"tool":"pest","result":"passed","tests":104,"passed":104,"assertions":612,
+"duration_ms":56755}`.
+
+**Full verification (all steps run individually via Git Bash after `composer test`'s own wrapper
+failed on this machine's PowerShell — see below):** `php artisan config:clear`, `vendor/bin/pint
+--parallel --test`, `vendor/bin/phpstan analyse --memory-limit=512M`, `npm run types:check`, `bash
+scripts/rtl-check.sh`, `php artisan test --parallel` → **1896/1896 passed, 9674 assertions**, `php
+artisan ledger:verify --no-interaction` — all green. `npm run build` also run separately (not
+required until checkpoint close, but run for parity) → succeeded, "✓ built in 3m 26s".
+
+**Environment note, not a code defect:** `composer test` itself could not be run as a single command
+on this machine — `composer` is not on PATH for either the Bash or PowerShell tool, and PowerShell's
+own `bash` resolves to a broken WSL relay (`WSL (9 - Relay) ERROR: execvpe(/bin/bash) failed`), not
+Git Bash. Worked around by reading `composer.json`'s `test` script and running each of its seven
+constituent steps individually via the Bash tool (Git Bash), which has working `php`/`npm`/`bash` on
+PATH — equivalent coverage, no step skipped.
+
+**Committed:** `8a456b3` on `cp/9a-hardening` (not yet merged) —
+`app/Filament/Concerns` unchanged (trait itself untouched); 9 resource files modified
+(`ContentBlockResource`, `DocumentTypeResource`, `MatchRequestResource`, `PriceBandResource`,
+`RecurringSlotResource`, `SitePageResource`, `TutorProfileResource`, `UserResource`,
+`YearGroupResource`) plus the new test file. 10 files changed, 163 insertions, 2 deletions.
+
+Step 2 progress: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0`, (e) `f97c119`,
+(f) `8a456b3` done locally on `cp/9a-hardening`; not yet pushed/merged. Next per the advisor's build
+order: (g) named rate limiter on the join endpoint keyed by user id, then (c) last.
