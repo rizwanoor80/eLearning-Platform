@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
@@ -60,6 +61,23 @@ class AuthenticationTest extends TestCase
         $this->post(route('login.store'), [
             'email' => $user->email,
             'password' => 'wrong-password',
+        ]);
+
+        $this->assertGuest();
+    }
+
+    /**
+     * R138 (Safeguarding queue): a suspended account's password is untouched — only its sessions,
+     * passkeys and remember-me token are revoked (`SuspendAccount`) — so the correct password alone
+     * must still not be enough to log back in (`FortifyServiceProvider::configureActions`).
+     */
+    public function test_a_suspended_user_cannot_authenticate_with_the_correct_password()
+    {
+        $user = User::factory()->create(['status' => UserStatus::Suspended]);
+
+        $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
         ]);
 
         $this->assertGuest();

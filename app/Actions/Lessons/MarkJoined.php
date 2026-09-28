@@ -41,12 +41,15 @@ class MarkJoined
      */
     public static function problemFor(User $actor, Lesson $lesson): ?string
     {
-        if (LessonParties::participantFor($lesson, $actor) === null) {
+        $participant = LessonParties::participantFor($lesson, $actor);
+
+        if ($participant === null) {
             return 'Only the tutor or the parent of this lesson may mark themselves as joined.';
         }
 
         try {
             IssueJoinToken::assertJoinable($lesson);
+            IssueJoinToken::assertParticipantJoinable($lesson, $participant);
         } catch (AttendanceException $e) {
             return $e->getMessage();
         }

@@ -3,6 +3,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import PublicFooter from '@/components/PublicFooter.vue';
 import PublicHeader from '@/components/PublicHeader.vue';
+import ReportAbuseButton from '@/components/ReportAbuseButton.vue';
 
 const props = defineProps<{
     tutor: {
@@ -25,6 +26,8 @@ const props = defineProps<{
     };
     timezone: string;
     can_set_up_weekly: boolean;
+    can_report_abuse: boolean;
+    abuse_report_reasons: Array<{ value: string; label: string }>;
 }>();
 
 // A guest and a parent get bookable slots (a guest is sent to sign in and returned to the booking page);
@@ -51,7 +54,10 @@ function goToReviewsPage(targetPage: number) {
 
     <main class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
         <header class="grid gap-1">
-            <h1 class="text-2xl font-semibold">{{ tutor.name }}</h1>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h1 class="text-2xl font-semibold">{{ tutor.name }}</h1>
+                <ReportAbuseButton v-if="can_report_abuse" :post-url="`/tutors/${tutor.id}/abuse-reports`" :reasons="abuse_report_reasons" />
+            </div>
             <p v-if="tutor.headline" class="text-lg">{{ tutor.headline }}</p>
             <p class="text-sm">
                 {{ tutor.rate }} / hour

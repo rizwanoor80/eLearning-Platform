@@ -41,6 +41,26 @@ enum LessonCancelReason: string
     case TutorUnavailable = 'tutor_unavailable';
 
     /**
+     * R138: a safeguarding suspension of the tutor (from the admin Safeguarding queue, or the
+     * automatic 3-strikes path — both go through `SuspendTutor`). A `reserved` lesson is cancelled
+     * free as `cancelled_by_tutor`, no strike; a `confirmed` lesson is cancelled the same way with a
+     * full refund to the parent (`LessonSettlement::refundParent()`, the `MarkProviderFailure`
+     * shape — no gateway call, CP5's). It keeps its `(recurring_slot_id, starts_at)` key like
+     * `TutorUnavailable`: reinstating restores nothing cancelled (R138), so that week is never
+     * regenerated. The tutor-facing and parent-facing mail must stay neutral — never printing this
+     * value or the word "suspended" — matching `WeeklyLessonTutorUnavailableMail`'s precedent.
+     */
+    case TutorSuspended = 'tutor_suspended';
+
+    /**
+     * R138: the account (parent or tutor) itself was suspended from the admin Safeguarding queue.
+     * A `reserved` lesson is cancelled free as `cancelled_by_parent`, no strike; a `confirmed`
+     * lesson is left untouched (an admin decision, listed for them, not automated). Keeps its
+     * `(recurring_slot_id, starts_at)` key, same as `TutorSuspended` — never regenerated.
+     */
+    case AccountSuspended = 'account_suspended';
+
+    /**
      * Whether typed text collides with a machine value. `lessons_recurring_slot_starts_at_unique`
      * frees a key by reading `cancel_reason`, so a person's own note must never be able to equal
      * one; any future typed-reason input must refuse it.

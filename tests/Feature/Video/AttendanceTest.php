@@ -1,9 +1,12 @@
 <?php
 
 use App\Actions\Lessons\MarkJoined;
+use App\Actions\Tutor\SuspendTutor;
 use App\Actions\Video\ActivateVideoProvider;
+use App\Actions\Video\IssueJoinToken;
 use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
+use App\Enums\TutorProfileStatus;
 use App\Enums\VideoParticipant;
 use App\Exceptions\AttendanceException;
 use App\Models\Curriculum;
@@ -13,6 +16,7 @@ use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\VideoProvider;
 use App\Models\VideoWebhookEvent;
+use App\Services\Lessons\LessonRoomView;
 use Illuminate\Support\Carbon;
 
 afterEach(fn () => Carbon::setTestNow());
@@ -255,4 +259,61 @@ it('refuses a manual join after the scheduled end on its own, whatever the token
     // the token window (end + 10) is still open, so only the MarkJoined guard can refuse
     expect(fn () => app(MarkJoined::class)($parent, $lesson))
         ->toThrow(AttendanceException::class, 'scheduled time');
+});
+
+// ---- suspended tutor, R138 (8d review round 1, FAIL #2) ---------------------------------------------
+
+it('refuses a join token to a suspended tutor, even for a lesson already in progress', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = atLesson(5);
+    atSend('lesson-'.$lesson->id, 'tutor', at: now()->getTimestamp())->assertOk();
+    $admin = User::factory()->admin()->create();
+
+    // The real cascade, not a bare status flip: `CancelSuspendedTutorLessons` runs via
+    // `DB::afterCommit` and, per R138/the review's own finding, never reaches this lesson because
+    // `LessonStateMachine` has no edge out of `InProgress` — proving the sweep really does leave it
+    // alone is exactly what makes the join-side check below load-bearing.
+    app(SuspendTutor::class)($admin, $tutor, 'safeguarding note');
+    $lesson = $lesson->fresh();
+    expect($lesson->status)->toBe(LessonStatus::InProgress);
+
+    expect(fn () => app(IssueJoinToken::class)($tutor->user, $lesson))
+        ->toThrow(AttendanceException::class, 'This lesson is not open for joining.');
+
+    $this->actingAs($tutor->user)
+        ->post(route('lessons.room', $lesson))
+        ->assertStatus(422)
+        ->assertJson(['message' => 'This lesson is not open for joining.']);
+
+    // the client-visible reason never says "suspended" — a reported tutor cannot infer their status from it
+    expect(LessonRoomView::for($lesson, $tutor->user))
+        ->can_join->toBeFalse()
+        ->join_problem->toBe('This lesson is not open for joining.');
+});
+
+it('leaves the parent\'s own join path unaffected by the tutor\'s suspension', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = atLesson(5);
+    atSend('lesson-'.$lesson->id, 'tutor', at: now()->getTimestamp())->assertOk();
+    $admin = User::factory()->admin()->create();
+
+    app(SuspendTutor::class)($admin, $tutor, 'safeguarding note');
+    $lesson = $lesson->fresh();
+    expect($lesson->status)->toBe(LessonStatus::InProgress);
+
+    expect(LessonRoomView::for($lesson, $parent))->can_join->toBeTrue();
+
+    $this->actingAs($parent)->post(route('lessons.room', $lesson))->assertOk();
+});
+
+it('refuses a suspended tutor\'s manual "I have joined" without blocking the parent\'s', function () {
+    // Participant-scoping check only, not the review's InProgress repro: a real `SuspendTutor` here
+    // would sweep-cancel this still-Confirmed lesson via `CancelSuspendedTutorLessons`, making the
+    // parent's own assertion below meaningless.
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = atLesson(5);
+    $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save();
+
+    $this->actingAs($tutor->user)->post(route('lessons.joined', $lesson))->assertRedirect();
+    expect($lesson->fresh()->tutor_joined_at)->toBeNull();
+
+    $this->actingAs($parent)->post(route('lessons.joined', $lesson))->assertRedirect();
+    expect($lesson->fresh()->learner_joined_at)->not->toBeNull();
 });

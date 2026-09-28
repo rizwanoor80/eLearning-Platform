@@ -28,4 +28,16 @@ class ConversationPolicy
     {
         return $this->view($user, $conversation);
     }
+
+    /**
+     * Filing a safeguarding report against this conversation (CP7 8d, R137) — same two parties as
+     * `view()`. The route this gates is named `abuse-reports.*`, never `messages.*`: naming it
+     * under `messages.*` would fall into `EnsureAccountActive`'s route-name exemption and let an
+     * already-suspended user's surviving session keep filing reports after being logged out
+     * everywhere else.
+     */
+    public function reportAbuse(User $user, Conversation $conversation): bool
+    {
+        return $this->view($user, $conversation);
+    }
 }

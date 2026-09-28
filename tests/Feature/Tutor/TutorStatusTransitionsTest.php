@@ -2,6 +2,7 @@
 
 use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\ApproveTutor;
+use App\Actions\Tutor\CancelSuspendedTutorLessons;
 use App\Actions\Tutor\CompleteTutorOnboarding;
 use App\Actions\Tutor\ReinstateTutor;
 use App\Actions\Tutor\RejectTutor;
@@ -99,7 +100,7 @@ function trAttempt(TutorProfileStatus $from, TutorProfileStatus $to): TutorProfi
             })()
             : (new RequestTutorChanges($audit))($admin, $profile, 'note'),
         TutorProfileStatus::Rejected => (new RejectTutor($audit))($admin, $profile, 'note'),
-        TutorProfileStatus::Suspended => (new SuspendTutor($audit))($admin, $profile, 'note'),
+        TutorProfileStatus::Suspended => (new SuspendTutor($audit, app(CancelSuspendedTutorLessons::class)))($admin, $profile, 'note'),
         // Nothing moves a tutor back to draft; only the table can be asked.
         TutorProfileStatus::Draft => TutorStatusTransitions::assert($from, $to),
     };
