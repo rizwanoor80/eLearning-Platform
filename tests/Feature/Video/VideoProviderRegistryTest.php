@@ -73,13 +73,61 @@ it('refuses to activate the fake provider in production', function () {
 
     try {
         expect(fn () => app(ActivateVideoProvider::class)($fake, null))
-            ->toThrow(LogicException::class, 'cannot be active in production');
+            ->toThrow(LogicException::class, 'cannot be active outside local, testing and rehearsal');
         expect(fn () => $fake->forceFill(['is_active' => true])->save())->toThrow(LogicException::class);
     } finally {
         app()->detectEnvironment(fn () => 'testing');
     }
 
     expect(VideoProvider::query()->active()->count())->toBe(0);
+});
+
+it('refuses to activate the fake provider in an unlisted environment (R131, ADR-022)', function () {
+    // An allow-list, not a deny-list: `staging` is not `production`, but it is also not `local`,
+    // `testing` or `rehearsal`, so it must be refused exactly like production — a `!== 'production'`
+    // deny-list would have let this through.
+    DB::table('video_providers')->where('code', 'fake')->update(['is_active' => false]);
+    $fake = fakeRow();
+    $fake->credentials = ['webhook_secret' => 'x'];
+    $fake->save();
+
+    app()->detectEnvironment(fn () => 'staging');
+
+    try {
+        expect(fn () => app(ActivateVideoProvider::class)($fake, null))
+            ->toThrow(LogicException::class, 'cannot be active outside local, testing and rehearsal');
+        expect(fn () => $fake->forceFill(['is_active' => true])->save())->toThrow(LogicException::class);
+    } finally {
+        app()->detectEnvironment(fn () => 'testing');
+    }
+
+    expect(VideoProvider::query()->active()->count())->toBe(0);
+});
+
+it('refuses to resolve the fake driver outside the allow-list even when the row is already active (R131, ADR-022)', function () {
+    // Guards driver resolution independently of activation: a row can be marked active below the
+    // model (a raw DB update, as the one-active-row database-constraint test elsewhere in this file
+    // proves is possible) or have been activated before an environment change. Either way,
+    // VideoProviderManager::forRow() must still refuse to hand back a working FakeVideoProvider.
+    DB::table('video_providers')->where('code', 'daily')->update(['is_active' => false]);
+    DB::table('video_providers')->where('code', 'fake')->update(['is_active' => true]);
+    $manager = app(VideoProviderManager::class);
+
+    foreach (['production', 'staging'] as $environment) {
+        app()->detectEnvironment(fn () => $environment);
+
+        try {
+            expect(fn () => $manager->active())
+                ->toThrow(VideoProviderException::class, 'cannot run outside local, testing and rehearsal');
+            expect(fn () => $manager->forCode('fake'))
+                ->toThrow(VideoProviderException::class, 'cannot run outside local, testing and rehearsal');
+        } finally {
+            app()->detectEnvironment(fn () => 'testing');
+        }
+    }
+
+    // Back on an allow-listed environment, the same still-active row resolves normally again.
+    expect($manager->active())->toBeInstanceOf(FakeVideoProvider::class);
 });
 
 it('refuses to activate a code that has no driver', function (VideoProviderCode $code) {
