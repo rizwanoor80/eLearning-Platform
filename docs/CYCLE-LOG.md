@@ -2109,3 +2109,115 @@ needed). R91 read-only checks over the allow-listed ssh shape:
 
 Step 7 deploy leg closed. `rehearsal` = `d3c8a0a` = `main`'s code-bearing tip. Proceeding to END: advisor
 consult for the cycle-close summary, then closing STATUS.md and this programme (CP7, cycle 08).
+
+## [2026-09-28 18:54 machine clock] NOTE — timestamp correction on three step-6/7 entries (advisor-caught)
+
+Three CYCLE-LOG headers above carry a wrong "machine clock" label: the raw UTC read was used instead of
+the git-clock-equivalent (+0400) convention this cycle otherwise follows. Confirmed via
+`git log --format='%h %ai'` on the commits that actually carry each entry:
+- "VERIFICATION — fix loop attempt 1 (PR #34 Finding 1b)", labelled [14:27] — carried by `9cbbcd9`,
+  2026-09-28 18:28:17 +0400. Correct label: 18:27/18:28, not 14:27.
+- "REVIEW — PR #34 ... fix loop 1 scoped re-review", labelled [14:30] — carried by `6fb6097`,
+  2026-09-28 18:30:15 +0400. Correct label: 18:30, not 14:30.
+- "VERIFICATION — post-merge record, PR #34 merged", labelled [18:52] — carried by `a464950`,
+  2026-09-28 18:42:12 +0400, which is before the DECISION labelled [18:42] (`a86a74a`, 18:43:10 +0400)
+  and the VERIFICATION labelled [18:47] (`be8ad57`, 18:47:13 +0400) that follow it in the file. Correct
+  label: 18:41/18:42, not 18:52.
+
+Cause: this segment's earlier date/date -u reads reported UTC; from the 18:05 DEVIATION onward
+"machine clock" meant the git-clock +0400 equivalent, but these three labels were written from a raw
+UTC read before that convention was rechecked in this segment. The log is append-only — the three
+original entries are left exactly as written; only their timestamp labels are wrong, not their content,
+evidence, or the ordering of work they describe. No code or decision is affected.
+
+## [2026-09-28 18:55 machine clock] ADVISOR — step 7 / programme-close consult (rule 11, mandatory: production-affecting judgment call)
+
+Model: not reported by the tool (same shortfall disclosed on every ADVISOR entry this cycle — configured
+advisor per PROJECT_BRIEF is Fable 5.1, configured, not measured). The tool answered, referencing this
+session's actual transcript and files (routes/web.php, CLAUDE.local.md's allow-list, PLAN.md line 46,
+cf6581f). Quoted line: "A guest 302 on /messages proves the auth middleware, not feature:messaging — a
+logged-in walkthrough can still 404." Five checks given, all acted on before writing END:
+1. Feature-flag proof for the walkthrough. `EnsureFeatureEnabled` reads `Settings::get($feature)` →
+   `SettingsService::get()`, which falls back to `config("settings.defaults.{$key}")` when no `settings`
+   row exists (app/Services/Settings/SettingsService.php:21-23). config/settings.php:59-61 defaults
+   match_requests/reviews/messaging all true. No migration or seeder writes a settings row for either
+   key (unlike 7b's video_providers, which had to be migration-seeded because rehearsal is never
+   re-seeded) — confirmed by grep, nothing found. Confirmed live on the server itself:
+   config:show settings.defaults → match_requests/reviews/messaging all true. The walkthrough is safe
+   to send as worded; no flag is missing.
+2. R91 completeness. The 18:47 VERIFICATION ran about/migrate:status/db:show --counts/schedule:list/
+   ledger:verify/curl but not horizon:status, queue:failed, the scheduler-tick mtime, or a laravel.log
+   tail — all run now as a supplement (below), all green.
+3. Timestamps — corrected in the NOTE above.
+4. §6 — carried in full in the STATUS.md rewrite, not compressed, with new items added for the
+   CHECKPOINTS CP7-box addition (an addition, not only a tick — flagged for the planner to accept or
+   revert), the [skip ci] amend, and the merge/deploy step boundaries.
+5. §7/END/HANDOFF — Owner actions 3, 4, 8, 9 reworded from the latest carry (93ede93, confirmed
+   unchanged since cf6581f), numbers kept; the walkthrough given a new number (12, since 10 and 11 were
+   already used this cycle for 8b's round-3/4 halts); action 9's /clear clause dropped from its own
+   line and moved to the final line only; the walkthrough states its preconditions (invariant 8 —
+   messaging opens only after a paid booking; reviews need a completed lesson; the Report button needs
+   the viewer to be a party) so the UI developer is not sent to a 404 or an empty state.
+
+## [2026-09-28 18:56 machine clock] VERIFICATION — step 7 R91 supplement (advisor-directed)
+
+All via the allow-listed ssh shape, one read-only command per call.
+- horizon:status — "Horizon is running."
+- queue:failed — "No failed jobs found."
+- /home/forge/.forge/scheduled-2138095.log mtime Sep 28 14:53 UTC — after the d3c8a0a deploy (landed
+  14:44-14:47 UTC per the 18:47 entry above); tail shows lessons:expire-unpaid, lessons:send-reminders,
+  lessons:create-rooms, lessons:close-rooms, lessons:settle-ended all DONE at 14:53:01-03, no failure.
+- storage/logs/laravel.log tail — empty, no ERROR since the last check.
+- db:show --counts — 42 tables; every CP7 table present and empty as expected (no real users on
+  rehearsal yet): abuse_reports 0, conversations 0, messages 0, notifications 0, reviews 0;
+  video_providers 2, video_webhook_events 0 (unchanged from step 9, cycle 07).
+- config:show settings.defaults — match_requests true, reviews true, messaging true (see the 18:55
+  ADVISOR entry above for what this proves).
+
+R91 checklist for step 7 is now complete.
+
+## [2026-09-28 18:57 machine clock] END — cycle 08 ("CP7" programme) closes at step 7
+
+Every PLAN.md step (1-7) is done. 1: docs-only PRD/PLAN commit (R127). 2: cp/8a-parallel-suite merged
+e4c762d (R128). 3: cp/8b-messaging merged c665eef (R133-R135, R140, R143/R144, round-5 clean). 4:
+cp/8c-reviews self-merged aa69633 (R136). 5: cp/8d-safeguarding hand-merged by the owner b81e382 (R137,
+R138, R145-R147). 6: cp/8e-notifications self-merged d3c8a0a (R139, R147; fix-loop 1 of 2 used, closing
+the malformed-uuid-route Finding 1b). 7: deployed to trustutor-rehearsal under R111 (quoted verbatim in
+the 18:42 DECISION above), landed d3c8a0a, full R91 checklist green including this entry's supplement
+above. main = rehearsal = d3c8a0a's code-bearing tip; docs-only [skip ci] commits since are never
+deployed (the standing "push the SHA, not the branch" precedent, step 9 cycle 07).
+
+docs/CHECKPOINTS.md's CP7 section: all five acceptance boxes [x], none open (docs/CHECKPOINTS.md:184-189),
+each with exact grepped test-name citations; docs/reports/8e.md carries the full PRD §8 table. Suite at
+close: 1869/1869 passed, 9547 assertions, ledger:verify clean, npm run build clean, RTL grep clean — no
+shrinkage across the cycle (baseline at cycle 08 r1 open was 1568).
+
+Advisor consults this cycle: 24 ADVISOR entries tagged "(cycle 08...)" in this log, against a stated
+minimum of 3 per sub-cycle across the six sub-cycles that reached a build step (8a-8e, step 7), plus the
+four named own-consultation requirements (masking rules and "store masked only" — 8b; the admin
+conversation-view audit — 8b; review eligibility and aggregate recompute — 8c; the suspension money path
+— 8d), all satisfied — see each sub-cycle's own ADVISOR entries above. First-of-session "confirm the
+advisor answered" check done at 15:35 (cycle 08 r6, 8e design consult). This entry's own required
+consult (18:55 above) is the END-summary consult PLAN.md line 46 calls for.
+
+Deviations owned in this cycle, not hidden: the [skip ci] mistakenly applied to a still-open PR-branch
+commit, self-caught and amended before push (6fb6097); the docs-only-commit branch-divergence rule
+(established this segment, correctly applied once identified); three mislabelled timestamps (NOTE
+above); the CHECKPOINTS CP7 notification-centre box did not exist before this segment and was added, not
+only ticked (flagged in the HANDOFF below for the planner to accept or revert); one earlier segment's §6
+compression mistake (18:05 DEVIATION, already corrected and disclosed, 93ede93's register fully restored
+and carried since). Nothing here touches a domain invariant, a frozen file, or a money path beyond what
+this cycle's own 8c/8d/8e entries already record.
+
+Halting per PLAN.md line 46's own text ("halt: yes, END") and owner-loop rule 13. STATUS.md rewritten as
+the handoff. HANDOFF entry follows.
+
+## [2026-09-28 18:58 machine clock] HANDOFF — planned stop, PLAN.md line 46 ("halt: yes, END")
+
+Not a BLOCKER; does not count toward any resume cap. Context size: not measured by the tool (same
+shortfall as every STATUS header this cycle). At least one auto-compaction fired in this session — this
+continuation began from a summarised transcript of the prior segment (confirmed by the summary block
+itself at the start of this continuation). STATUS.md rewritten below as the handoff record (§5: done,
+next, ruled out). Four Owner actions carried from 93ede93/cf6581f (3, 4, 8, 9, unchanged wording, numbers
+kept) plus one new non-blocking walkthrough item (12) are in STATUS §7, one per line, each with option 1
+recommended. Ending STATUS §7 with the exact reply instruction per rule 13.
