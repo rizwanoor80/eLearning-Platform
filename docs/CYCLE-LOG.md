@@ -2719,3 +2719,37 @@ Built from the ADVISOR entry above, after that consult caught a real inaccuracy 
 Committed together as `1925902` on `cp/9a-hardening` (the (f) 403-gap test and the (c) docblock rework, one commit, no `[skip ci]`).
 
 Step 2 (R149 a–h) is now fully built on `cp/9a-hardening`: (h) `a0e9c68`, (a) `394387f`, (b) `bd0a42a`, (d) `59942d0`, (e) `f97c119`, (f) `8a456b3` + `1925902`, (c) `1925902`; (g) needs no commit (NOTE above). Local branch not yet pushed or merged. Next: pre-PR advisor consult, `cp/9a-hardening`'s PR, fresh-subagent adversarial review (R154), fix loop (cap 2), self-merge under R154/R147 or owner GO.
+
+## [2026-09-29 00:12 machine clock] NOTE — correction on `5593584`'s +41 test-count wording (self-caught via advisor, rule 12)
+
+`5593584`'s CYCLE-LOG VERIFICATION entry and STATUS.md both describe the full suite's +41 tests over cycle 08's 1869/1869 baseline as "accounted for by this cycle's new (d)/(e)/(f) test files plus the two new tests added this run." That per-item split is wrong on two counts: it omits (a)'s `MessageMaskingFailureTest.php` (2 tests) and (b)'s 5 new `MessageMaskerTest.php` fixtures entirely, and it undercounts this run's own addition — the (f) 403-gap closure added 14 new dataset cases (one per Filament resource), not two. The safe, citable statement is: **+41 across this cycle's items (a), (b), (d), (e) and (f)**, with no further per-item split claimed here since none was verified line-by-line against each file's diff. `5593584` itself is unedited, per git-history discipline; this NOTE is the correction of record, and the STATUS rewrite below carries the corrected wording.
+
+## [2026-09-29 00:12 machine clock] ADVISOR — pre-PR consult before opening `cp/9a-hardening`'s PR (rule 11: plan's named pre-PR slot)
+
+Advisor: **Fable** (PROJECT_BRIEF.md:124). Consulted immediately after the five-step commit order (suite green, branch commit `1925902`, `main` fast-forwarded and pushed as `5593584`, back on the branch) — this fills the plan's own named pre-PR advisor slot, not a generic check-in.
+
+One line quoted verbatim: *"These gates have not run on `1925902`. They block the PR ... Run each one separately, writing to a log file rather than piping through `tail`."*
+
+Full guidance acted on:
+- **Full pre-PR gate set, none of which had run on `1925902` specifically** (this segment's suite/PHPStan runs used the branch tip, but Pint/types-check/RTL/ledger/build had only been spot-checked on two files or not at all): ran `vendor/bin/pint --test` (whole project, no path) → `{"tool":"pint","result":"passed"}`; `npm run types:check` (`vue-tsc --noEmit`) → exit 0, no errors; `bash scripts/rtl-check.sh` → "RTL check passed: no physical-direction utilities found in resources/ (excluding the animate plugin's fixed slide-in-from-left/right keyframe names, R9)."; `php artisan ledger:verify --no-interaction` → "Ledger OK: every lesson sums to zero."; `npm run build` → "✓ built in 1m 27s". All five, each written straight to its own log file, none piped through `tail`.
+- **Verify the already-pushed claim that item (f)'s 23:05 VERIFICATION recorded `ledger:verify`/build-time results**, rather than trust the STATUS header's paraphrase. `git show origin/main:docs/CYCLE-LOG.md | sed -n '2595,2666p'` confirms the entry does contain "`artisan ledger:verify --no-interaction` — all green" and "`npm run build` also run separately... succeeded, '✓ built in 3m 26s'" — the pushed claim was accurate; no correction needed (contrast with the genuine error found next).
+- **Fix the +41 test-count wording** — see the NOTE above.
+- **Merge-safety check** before opening the PR: `git diff --name-only a5b8d39 origin/main` (CYCLE-LOG.md, STATUS.md only) vs `git diff --name-only a5b8d39 HEAD` (23 branch files, none of them CYCLE-LOG/STATUS) — `comm -12` on the two sorted lists returned empty. No overlap; the branch will merge cleanly against `main`'s docs-only advances.
+- **CI will see all 7 commits for the first time on push** — flagged three places this cycle's own new code depends on the CI environment matching local assumptions: (h)'s `vue-tsc` step needs node deps installed first in the workflow; (e)'s allow-list gates on CI's `APP_ENV`; (d) reads `TRUSTED_PROXIES` from the environment. Noted as a watch item for `gh pr checks`, not fixed pre-emptively (nothing indicates the workflow is actually broken — `a0e9c68`'s own commit already updated `.github/workflows/ci.yml`'s step name, and R149(d)/(e) were designed with the same allow-list constant the payment gateway already uses in CI, per CYCLE-LOG's item (e) VERIFICATION).
+- **Fresh-subagent review setup, for the fix loop below:** pass the review model explicitly (rule 14 — review subagents use the stronger model, not whatever the session default resolves to), give it the three-dot diff `origin/main...cp/9a-hardening` rather than only the last commit, paste R154's checklist verbatim from PLAN.md, and give it none of this session's own conclusions (no "proven non-vacuous," no "(g) already satisfied") so it re-derives them independently.
+
+## [2026-09-29 00:12 machine clock] VERIFICATION — pre-PR gate set, full, on `cp/9a-hardening` HEAD `1925902`
+
+All gates below ran on the branch tip `1925902`, each written to its own log file (no `tail`-piping):
+
+- **Pest, full parallel suite** (rerun earlier this segment, same tree as `1925902` — stated rather than rerun again, per the advisor's guidance not to duplicate an identical run): `{"tests":1910,"passed":1910,"assertions":9702,"duration_ms":643325}`. +41 over cycle 08's 1869/1869 baseline, across this cycle's items (a), (b), (d), (e) and (f) — see the correction NOTE above for why no further per-item split is claimed.
+- **PHPStan, full project** (same tree, stated rather than rerun): `{"tool":"phpstan","result":"passed","errors":0}`.
+- **Pint, full project:** `{"tool":"pint","result":"passed"}`.
+- **`npm run types:check`** (`vue-tsc --noEmit`): exit 0, no type errors.
+- **RTL grep** (`bash scripts/rtl-check.sh`): "RTL check passed: no physical-direction utilities found in resources/ (excluding the animate plugin's fixed slide-in-from-left/right keyframe names, R9)."
+- **`php artisan ledger:verify --no-interaction`:** "Ledger OK: every lesson sums to zero."
+- **`npm run build`:** "✓ built in 1m 27s".
+- **Merge-safety:** no file overlap between `main`'s post-`a5b8d39` changes (docs only) and the branch's post-`a5b8d39` changes (23 files, code/test/config/docs-DECISIONS.md only) — confirmed via `comm -12` on sorted `git diff --name-only` output from both sides.
+- **Commit count:** `git log origin/main..HEAD --oneline` on the branch shows exactly 7 commits: `a0e9c68`, `394387f`, `bd0a42a`, `59942d0`, `f97c119`, `8a456b3`, `1925902`.
+
+All eight R149 items (a–h) are built or disclosed on `cp/9a-hardening`; every pre-PR gate the checkpoint protocol names is green. Next: push `cp/9a-hardening` (no `[skip ci]`), open the PR, let CI run, fresh-subagent adversarial review against R154's checklist (three-dot diff, stronger model, no session conclusions handed to it), fix loop (cap 2), `gh pr checks` confirmed green, self-merge under R154/R147 or owner GO, post-merge record on `main`.
