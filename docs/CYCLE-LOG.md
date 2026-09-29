@@ -4570,3 +4570,27 @@ instead.
 Lessons/TutorProfiles resources, TutorProfile model, the one enum case, the one blade file,
 their tests) plus docs. CI green (1 passing, 0 failing, `mergeStateStatus: CLEAN`, `ccd_pr
 get_status`). Meets R147/R154's self-merge bar. Fix loop not needed (0 findings to fix).
+
+[2026-09-29 10:01] VERIFICATION
+Post-merge record for PR #37 (`cp/9c-admin-ops`, R151). Merged via `gh pr merge 37 --merge`,
+merge commit `e472e9e66acd6c6cf13277bbacd5f6e3fd3b4fc8`. Local `main` fast-forwarded
+`4b49fd6..e472e9e` (15 files, +1298/-36), then the REVIEW-entry commit (`7d190d0`, mistakenly
+made on the already-merged `cp/9c-admin-ops` branch instead of `main` -- disclosed, not hidden)
+was cherry-picked onto `main` as `11cc4bd` and pushed (`e472e9e..11cc4bd`). `cp/9c-admin-ops`
+itself is left as-is, not force-pushed or deleted (not a `hold/<step>` branch, and CLAUDE.md
+forbids deleting branches other than a merged `hold/<step>` -- it is fully merged into `main`
+regardless, so the stray extra local commit on it is inert).
+
+Full gate set re-run fresh on the merged `main` tree:
+`{"tool":"pint","result":"passed"}`, `{"tool":"phpstan","result":"passed","errors":0}`,
+`vue-tsc --noEmit` clean, RTL grep clean,
+`{"tool":"pest","result":"passed","tests":2000,"passed":2000,"assertions":10152,"duration_ms":258598}`,
+`Ledger OK: every lesson sums to zero.`, `npm run build` -> built in 12.63s. Test count
+unchanged from pre-merge (2000/2000/10152) as expected -- this merge added no new `it()`s beyond
+what was already counted pre-PR.
+
+Smoke check (R154's four routes, `APP_URL=http://project-elearning.test`, curl against Herd):
+`/` 200, `/login` 200, `/admin/login` 200, `/tutors` 200. All four green.
+
+Step 4 (9c admin ops, R151) is **DONE, MERGED**. Continuing directly into
+`cp/9d-audit-dashboard` (R152) per rule 13 -- no owner action needed to proceed.
