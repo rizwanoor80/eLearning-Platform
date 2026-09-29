@@ -4946,3 +4946,60 @@ boundary correctness, the confirmed_lesson_ids plain-text claim,
 sweepAuditLogFor() correctness, and test quality. Running in
 background; awaiting its numbered PASS/PASS WITH NOTE/FAIL verdicts
 before the fix loop.
+
+[2026-09-29 12:50] REVIEW
+Fresh-subagent adversarial review of PR #38 complete, no prior context,
+read CLAUDE.md in full plus the whole diff and every supporting file
+before verdicts. 8 numbered verdicts:
+1. PASS -- R154 disabled/suspended admin access, genuinely enforced
+   (RequiresActiveAdmin trait + AdminOverviewWidget's own repeated
+   check), proven by real HTTP/Livewire tests not docblock trust.
+2. PASS -- read-only enforcement: canCreate/canEdit/canDelete/
+   canDeleteAny all hard-false, getPages() registers only 'index', no
+   bulkActions, no write call anywhere in the new files.
+3. PASS -- credential/PII leak risk: no new RecordAuditLog call sites;
+   AuditsResourceChanges (raw attribute dump) is wired to 4 non-
+   credential config resources only; EditVideoProvider redacts
+   credential values explicitly; no payment-gateway resource exists
+   yet (CP5-deferred).
+4. PASS -- AdminDashboardMetrics query correctness: half-open ranges
+   confirmed correct against source; Platform-account net-sum
+   definition confirmed correct against LedgerService's own entry
+   types; permitsExpiringSoon's boundary matches bookable()/
+   permitIsValid() exactly, and the reviewer's own deliberately-probed
+   "gap" (no join on users.deleted_at) is not a real bug --
+   AnonymizeUser always suspends a tutor profile before soft-deleting
+   its user, so an Approved profile with a soft-deleted user cannot
+   exist.
+5. PASS -- confirmed_lesson_ids rendering: no `<a href` anywhere
+   (grepped), LessonResource genuinely has no view page, and the label
+   text verified accurate against both CancelSuspendedAccountLessons
+   (leaves Confirmed lessons untouched, returns ids) and
+   CancelSuspendedTutorLessons (cancels+refunds, records only a count,
+   never ids) -- the label cannot silently drift since the end-to-end
+   test runs the real cascade.
+6. PASS -- sweepAuditLogFor()/viewSuspensionSweep: correct fallback
+   order, pure read (safe to call twice per row), new
+   SafeguardingResourceTest.php cases confirm a second unrelated
+   tutor's sweep is never cross-linked.
+7. PASS -- test quality: real HTTP/Livewire assertions throughout, no
+   tautological tests, boundary tests hit exact instants not just
+   hour-either-side, the panel-discovery test specifically guards a
+   real failure mode (a moved/renamed widget class silently dropping
+   out of discoverWidgets()).
+8. PASS WITH NOTE -- general correctness: eager-loads actor:id,name
+   (no N+1 on the list column), no raw SQL, UTC throughout. Non-
+   blocking note: sweepAuditLogFor() runs up to 4 queries per
+   Safeguarding row (2 call sites x up to 2 lookups each) -- adds to
+   an existing per-row query-multiplication pattern already present in
+   AbuseReportsTable's other row actions (pre-existing, unmodified by
+   this PR), bounded by Filament's default pagination, not a severe
+   issue on an admin-only queue. Flagged as a possible follow-up if
+   that queue's page size ever grows, not actioned this cycle.
+
+Summary: 8 verdicts, 7 PASS, 1 PASS WITH NOTE, 0 FAIL of any severity.
+CI (ccd_pr get_status): 1 check passing, 0 failing, 0 pending,
+mergeable=MERGEABLE, mergeStateStatus=CLEAN. Meets R147/R154's
+self-merge bar (0 Medium/High) with room to spare -- cleaner than PR
+#37's 3 Low PASS WITH NOTE. No fix loop needed (cap 2, 0 used).
+Proceeding to self-merge.
