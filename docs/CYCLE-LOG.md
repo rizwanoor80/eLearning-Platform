@@ -3754,3 +3754,146 @@ verbatim, a new pre-push check: "run `git diff --stat 19fede9..HEAD`. If it show
 the `05:55` result of 1977/1977/10051 still covers the pushed tree for rule 7; say so in the push
 entry. If anything outside `docs/` appears, rerun the suite." Adopted in full; both findings corrected
 in the NOTE above, the new pre-push checks (message-grep, diff-stat scope check) adopted going forward.
+
+## [2026-09-29 07:03 machine clock] ADVISOR — pre-commit consult on ADR-021 / docs/reports/9b.md /
+the CP8 box tick, called before committing per rule 11 (money/ledger work + a plan gate)
+
+Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 — configured, not
+measured (R63 phrase). Called right after drafting ADR-021, `docs/reports/9b.md` and the CP8
+acceptance-box tick, before staging or committing any of the three. Found real, citable problems in
+the report's evidence, not a clean pass — logged in full here, in the same turn the response arrived,
+per this cycle's own hard-won lesson that a delayed write loses the verbatim quote. Verbatim, numbered:
+
+"**Hold the commit.** The ADR placement and the CP8 tick's shape are fine, but several evidence
+citations in `9b.md`, and the box line copied from them, look wrong against output you already have.
+Fix these first; they are what the fresh-subagent review will read."
+
+1. "Find where the dial-matrix tests actually live. Your `ResolveDisputeTest.php` listing shows no
+   dial-matrix dataset. Its only datasets are the 0-100 validation and the prefill. `find tests/Unit
+   -iname "*ledger*"` also came back empty. Run `grep -rln "Goodwill\|->settle(" tests/` and cite the
+   real file and test names in three places: the report's zero-sum row, its Goodwill Known limit, and
+   the CHECKPOINTS line. If no test reaches `platformDelta < 0` at all, then "covered by unit tests
+   only" is false and the limit has to say "not covered." That changes a disclosure, so this blocks."
+2. "L3 is not evidence that the trial default exists. The script passed `100, 0` explicitly and never
+   called `prefillFor()`; its own comment says "mirrors." L3 proves that a trial settled at 100/0 is
+   zero-sum, nothing more. Take it out of the "trial dispute defaults" row."
+3. "The test count of 38 is wrong. In `DisputeResourceTest`, the `grep -c` counted `->and
+   (DisputeResource::canEdit($dispute))`, because `canEdit(` contains `it(`. Your own listing shows 7
+   `it()` blocks there, so the `it()` total is 37. Datasets make Pest's executed count differ again.
+   Run the four dispute files together and quote Pest's literal count. Rule 12 requires quoted
+   output."
+4. "The state-machine row contradicts itself and misses a done-means item. It says "Two new edges
+   only," lists three edges, then says "No edge needed adding." The citation is also off: ADR-008 is
+   the ledger pull-forward, not the edge table. R150 done-means requires "the transition table
+   quoted," so quote `LessonStateMachine.php:57-59` verbatim and map each edge to its test:
+   `completed→disputed` and `completed_reported→disputed` → OpenDisputeTest; `disputed→settled` →
+   ResolveDisputeTest."
+5. ""Carried to the CP8 hardening checklist" is not true yet. You haven't added any such line to
+   CHECKPOINTS. Either add it or change the wording to say it is not carried."
+6. "Check the gateway-refund justification before you publish it. Run `grep -rn "\->refund(" app/`.
+   If the cancellation or no-show refund paths already call `PaymentGateway::refund()` through the
+   fake gateway, then "no gateway to refund against" is false, and the limit becomes "dispute
+   resolution does not call the gateway that cancellations do call." Also read R150's full ruling
+   text in PLAN.md, not only the done-means line. The box tick stands either way; only the wording
+   depends on this."
+7. "The "on hold" bucket is missing from Known limits. PRD §2.10 and the CP8 task line both say the
+   tutor balance shows a disputed lesson as "on hold." The 01:5x advisor list flagged that the
+   "Earnings-page gap still not logged." Check STATUS §6 for that item and carry it into the report.
+   Optional but cheap: add `ProgressReportTest::takes no report on a disputed lesson` as evidence for
+   PRD's broader "release pauses.""
+8. "Every citation of the 06:19 proof entry should read "06:19, as corrected by the 06:42 NOTE." The
+   06:19 entry still says 14 rows for L4. This applies to both the report and the CHECKPOINTS line."
+9. "ADR-021's "round... down and up respectively" is wrong as a general rule. L4 rounded 3300.33 down
+   and 4690.67 up, which is round-to-nearest behaviour, not a fixed direction per dial. Read `Money::
+   percentage()` and state its actual rule."
+
+Process guidance, also quoted: "Write the ADVISOR entry for this consult in the same turn it answers,
+with verbatim quotes... Add a CYCLE-LOG entry covering ADR-021, the report and the tick, and rewrite
+STATUS §2 and the header. Run the grep gate on the commit message after committing, and keep the
+CI-skip token out of the message in any form."
+
+None of the three files (`docs/DECISIONS.md`, `docs/reports/9b.md`, `docs/CHECKPOINTS.md`) were
+staged or committed before this consult — nothing to revert. Fixing all nine points before any commit.
+
+## [2026-09-29 07:20 machine clock] DECISION -- all nine 07:03 ADVISOR points fixed before any commit
+
+Applied all nine corrections the 07:03 ADVISOR entry flagged, to the working tree only (none of
+the three files had been staged or committed at the time of that consult, so this is a plain edit
+pass, not a revert):
+
+1. `docs/reports/9b.md`'s "two-dial resolution leaves ledger zero-sum" evidence row and the
+   `Goodwill`-branch Known-limit bullet both re-cited from `tests/Feature/Lessons/ResolveDisputeTest.php`
+   (wrong -- that file has only a 0-100 validation dataset and a prefill dataset) to
+   `tests/Feature/Ledger/LedgerServiceTest.php`: the dial-matrix dataset at line 375 (`it('computes
+   the exact r/t/d fils and final per-account balances at every PRD default, 0/0, 100/100 and a
+   rounding case, whether or not the lesson was already released', ...)`) and the dedicated
+   `it('settles a negative platform delta as goodwill', ...)` test at line 347 -- confirmed present
+   by grep and read directly before citing. `docs/CHECKPOINTS.md`'s box-tick evidence corrected the
+   same way.
+2. `docs/reports/9b.md`'s "trial dispute defaults to 100% refund" row no longer cites L3 (the
+   seeded-DB proof's trial lesson) as prefill evidence: that scratchpad script passed `100, 0` to
+   `ResolveDispute` explicitly and never called `prefillFor()`, so L3 only proves a 100/0-dialled
+   trial lesson settles zero-sum, nothing about the *default* existing. Kept only the two tests that
+   actually exercise `prefillFor()` (`ResolveDisputeTest.php`, `DisputeResourceTest.php`).
+   `docs/CHECKPOINTS.md`'s box line corrected the same way, with the "actually exercise `prefillFor()`"
+   qualifier added so a future reader does not reintroduce the L3 citation.
+3. The "38 dispute-specific feature tests" count was wrong -- caused by a
+   `grep -c "public function test\|#\[Test\]\|it("` pattern false-matching `->and(DisputeResource::canEdit($dispute))`
+   inside `DisputeResourceTest.php` (`canEdit(` contains the substring `it(`). Re-ran the four
+   dispute test files together: `php artisan test tests/Feature/Lessons/OpenDisputeTest.php
+   tests/Feature/Lessons/ResolveDisputeTest.php tests/Feature/Lessons/DisputeOpenedNotificationTest.php
+   tests/Feature/Filament/DisputeResourceTest.php` -> literal quoted result
+   `{"tool":"pest","result":"passed","tests":50,"passed":50,"assertions":238,"duration_ms":62161}`.
+   `docs/reports/9b.md`'s test-count row now quotes this exactly, per rule 12.
+4. `docs/reports/9b.md`'s state-machine "What changed" row said "Two new edges only" then listed
+   three edges then said "No edge needed adding" (self-contradictory) and cited ADR-008 (the
+   unrelated ledger-pull-forward-into-CP3 decision) as the edge authority. Re-fetched R150's full
+   text from `docs/PLAN.md` (previously only the abbreviated "done means" line had been quoted):
+   the edge authorisation is explicitly named as "the owner's named authorisation under R94 for
+   these edges only." Rewrote the row to quote `LessonStateMachine.php:57-59` verbatim, non-
+   contradictorily, citing R94, and mapping each of the three edges to the test that exercises it
+   (`completed -> disputed` and `completed_reported -> disputed` by `OpenDisputeTest.php`;
+   `disputed -> settled` by `ResolveDisputeTest.php`).
+5. `docs/reports/9b.md`'s gateway-refund Known-limit claimed "Carried to the CP8 hardening checklist
+   as a follow-up" -- no such line was ever added to `docs/CHECKPOINTS.md`, so this was false. R150's
+   full text (now re-read) actually settles this: "The gateway refund call is CP5, as for
+   `provider_failure` (R122): the ledger records the refund owed; STATUS §6 carries the list."
+   Reworded the bullet to quote that sentence directly instead of inventing a hardening-checklist
+   claim, and finalised the "list" R150 requires as `docs/STATUS.md` §6 item AI: empty by
+   construction (no dispute has ever settled against a real gateway -- only inside tests and this
+   cycle's local-dev-DB scratchpad proof), with the query mechanism recorded for when CP5's registry
+   lands (`disputes` rows with `parent_refund_pct > 0`, joined to their lesson's `payments` row).
+6. Before writing point 5's wording, checked rather than assumed that dispute resolution's lack of
+   a gateway call was unusual: `grep -rn "\->refund(" app/` shows all four existing refund call
+   sites (`CancelLesson.php:67,136`, `ChargeReservedLesson.php:253`, `LessonSettlement.php:22`) call
+   `LedgerService::refund()`, never `PaymentGateway::refund()` -- so no code anywhere in the app
+   calls a real gateway refund yet. The report now states this explicitly rather than only asserting
+   "no live gateway exists regardless."
+7. Every citation of the seeded-DB ledger proof's `06:19` CYCLE-LOG entry, in both
+   `docs/reports/9b.md` and `docs/CHECKPOINTS.md`, now reads "the `06:19` entry, as corrected by the
+   `06:42` NOTE" (the raw `06:19` entry still states 14 `ledger_entries` rows for L4; the `06:42`
+   NOTE corrected this to 16) rather than citing `06:19` bare.
+8. `docs/reports/9b.md`'s Known limits was missing the tutor Earnings-page "On hold" bucket
+   disclosure entirely. Added, quoting `docs/STATUS.md` §6 item AH directly (no Earnings page exists
+   anywhere in the repo yet, CP5 scope; `disputed`/`settled` are real queryable `LessonStatus` values
+   left for CP5 to use), plus a supporting citation,
+   `tests/Feature/Lessons/ProgressReportTest.php:233`'s `it('takes no report on a disputed lesson,
+   and none on a lesson that is not waiting for one', ...)`, confirmed present by grep before citing.
+9. `docs/DECISIONS.md`'s ADR-021 wrongly described the two dials' rounding as "independent (down and
+   up respectively on an uneven split)" -- a fixed, direction-dependent rule keyed to which dial.
+   Read `app/Support/Money.php`'s `percentage()` directly: `intdiv($this->fils * $percent + 50, 100)`,
+   a single round-half-up rule applied identically regardless of which dial. L4's specific outcomes
+   (3300.33 -> 3300, 4690.67 -> 4691) are both ordinary round-half-up results, not evidence of a
+   fixed per-dial direction. ADR-021 reworded to state the actual rule and cite the exact file/method.
+
+`docs/STATUS.md` §2 (step 3's "still not built" line, now closed out) and the file's own header/
+advisor tally (the `07:03` consult itself now counted: 12 consult calls this cycle, 10 counting per
+R63) rewritten in the same write, per the advisor's own closing guidance ("Add a CYCLE-LOG entry
+covering ADR-021, the report and the tick, and rewrite STATUS §2 and the header").
+
+R150's full "done means" list (`docs/PLAN.md` step 3) is now satisfied: merged is still pending: the
+transition table quoted with no new edge; dial tests green; `ledger:verify` zero-sum on a seeded DB
+with resolved disputes (§6 item AL); `docs/reports/9b.md` written and corrected; ADR-021 written and
+corrected; the CP8 dispute box ticked with corrected evidence. Next: the still-owed pre-PR advisor
+consult (mirroring 9a's own protocol step), then the mechanical CI-skip grep gate on the eventual
+commit message, then push and PR.
