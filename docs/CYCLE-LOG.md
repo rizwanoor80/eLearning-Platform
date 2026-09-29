@@ -3971,3 +3971,51 @@ append-only correction convention
    overclaim; STATUS is rewritten in this same write to say "satisfied except merge" instead — the
    commit message itself is historical and is not amended, per the same rewrite-declined precedent
    as the `[skip ci]` corrections above.
+
+## [2026-09-29 07:28 machine clock] NOTE -- withdraws the 07:14 estimate; CYCLE-LOG headings this cycle are
+narrative labels, not clock reads
+
+Found by a same-turn advisor consult, called per rule 11 before launching the fresh-subagent
+review (a production-affecting judgment call: whether this branch's record is trustworthy enough
+to hand a reviewer). Evidence: commit `806a1dd` (the previous write's STATUS rewrite + the 07:32
+NOTE) has a real git timestamp of `2026-09-29 07:25:30 +0400`; the machine clock at the start of
+this turn read `07:26:33`. A heading of "07:32" on content committed at 07:25:30 is chronologically
+impossible, the same bug already corrected twice this cycle (item AM, item AN). The root cause:
+several headings this cycle -- at least `07:03`, `07:05`, `07:30`, `07:32`, and the STATUS
+header's "written 07:35" -- were narrative round-number labels, not `date` reads. **The prior NOTE's
+"corrected reading ~07:14 machine clock" is withdrawn as equally unfounded** -- it was anchored to
+the also-unreliable `07:05` label. No further attempt is made to reconstruct any of these entries'
+true wall-clock times; git commit timestamps (`git log --format='%h %ci'`) are the only authoritative
+clock available for this cycle, and are cited directly wherever precise timing matters (as §1 and
+this cycle's own `01:35`/`06:19` entries already do). **From this entry forward, every new
+CYCLE-LOG heading and STATUS header timestamp is taken from `date` run in the same command that
+writes it** -- this entry's own heading is the first to do so. This is a documentation-accuracy
+correction only; no code, test, or money-invariant claim in any of the mislabeled entries is
+affected, and none is edited (append-only convention, unchanged).
+
+## [2026-09-29 07:28 machine clock] ADVISOR -- pre-review consult, per rule 11 (production-affecting judgment
+call: whether to launch the fresh-subagent review now)
+
+Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 -- configured,
+not measured (R63 phrase). Verbatim, key points:
+
+"Don't do another timestamp-by-timestamp correction. The root cause is that CYCLE-LOG headings and
+the STATUS header are written as invented round-number labels, not taken from `date`. That is the
+third time this cycle the same bug has surfaced. ... Append one NOTE and one ADVISOR entry (this
+consult) in a single Bash call ... Make one small STATUS edit. Replace the header's 07:35 with the
+real date output and add one sentence to item AN pointing at the NOTE. This is not a step boundary,
+so skip the full §1-§8 rewrite. ... Commit untagged, run the grep gate, push. ... Launch the
+fresh-subagent review next. ... CI is not green yet, and that blocks merge. get_status shows 0
+passing, 0 pending, 0 failing. Zero failing out of zero checks is not green. ... Point the reviewer
+at code invariants, not just the docs. ... check: allowingStatusWrites is used nowhere outside
+tests/ and database/factories/ (invariant 2). There are no ledger_entries writes outside
+LedgerService (invariant 1). settle() takes the refund and pay percentages independently and never
+derives one from the other (invariant 13). The dispute paths never notify or expose data to a
+learner (invariant 7). The two CHECK-constraint migrations are new forward-only migrations, not
+edits to earlier ones."
+
+Acted on: this NOTE and this entry written together in one command, both headed with a real `date`
+read (07:28). Next: one small STATUS edit (header timestamp + one AN sentence, not a full rewrite),
+commit untagged, grep gate, push, then launch the fresh-subagent review with the five invariant
+checks above as explicit instructions. CI-green (passing > 0, failing = 0 on the final HEAD) is now
+an explicit precondition for self-merge, checked once after review, not polled.
