@@ -4333,3 +4333,193 @@ line when LessonCancelReason::isReserved($lesson->cancel_reason) is true — so 
 machine value is silently omitted while a genuine tutor/parent-typed reason still shows as it does
 today. Confirmed SendWeeklyChargeMails.php:34's own CancelledByTutor branch checks cancel_reason ===
 TutorUnavailable->value specifically, so 'admin' cannot trigger its wrong copy there — no fix needed.
+
+[2026-09-29 08:34] ADVISOR — pre-build sanity check on the release-path DECISIONs and the
+ForceCancelLesson/ForceCompleteLesson design, before any 9c code is written (Fable, per
+PROJECT_BRIEF.md:124). Quoted line: "This loses no capability... It keeps one invariant in one
+place. 'Past start = attendance matter' stays exactly as CancelLesson already enforces it." Six
+points, all resolved this entry:
+1. Force-cancel past start: PLAN.md R151's own text is silent on timing ("force-cancel (as a tutor
+   cancel with no strike, reason admin, refund ledger entry for a confirmed lesson, free for
+   reserved)" — quoted in full, no time-bound clause). Advised default for silence: require
+   starts_at still in the future for both reserved and confirmed, checked inside the transition
+   closure on $locked (mirrors MarkProviderFailure's own in-closure guard shape), because every
+   past-start case already has an owner — confirmed/nobody-joined: MarkProviderFailure +
+   SettleEndedLesson::unattended(); reserved past start: ChargeWindowMissed; in_progress: no cancel
+   edge exists at all. DECISION below.
+2. Correction to the `08:13` DECISION's own wording: NeedsReview is not a PaymentStatus value (grep
+   confirms it exists only as ChargeOutcome::NeedsReview, app/Enums/ChargeOutcome.php:29). Read
+   ChargeReservedLesson.php:277-282: the persisted state it actually leaves is a Payment row with
+   status Captured on a still-reserved lesson, no hold entry (ledger:verify's own §6 2(b)/3 flag).
+   The reserved-lesson guard is therefore: refuse if any Payment for the lesson has status Pending
+   or Captured — not a third "NeedsReview" payment state, which does not exist. Checked inside the
+   locked transition closure (a single admin action can close the CancelSlotReservedLessons ->
+   ChargeReservedLesson::begin() race that a batch sweep's pre-lock check cannot).
+3. Template correction: read app/Actions/Tutor/CancelSuspendedTutorLessons.php (TutorSuspended,
+   merged, reviewed) instead of CancelLesson — its cancelReservedLessons()/cancelConfirmedLessons()
+   pair is exactly ForceCancelLesson's two branches (reserved: free, no ledger call, no strike;
+   confirmed: LessonSettlement::refundParent(), no strike) with a machine cancel_reason, whereas
+   CancelLesson carries the tutor-strike logic ForceCancelLesson must not inherit.
+4. Grepped every consumer of report_due_hours/auto_release_hours/report_due_at/report_late_at
+   (AutoReleaseReports.php, AutoReleaseLesson.php, SubmitProgressReport.php, ReviewLateReports.php,
+   Lesson.php casts, ManageSettings.php, TutorDashboardController.php:125,
+   ProgressReportController.php:49) — every one trusts the stored report_due_at/report_late_at
+   column or the late-flag boolean; none recomputes ends_at + hours independently. The now()-anchor
+   DECISION (08:13) is confirmed safe as written, no further finding.
+5. Grepped app/Listeners for ->InProgress/->Completed (the `08:13` entry's grep covered only
+   app/Actions and app/Services). Found: SendReportDueMail fires on $event->to === Completed
+   unconditionally — this is the desired, correct behaviour for a force-complete too (the tutor gets
+   the same report-due prompt, matching R151's "then the normal release path... unchanged");
+   confirmed as a positive check, not a defect. SendWeeklyChargeMails only acts when
+   $event->from === Reserved and, within that, only sends its own mail when cancel_reason ===
+   TutorUnavailable->value specifically — a reserved force-cancel (cancel_reason = Admin) cannot
+   trigger it, reconfirming the 08:13 finding. No listener matches ->InProgress alone; nothing
+   fires that assumes real attendance on the confirmed -> in_progress hop.
+6. Read SendLessonCancelledMail.php: it fires unconditionally on any Confirmed -> Cancelled* edge,
+   with no cancel_reason gate. Cross-checked CancelSuspendedTutorLessons.php:163-175
+   (cancelConfirmedLessons(), already merged) — it also moves Confirmed -> CancelledByTutor with
+   cancel_reason = TutorSuspended->value, so it also fires SendLessonCancelledMail ->
+   cancelled.blade.php today, on main, printing "Reason given: tutor_suspended" — directly
+   contradicting LessonCancelReason::TutorSuspended's own docblock ("must stay neutral — never
+   printing this value or the word 'suspended'"). Grepped tests/ for "Reason given":
+   LessonLifecycleMailTest.php:147 only asserts the no-reason case; no test covers a machine-value
+   confirmed cancel. This is a genuine pre-existing bug, not introduced by 9c, found incidentally by
+   9c's own blade-guard work. The planned fix (skip "Reason given" when
+   LessonCancelReason::isReserved() is true) is not reason-specific, so it fixes TutorSuspended's
+   leak too with no design change — disclosed as an incidental fix, a regression test added for both
+   the new Admin case and the pre-existing TutorSuspended case.
+
+[2026-09-29 08:34] DECISION — CC: ForceCancelLesson requires starts_at still in the future, for both
+a reserved and a confirmed lesson, checked inside the LessonStateMachine::transition() closure on the
+locked row. R151's own text is silent on timing; every past-start case already has a named owner
+(MarkProviderFailure, SettleEndedLesson::unattended(), ChargeWindowMissed) and CancelLesson already
+establishes "past start = attendance matter" as the one place that invariant lives — force-cancel does
+not become a second place. CYCLE-LOG `08:34` ADVISOR point 1.
+
+[2026-09-29 08:34] DECISION — CC: correcting the `08:13` DECISION's phrasing — the reserved-lesson
+payment guard for ForceCancelLesson is "any Payment row for the lesson with status Pending or
+Captured", not a "Captured/NeedsReview" pairing (NeedsReview is a ChargeOutcome, never a persisted
+PaymentStatus). No behavioural change from what 08:13 intended, wording only. CYCLE-LOG `08:34`
+ADVISOR point 2.
+
+[2026-09-29 08:34] NOTE — CC: cancelled.blade.php's unguarded cancel_reason print is a pre-existing
+bug on main, not new to 9c. CancelSuspendedTutorLessons::cancelConfirmedLessons() (merged, TutorSuspended
+path) already triggers it, printing "Reason given: tutor_suspended" to both parties, contradicting that
+enum's own docblock. Found incidentally via 9c's `08:34` advisor consult (point 6). The planned 9c blade
+fix (guard on LessonCancelReason::isReserved(), not on the specific Admin value) fixes this pre-existing
+leak too with no extra work; a regression test will cover both the Admin and TutorSuspended cases. No
+separate follow-up needed — folded into 9c's own blade-fix commit and test.
+
+[2026-09-29 09:06] VERIFICATION — CC: 9c pre-PR gate, full set, run for real via the Bash tool
+(Git Bash) after confirming the PowerShell-bash relay issue is the same pre-existing, already-disclosed
+environment quirk noted at `05:15` earlier this cycle ("full pre-write gate re-run, one environment
+quirk found and worked around" — PowerShell's `bash` resolves to the WSL launcher stub
+`C:\WINDOWS\system32\bash.exe`, and this box has no WSL per D-07/ADR-001) — not a regression, no
+new disclosure needed, just the established workaround reused. Results, each its own step (`composer
+test` as one PowerShell unit still exceeds the 10-minute line / hits the same relay issue per STATUS §6
+item B, so run split as always):
+- `vendor/bin/pint --parallel --test` -> one violation found and fixed first (`app/Models/TutorProfile.php`,
+  ordered_imports, auto-fixed via `vendor/bin/pint app\Models\TutorProfile.php`), then `{"tool":"pint","result":"passed"}`.
+- `vendor/bin/phpstan analyse --memory-limit=512M` -> `{"tool":"phpstan","result":"passed","errors":0}`.
+  One genuine false-positive fixed en route, disclosed here rather than suppressed: Larastan's
+  `nullsafe.neverNull` flagged `$log->actor?->name ?? 'System'` in
+  `TutorProfileInfolist.php`'s suspensionHistory closure even though `AuditLog::actor_user_id` is
+  genuinely nullable (system-originated rows, e.g. the scheduled permit-expiry job per
+  `RecordAuditLog`'s own docblock) — confirmed via a temporary `\PHPStan\dumpType()` probe placed
+  directly in the closure (correctly inferred `User|null` one line above the flagged expression, so
+  not a real type-inference gap, just a tool limitation on that specific `?->`+`??` combination).
+  Rewritten as `$log->actor === null ? 'System' : $log->actor->name` — same runtime null-safety, no
+  `@phpstan-ignore`, no baseline entry, no type-widening. Probe file and its in-closure copy both
+  removed before this write.
+- `npm run types:check` (`vue-tsc --noEmit`) -> clean, no errors.
+- `bash scripts/rtl-check.sh` -> "RTL check passed: no physical-direction utilities found in
+  resources/ (excluding the animate plugin's fixed slide-in-from-left/right keyframe names, R9)."
+- `php artisan test --parallel` -> `{"tool":"pest","result":"passed","tests":2000,"passed":2000,"assertions":10152,"duration_ms":267347}`.
+  Up from the `07:53` carry of 1977/1977/10051 — 23 new tests this sub-cycle:
+  `TutorProfileDetailViewTest.php` (6), `ForceCancelLessonTest.php` (9), `ForceCompleteLessonTest.php`
+  (7), plus 1 new case folded into `LessonLifecycleMailTest.php` (the pre-existing
+  `TutorSuspended`-leak/`Admin`-silence regression pair, CYCLE-LOG `08:34` NOTE).
+- `php artisan ledger:verify --no-interaction` -> "Ledger OK: every lesson sums to zero."
+- `npm run build` -> "✓ built in 15.81s" (informational plugin-timing warnings only, no errors).
+All seven green. This is the pre-PR gate 9c's own step-4 done-means requires before branching to a PR;
+`cp/9c-admin-ops` was already the checked-out branch throughout this segment (confirmed via `git branch
+--show-current`), so no separate branch step was needed.
+
+[2026-09-29 09:06] NOTE — CC: CP8 acceptance box "Force-complete by admin writes an audit row and
+follows the normal release path" ticked in `docs/CHECKPOINTS.md`, quoting `ForceCompleteLessonTest.php`'s
+two audit/escrow-proof tests plus its two guard tests and the Filament wiring tests, and the full-suite
+2000/2000 count above. STATUS §6 item 0b closed — force-complete is now actually built, tested and
+gate-clean, not just planned.
+
+[2026-09-29 09:39] NOTE — CC: this segment's earlier mandatory pre-PR advisor consult (the one that
+found the STATUS.md compression, the `openAbuseReports()` gap and the CP8 citation issue, all fixed
+in this write) cannot be logged as a counting ADVISOR entry. Its raw tool result persisted to this
+session's transcript as `advisor_redacted_result` with an `encrypted_content` payload, not plaintext —
+confirmed by direct inspection of the JSONL transcript line carrying that `tool_use_id`. Across the
+compaction boundary that produced this segment's carried summary, that encrypted content is not
+decryptable back out by this session; only a paraphrase of its findings survived, in the summary text,
+not a verbatim quote. R63's own rule is a genuine verbatim quote, not a paraphrase — this entry
+discloses the gap rather than inventing one to satisfy the tally. A fresh advisor() call was made this
+write instead (below), covering the same pre-PR question with the current, fully-fixed state, and
+that call's real response is quoted. The unquotable call does not count toward the R63 tally; it
+remains a genuine consult that happened and whose findings were genuinely acted on, just not a loggable
+one. New pattern for this cycle to carry forward: an ADVISOR entry is written in the same turn the
+advisor() call returns, before any further tool call risks losing the plaintext response to a later
+compaction — never deferred to "log it at the next write."
+
+[2026-09-29 09:39] ADVISOR — CC: consulted the advisor before commit/push/PR for `cp/9c-admin-ops`
+(rule 11 mandatory pre-PR consult, this time loggable). Per R63's fixed phrase: the advisor is
+configured as **Fable** per PROJECT_BRIEF.md:124 (owner, 2026-09-28); the tool itself does not report
+which model answered. **New this entry, disclosed rather than silently reconciled:** this session's
+own JSONL transcript metadata records `"advisorModel":"claude-opus-5-5"` on every one of this
+session's advisor calls (5 checked via `grep -o '"advisorModel":"[^"]*"' <transcript> | sort -u`,
+uniform, one distinct value) — a different, more specific claim than "Fable" for what actually
+answered. STATUS §6 item A and a new Owner action 18 carry this discrepancy for the owner to
+reconcile; no existing ADVISOR entry is rewritten. Verbatim quote of the opening line of this call's
+response: "**Not ready to commit: §4 lost 14 decision bullets that your grep pattern can't see, and
+STATUS.md claims an ADVISOR quote that doesn't exist.**" Full findings: (1) BLOCKING — STATUS.md's §4
+had been compressed from 12 decision bullets down to one summary line in this write's own rebuild,
+invisible to the `grep '^-[^-]'` check used earlier because a removed markdown bullet (`- CC …`)
+renders as `-- CC …` in unified diff and that pattern excludes it — a real blind spot in the check
+itself, not just the content; (2) BLOCKING — STATUS.md's header, §3 and §4 asserted a verbatim
+ADVISOR quote and a completed CYCLE-LOG entry/tally bump that had not actually happened yet (the
+finding this NOTE above addresses); (3) the CYCLE-LOG `09:21` VERIFICATION the header/§6 item B/the
+CHECKPOINTS citation all pointed to was never actually written — the CYCLE-LOG tail stopped at
+`09:06`; (4) §6's register-intro line undersold how many items actually changed this write (B, M, P,
+0a, 2, AS were updated in addition to 0b/AT); (5) the model-name finding above. Revised total: **18
+consult calls, 15 counting per R63** (the `08:13`/`09:06`-window pre-PR consult is call 17, not
+counted per the NOTE above; this call is 18, counted — 15 total counting calls this cycle, unchanged
+net from the pre-rewrite 14 plus this one).
+
+[2026-09-29 09:39] VERIFICATION — CC: full pre-PR gate re-run fresh via the Bash tool, real output,
+after applying every fix this segment's two consults produced (the `openAbuseReports()` User-subject
+branch, the CP8 citation correction, and this write's own STATUS.md corrections in progress):
+- `php "<herd>/composer.phar" test` (pint/phpstan/vue-tsc/rtl-check/pest/ledger:verify as one
+  script) -> `{"tool":"pint","result":"passed"}` `{"tool":"phpstan","result":"passed","errors":0}`,
+  `vue-tsc --noEmit` clean, `RTL check passed: no physical-direction utilities found in resources/
+  (excluding the animate plugin's fixed slide-in-from-left/right keyframe names, R9).`,
+  `{"tool":"pest","result":"passed","tests":2000,"passed":2000,"assertions":10152,"duration_ms":252073}`,
+  `Ledger OK: every lesson sums to zero.`
+- `npm run build` -> `✓ built in 12.05s` (plugin-timing informational warning only, no errors).
+Test count unchanged from the `09:06` run (2000/2000/10152) — this run only touched STATUS.md/CYCLE-LOG
+prose, no app code changed since `09:06`. `git branch --show-current` -> `cp/9c-admin-ops`; `git log
+origin/main..HEAD --oneline` -> empty (confirmed, no stray commits ahead of `main`). This is the gate
+this write's own STATUS.md header/§6 item B/CHECKPOINTS citation should point to, replacing the
+unverifiable `09:21`/`262683` figure carried in from before the compaction boundary (that figure was
+never independently re-confirmed in this segment — the real, freshly-run number is `252073`; both
+counts (tests/passed/assertions) match, only wall-clock duration differs, as expected for two separate
+runs of the same suite).
+
+[2026-09-29 09:39] NOTE — CC: this write's own STATUS.md rebuild (the one fixing the pre-compaction
+blocking compression finding) itself re-compressed content a second and third time before being fully
+corrected: first pass compressed §2 items 2/3, §6 items AQ/AR/AS and §8 rows 2/3 (self-caught via a
+full `git diff docs/STATUS.md` read per rule 12, fixed before this NOTE); second pass — caught only by
+this write's fresh advisor() call, not self-caught — had also compressed §4 from 12 decision bullets to
+one summary line. Both fixed from `status_orig2.md` (`git show 4b49fd6:docs/STATUS.md`) copied
+verbatim, not retyped. This is now documented as occurring at least twice within this single write, on
+top of the cycle's three prior occurrences of the same bug class (`07d2368`, the write `4b49fd6`
+corrected, and the write that write's own advisor consult flagged as blocking). The self-check pattern
+that missed §4 (`grep '^-[^-]'`) is retired; going forward a compression check on this file uses
+`grep -n '^-' <diff> | grep -v '^[0-9]*:--- a/'` (excludes only the diff's own file-header line, not
+markdown bullets) and every hit is checked against the intended-changes list by hand, not filtered
+further by pattern.

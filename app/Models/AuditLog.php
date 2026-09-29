@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $before
  * @property array<string, mixed>|null $after
  * @property Carbon|null $created_at
+ * @property-read User|null $actor
  */
 class AuditLog extends Model
 {

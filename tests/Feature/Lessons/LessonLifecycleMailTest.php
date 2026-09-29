@@ -147,6 +147,30 @@ it('renders the cancelled email with the reason when given, and without one when
     expect((new LessonCancelledMail($withoutReason, $parent))->render())->not->toContain('Reason given');
 });
 
+it('never shows a machine cancel_reason as customer-facing copy (R151 blade guard)', function () {
+    // `LessonCancelReason::Admin` (new, R151) and `TutorSuspended` (pre-existing: this leak
+    // predates 9c — CYCLE-LOG 2026-09-29 08:34 NOTE — and is fixed by the same guard) must both
+    // stay silent; a genuine typed reason (asserted above) must keep showing.
+    $tutor = TutorProfile::factory()->approved()->create();
+    $parent = User::factory()->create();
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+
+    $admin = Lesson::factory()->withStatus(LessonStatus::CancelledByTutor)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+        'cancel_reason' => 'admin',
+    ]);
+    $tutorSuspended = Lesson::factory()->withStatus(LessonStatus::CancelledByTutor)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+        'cancel_reason' => 'tutor_suspended',
+    ]);
+
+    expect((new LessonCancelledMail($admin, $parent))->render())->not->toContain('Reason given')
+        ->and((new LessonCancelledMail($tutorSuspended, $parent))->render())->not->toContain('Reason given')
+        ->and((new LessonCancelledMail($tutorSuspended, $parent))->render())->not->toContain('suspended');
+});
+
 it('renders the skipped email without error', function () {
     $tutor = TutorProfile::factory()->approved()->create();
     $parent = User::factory()->create();
