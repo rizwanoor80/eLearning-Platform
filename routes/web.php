@@ -6,6 +6,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Lessons\BookLessonController;
 use App\Http\Controllers\Lessons\CancelLessonController;
+use App\Http\Controllers\Lessons\DisputeController;
 use App\Http\Controllers\Lessons\LessonRoomController;
 use App\Http\Controllers\Lessons\ProgressReportController;
 use App\Http\Controllers\Match\MatchRequestController;
@@ -69,6 +70,11 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
         Route::get('review', [ReviewController::class, 'create'])->name('lessons.review.create');
         Route::post('review', [ReviewController::class, 'store'])->middleware('throttle:reviews')->name('lessons.review.store');
     });
+
+    // CP8 (R150): the account holder disputes a completed lesson, within 48h of ends_at.
+    // LessonPolicy::openDispute is the authorisation.
+    Route::get('dispute', [DisputeController::class, 'create'])->name('lessons.dispute.create');
+    Route::post('dispute', [DisputeController::class, 'store'])->middleware('throttle:disputes')->name('lessons.dispute.store');
 });
 
 // CP7 8b (R133, R135): Messages for both portals — an account holder and a tutor each see their own

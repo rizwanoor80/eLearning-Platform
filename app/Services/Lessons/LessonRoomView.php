@@ -4,6 +4,7 @@ namespace App\Services\Lessons;
 
 use App\Actions\Lessons\MarkJoined;
 use App\Actions\Lessons\MarkNoShow;
+use App\Actions\Lessons\OpenDispute;
 use App\Actions\Lessons\SubmitProgressReport;
 use App\Actions\Reviews\SubmitReview;
 use App\Actions\Video\IssueJoinToken;
@@ -85,6 +86,9 @@ final class LessonRoomView
             'no_show_outcome' => $isTutor ? 'pay_tutor' : 'refund_parent',
             'can_report' => $isTutor && SubmitProgressReport::problemFor($user, $lesson) === null,
             'can_review' => ! $isTutor && EnsureFeatureEnabled::enabled('reviews') && SubmitReview::eligibilityProblem($user, $lesson) === null,
+            // CP8 (R150): the account holder's dispute prompt, same shape as `can_review` — no
+            // feature flag exists for disputes (not listed anywhere in PRD/PLAN), so none is gated here.
+            'can_dispute' => ! $isTutor && OpenDispute::problemFor($user, $lesson) === null,
             // CP7 8d (R137): safeguarding report, distinct from `can_report` above (the tutor's
             // progress report). Reaching this page already means `LessonParties::participantFor`
             // resolved a party for $user — the exact same shape `LessonPolicy::reportAbuse` checks —

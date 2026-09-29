@@ -30,6 +30,7 @@ type LessonView = {
     no_show_outcome: 'pay_tutor' | 'refund_parent';
     can_report: boolean;
     can_review: boolean;
+    can_dispute: boolean;
     can_report_abuse: boolean;
     abuse_report_reasons: Array<{ value: string; label: string }>;
     terminal: boolean;
@@ -167,6 +168,13 @@ const closedMessages: Record<string, string> = {
             <p class="text-sm">How was this lesson? Your review is public on the tutor's profile.</p>
             <Button as-child data-test="review-link">
                 <Link :href="`/lessons/${lesson.id}/review`">Leave a review</Link>
+            </Button>
+        </div>
+
+        <div v-if="lesson.can_dispute" class="flex flex-wrap items-center gap-3 rounded-xl border p-4" data-test="dispute-prompt">
+            <p class="text-sm">Something wrong with this lesson? You can dispute it within 48 hours.</p>
+            <Button variant="outline" as-child data-test="dispute-link">
+                <Link :href="`/lessons/${lesson.id}/dispute`">Dispute this lesson</Link>
             </Button>
         </div>
 

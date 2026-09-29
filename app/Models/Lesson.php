@@ -234,4 +234,16 @@ class Lesson extends Model
     {
         return $this->hasOne(Review::class);
     }
+
+    /**
+     * CP8 (R150). One per lesson — enforced by the DB unique index on
+     * `disputes.lesson_id`, mirrored here the same way `review()` mirrors
+     * `reviews.lesson_id`.
+     *
+     * @return HasOne<Dispute, $this>
+     */
+    public function dispute(): HasOne
+    {
+        return $this->hasOne(Dispute::class);
+    }
 }

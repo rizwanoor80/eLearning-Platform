@@ -3,6 +3,8 @@
 namespace App\Support\Notifications;
 
 use App\Models\User;
+use App\Notifications\Admin\DisputeOpenedAdminNotification;
+use App\Notifications\Lessons\DisputeOpenedNotification;
 use App\Notifications\Lessons\LessonCancelledNotification;
 use App\Notifications\Lessons\LessonConfirmedNotification;
 use App\Notifications\Lessons\ProgressReportAvailableNotification;
@@ -52,6 +54,17 @@ class NotificationPresenter
             NewMessageNotification::class => [
                 'New message from '.($data['sender_name'] ?? 'someone'),
                 isset($data['conversation_id']) ? route('messages.show', $data['conversation_id']) : null,
+            ],
+            DisputeOpenedNotification::class => [
+                'A dispute was opened on your lesson with '.($data['learner_display_name'] ?? 'a learner').
+                    (($data['subject'] ?? null) ? ' on '.$data['subject'] : '').
+                    ' ('.self::label($data['starts_at'] ?? null, $viewer).')',
+                self::lessonUrl($data),
+            ],
+            DisputeOpenedAdminNotification::class => [
+                'A dispute was opened: '.($data['tutor_display_name'] ?? 'a tutor').' and '.
+                    ($data['learner_display_name'] ?? 'a learner'),
+                $data['url'] ?? null,
             ],
             default => ['Notification', null],
         };

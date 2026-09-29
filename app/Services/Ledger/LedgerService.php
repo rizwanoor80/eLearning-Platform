@@ -6,10 +6,12 @@ use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PaymentStatus;
 use App\Exceptions\LedgerException;
+use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\User;
+use App\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +30,14 @@ use LogicException;
  *   HOLD     gateway −price · escrow +price
  *   RELEASE  escrow −tutor_amount · tutor +tutor_amount · escrow −commission_amount · platform +commission_amount
  *   REFUND   escrow −price · refund +price                       (full refund)
+ *   SETTLE   escrow −refund · refund +refund · escrow −tutor · tutor +tutor · escrow −delta · platform +delta
+ *            (dispute, R150; delta = price − refund − tutor, may be negative → `goodwill`; a lesson already
+ *            RELEASEd when the dispute opened gets typed reversal legs first, restoring escrow to price)
  *
  * DATA_MODEL v1.3 wrote HOLD as a bare `escrow +price`, which cannot sum to zero;
  * the `gateway` leg is the counter-entry (v1.4, ADR-008). RELEASE is two
- * zero-sum pairs so each escrow leg has an honest `type`. SETTLE and PAYOUT are
- * declared for CP5 and refuse to run until then.
+ * zero-sum pairs so each escrow leg has an honest `type`. PAYOUT is
+ * declared for CP5 and refuses to run until then.
  */
 final class LedgerService
 {
@@ -106,11 +111,103 @@ final class LedgerService
     }
 
     /**
-     * Declared for the two-dial dispute (CP8); nothing calls it in CP3.
+     * The two-dial dispute resolution (R150, DATA_MODEL SETTLE row). `$dispute`
+     * tags every leg written here with `dispute_id`; the caller (the resolve
+     * action) is responsible for the dispute row's own resolution columns and
+     * the lesson's `disputed -> settled` transition — this method only writes
+     * the ledger side, inside its own locked, zero-sum-checked operation.
+     *
+     * `r`/`t` are computed from the lesson's FROZEN `price`/`tutor_amount`
+     * (invariant #6 — these never change after booking), so they are safe to
+     * compute before the lock. `d` (the platform's residual) may be negative,
+     * written as `Goodwill` rather than `ReleaseCommission` when it is.
+     *
+     * A `completed` lesson still has full escrow (balance == price): the three
+     * SETTLE leg-pairs below (refund, tutor, platform) are DATA_MODEL's row
+     * exactly, read as three independent zero-sum pairs — each written only
+     * when its amount is non-zero, so a 0% dial never leaves a zero-fil leg
+     * for a later per-type count to misread as a real release. A
+     * `completed_reported` lesson has already been RELEASEd by the time a
+     * dispute can open on it (every path there writes RELEASE first) — escrow
+     * balance == 0 — so this first claws the RELEASE back into escrow with
+     * typed reversal legs before writing the same three SETTLE pairs
+     * (docs/CYCLE-LOG.md, the 9b reversal-leg DECISION). Any other escrow
+     * balance is a ledger inconsistency, not a case to silently handle, and
+     * throws — this also catches a never-held lesson (escrow 0 but the tutor/
+     * platform were never paid, so the reversal-balance assert below fails).
+     *
+     * Guarded against being called twice on the same lesson (advisor consult,
+     * 9b money-path review): a second settle would see escrow == 0 —
+     * indistinguishable from "already released" — and wrongly claw back
+     * amounts that were never paid out via RELEASE. `dispute_id`-tagged or
+     * `ReleaseReversal` entries already on the lesson refuse a second call
+     * outright, and the reversal-balance assert is a second, independent
+     * check of the same thing.
+     *
+     * @return array{refund: int, tutor: int, platform_delta: int} the fils actually written, for the caller to persist on the dispute row
      */
-    public function settle(): never
+    public function settle(Lesson $lesson, Dispute $dispute, int $parentRefundPct, int $tutorPayPct, ?User $by = null): array
     {
-        throw new LogicException('LedgerService::settle() arrives with disputes (CP8).');
+        if ($dispute->lesson_id !== $lesson->getKey()) {
+            throw new LedgerException("Dispute {$dispute->id} does not belong to lesson {$lesson->id}.");
+        }
+
+        if ($parentRefundPct < 0 || $parentRefundPct > 100 || $tutorPayPct < 0 || $tutorPayPct > 100) {
+            throw new LedgerException('Dispute dials must each be 0-100.');
+        }
+
+        $price = $this->price($lesson);
+        $tutorAmount = $lesson->tutor_amount->toFils();
+        $commissionAmount = $lesson->commission_amount->toFils();
+
+        $refund = Money::fils($price)->percentage($parentRefundPct)->toFils();
+        $tutor = Money::fils($tutorAmount)->percentage($tutorPayPct)->toFils();
+        $platformDelta = $price - $refund - $tutor;
+
+        $this->operate($lesson, function (Lesson $locked) use ($dispute, $by, $price, $tutorAmount, $commissionAmount, $refund, $tutor, $platformDelta): void {
+            if ($this->alreadySettled($locked)) {
+                throw new LedgerException("Lesson {$locked->id} has already been settled.");
+            }
+
+            $escrow = $this->balance($locked, LedgerAccount::Escrow);
+
+            if ($escrow !== $price && $escrow !== 0) {
+                throw new LedgerException("Lesson {$locked->id} cannot be settled: its escrow ({$escrow}) is neither the price nor zero.");
+            }
+
+            $legs = [];
+
+            if ($escrow === 0) {
+                if ($this->balance($locked, LedgerAccount::Tutor) !== $tutorAmount || $this->balance($locked, LedgerAccount::Platform) !== $commissionAmount) {
+                    throw new LedgerException("Lesson {$locked->id} cannot be settled: escrow is 0 but it was never released (tutor/platform balances don't match the frozen split).");
+                }
+
+                $legs[] = [LedgerAccount::Escrow, LedgerEntryType::ReleaseReversal, $tutorAmount, null];
+                $legs[] = [LedgerAccount::Tutor, LedgerEntryType::ReleaseReversal, -$tutorAmount, $locked->tutor_profile_id];
+                $legs[] = [LedgerAccount::Escrow, LedgerEntryType::ReleaseReversal, $commissionAmount, null];
+                $legs[] = [LedgerAccount::Platform, LedgerEntryType::ReleaseReversal, -$commissionAmount, null];
+            }
+
+            if ($refund !== 0) {
+                $legs[] = [LedgerAccount::Escrow, LedgerEntryType::Refund, -$refund, null];
+                $legs[] = [LedgerAccount::Refund, LedgerEntryType::Refund, $refund, null];
+            }
+
+            if ($tutor !== 0) {
+                $legs[] = [LedgerAccount::Escrow, LedgerEntryType::ReleaseTutor, -$tutor, null];
+                $legs[] = [LedgerAccount::Tutor, LedgerEntryType::ReleaseTutor, $tutor, $locked->tutor_profile_id];
+            }
+
+            if ($platformDelta !== 0) {
+                $platformType = $platformDelta < 0 ? LedgerEntryType::Goodwill : LedgerEntryType::ReleaseCommission;
+                $legs[] = [LedgerAccount::Escrow, $platformType, -$platformDelta, null];
+                $legs[] = [LedgerAccount::Platform, $platformType, $platformDelta, null];
+            }
+
+            $this->write($locked, $by, $legs, 'Settle', $dispute->id);
+        });
+
+        return ['refund' => $refund, 'tutor' => $tutor, 'platform_delta' => $platformDelta];
     }
 
     /**
@@ -250,9 +347,23 @@ final class LedgerService
     }
 
     /**
+     * Whether `settle()` has already written to this lesson — checked for
+     * `dispute_id` (SETTLE always tags its legs) rather than any single leg
+     * type, since a 0% dial can now leave a settle with no `ReleaseReversal`
+     * and no `ReleaseTutor`/`Goodwill`/`ReleaseCommission` leg at all.
+     */
+    private function alreadySettled(Lesson $lesson): bool
+    {
+        return LedgerEntry::query()
+            ->where('lesson_id', $lesson->getKey())
+            ->where(fn ($query) => $query->whereNotNull('dispute_id')->orWhere('type', LedgerEntryType::ReleaseReversal))
+            ->exists();
+    }
+
+    /**
      * @param  list<array{0: LedgerAccount, 1: LedgerEntryType, 2: int, 3: int|null}>  $legs  account, type, signed fils, tutor profile
      */
-    private function write(Lesson $lesson, ?User $by, array $legs, string $memo): void
+    private function write(Lesson $lesson, ?User $by, array $legs, string $memo, ?int $disputeId = null): void
     {
         self::$writing++;
 
@@ -260,6 +371,7 @@ final class LedgerService
             foreach ($legs as [$account, $type, $amount, $tutorProfileId]) {
                 LedgerEntry::query()->create([
                     'lesson_id' => $lesson->getKey(),
+                    'dispute_id' => $disputeId,
                     'account' => $account,
                     'type' => $type,
                     'amount' => $amount,
