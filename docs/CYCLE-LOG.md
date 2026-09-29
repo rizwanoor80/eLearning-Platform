@@ -5096,3 +5096,17 @@ discrepancy (§6 item A, Owner action 18), not a consultation gap; one
 call (9d's 11:58) has only its metadata reconstructable, not its
 content, disclosed separately (§6 item AW). Resume count 0 of 8.
 Nothing further is authorised; the planner writes the next plan.
+
+[2026-09-29 13:44] HANDOFF
+Halt at step 6/END: cycle 09 r1 (programme "CP8-pre") complete, nothing
+further authorised. Done: 9a/9b/9c/9d all merged to `main`
+(`f64bee7`/`91a37db`/`e472e9e`/`f4c2892`); rehearsal deployed to
+`f4c2892`, full R91 checklist green (VERIFICATION 13:35); END logged
+13:42. Next: the planner writes the next plan (cycle 10) once the owner
+says "go ahead"; no code or docs work is authorised until then. Ruled
+out this halt: any further build, any production deploy (stays the
+owner's own click), any self-authorised scope beyond R111's standing
+rehearsal-deploy ruling. Context size at write: not measured by the
+tool. Compactions this session: at least 2 (one mid-9b, one mid-9d, per
+the pre-compaction summaries this session continued from). Resume count
+0 of 8.
