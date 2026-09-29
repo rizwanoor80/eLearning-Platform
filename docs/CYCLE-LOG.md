@@ -5003,3 +5003,31 @@ mergeable=MERGEABLE, mergeStateStatus=CLEAN. Meets R147/R154's
 self-merge bar (0 Medium/High) with room to spare -- cleaner than PR
 #37's 3 Low PASS WITH NOTE. No fix loop needed (cap 2, 0 used).
 Proceeding to self-merge.
+
+[2026-09-29 13:05] VERIFICATION
+PR #38 self-merged (gh pr merge 38 --merge), merge commit `f4c2892`,
+mergedAt 2026-09-29T07:48:05Z. Local main fast-forwarded
+(215462f..f4c2892, 13 files, +1530/-31). Full gate set re-run fresh on
+the merged tree, run via the real git-bash shell throughout (not
+PowerShell) after PowerShell's own `composer test` hit the
+already-disclosed WSL/bash-relay issue (sec6 item B) on the rtl:check
+script step, and `php artisan test` under PowerShell then failed 3
+RtlCheckTest.php cases for the identical root cause (that file's own
+`Process::run(['bash', 'scripts/rtl-check.sh', ...])` calls resolve
+`bash` to the WSL relay under PowerShell, not Git Bash) --
+RtlCheckTest.php is untouched by this PR (confirmed: not in the merge
+diff's file list) and this is a fifth confirmation of a pre-existing,
+already-worked-around environmental gap, not a 9d regression. Re-run
+entirely via git bash instead: Pint passed; PHPStan passed, 0 errors;
+`bash scripts/rtl-check.sh` clean ("no physical-direction utilities
+found"); `{"tool":"pest","result":"passed","tests":2033,"passed":2033,
+"assertions":10238,"duration_ms":478605}` (identical count to the
+pre-merge 12:31 run); `ledger:verify`: "Ledger OK: every lesson sums to
+zero."; `npm run build`: "✓ built in 11.34s". Smoke check: `php artisan
+config:show app.url` -> `http://project-elearning.test` (the "/" guess
+used in the last smoke check, elearning-platform.test, was wrong --
+curl returned 000 on all four routes until corrected); all four routes
+200 against the real hostname: `/` 200, `/tutors` 200, `/login` 200,
+`/register` 200. Step 5 (9d, R152) done. ccd_pr get_status pre-merge:
+1 check passing, 0 failing, mergeable=MERGEABLE,
+mergeStateStatus=CLEAN.
