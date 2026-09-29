@@ -4019,3 +4019,57 @@ read (07:28). Next: one small STATUS edit (header timestamp + one AN sentence, n
 commit untagged, grep gate, push, then launch the fresh-subagent review with the five invariant
 checks above as explicit instructions. CI-green (passing > 0, failing = 0 on the final HEAD) is now
 an explicit precondition for self-merge, checked once after review, not polled.
+
+## [2026-09-29 07:36] REVIEW -- fresh-subagent adversarial review of PR #36 (`cp/9b-disputes` vs
+`main`), per checkpoint protocol, before merge
+
+Fresh subagent (general-purpose, no prior session context -- rule 2 independence), given the branch
+diff, `docs/reports/9b.md` to verify (not trust), the eleven binding CLAUDE.md invariants, and five
+specific checks an advisor flagged as most likely to be missed by a docs-only-focused review. Full
+report below, verbatim from the subagent's hand-back:
+
+1. PASS -- `allowingStatusWrites` used only in pre-existing, out-of-scope files; none of this PR's
+   new files reference it.
+2. PASS -- No `ledger_entries` writes outside `LedgerService`; the one raw
+   `DB::table('ledger_entries')->insert(...)` in the diff is inside a test deliberately corrupting
+   escrow to prove `settle()` rejects it.
+3. PASS -- `settle()` (`LedgerService.php:1251-1314`) takes `$parentRefundPct`/`$tutorPayPct` fully
+   independently; `platformDelta = price - refund - tutor`, never one dial derived from the other.
+4. PASS -- Dispute paths never notify a learner directly; `OpenDispute` requires the account holder;
+   notification listeners target only the tutor's `User` and active-admin `User` rows.
+5. PASS -- Both new CHECK-constraint migrations are new, forward-only files; the pre-existing frozen
+   ledger-entries migration is altered only via a fresh `ALTER TABLE` migration, not edited.
+6. PASS -- No floats/`round()` on money anywhere in the diff; all new arithmetic goes through `Money`.
+7. PASS -- No raw `$lesson->status = ...`; both actions transition exclusively through
+   `LessonStateMachine::transition()`.
+8. PASS -- Authorization: `LessonPolicy::openDispute` (account holder only, tested against a
+   stranger/the tutor/another tutor); `ResolveDispute`'s own active-admin check (an account holder
+   cannot resolve their own dispute); `DisputeResource` gated by `RequiresActiveAdmin`.
+9. PASS -- `LedgerService.php`'s "frozen after CP5" clock confirmed not started (CP5 boxes unticked
+   on `origin/main`); flags, not as a defect, that the owner may want to explicitly sign off on this
+   judgment call given how load-bearing the file is -- carried into Owner action below, not a FAIL.
+10. PASS -- Dial-matrix/settle test coverage thorough (reversal leg, never-held, double-settle,
+    cross-lesson mismatch, out-of-range, zero-dial, 5-case rounding matrix incl. a prime price); ran
+    the four dispute test files directly: **50 tests, 238 assertions, all passed** -- matches
+    `docs/reports/9b.md`'s cited figures exactly.
+11. PASS -- Citation spot-checks on `docs/reports/9b.md` (LessonStateMachine.php:57-59,
+    AutoReleaseLesson.php:60, LedgerServiceTest.php:347/375, the 06:19/06:42 cross-reference) all
+    accurate at the cited lines.
+12. PASS WITH NOTE -- general code quality solid, no N+1s; two non-blocking observations:
+    `DisputeFactory::resolved()` doesn't set `refund_amount` (self-disclosed in its own docblock as
+    not meant for ledger-accurate tests); the new CHECK-constraint migration's `down()` would reject
+    already-written `release_reversal` rows on a rollback (theoretical -- migrations are forward-only
+    by project convention).
+
+**Overall: 17 verdicts -- 16 PASS / PASS WITH NOTE, 0 FAILs (0 Low, 0 Medium, 0 High).** Cleaner than
+PR #35 (4 Low, 0 Med/High). No fix loop needed. Model: general-purpose subagent, not the configured
+advisor -- this REVIEW entry does not count toward the R63 advisor-consult tally.
+
+CI per `get_status`, checked once (not polled): **1 passing, 0 failing, 0 pending** -- green.
+`mergeable: MERGEABLE`, `mergeStateStatus: CLEAN`.
+
+**Merge decision:** 0 Medium/High findings -> self-merge authorised under R147/R154 (the plan's own
+merge rule for a clean or Low-only review), no owner GO required. Item 9's owner-attention flag (the
+`LedgerService.php` freeze-clock judgment) is carried forward as a disclosed, non-blocking Owner
+action in STATUS §7 rather than treated as a merge blocker -- the review itself rated it PASS, not
+FAIL, and the reasoning was already advisor-consulted per rule 11 before this branch was cut.
