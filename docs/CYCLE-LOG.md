@@ -4073,3 +4073,46 @@ merge rule for a clean or Low-only review), no owner GO required. Item 9's owner
 `LedgerService.php` freeze-clock judgment) is carried forward as a disclosed, non-blocking Owner
 action in STATUS §7 rather than treated as a merge blocker -- the review itself rated it PASS, not
 FAIL, and the reasoning was already advisor-consulted per rule 11 before this branch was cut.
+
+## [2026-09-29 07:53] VERIFICATION -- post-merge, PR #36 (`cp/9b-disputes`, R150) merged to `main`
+
+Merged via `gh pr merge 36 --merge` (0 Medium/High findings, self-merge under R147/R154, no owner
+GO needed -- see the `07:36` REVIEW entry above). Merge commit
+`91a37db77217f4ef8107f9ec007015a06e5ce8d7`, 2026-09-29 07:37:10 +0400, "Merge pull request #36 from
+rizwanoor80/cp/9b-disputes". Local `main` fast-forwarded clean (`git merge --ff-only origin/main`,
+9dbd70b..91a37db, 45 files, +3796/-79).
+
+Full gate set re-run fresh on the merged `main`, each step and its result:
+- Pint (`./vendor/bin/pint --test`): `{"tool":"pint","result":"passed"}`.
+- PHPStan (`./vendor/bin/phpstan analyse --no-progress --memory-limit=1G`):
+  `{"tool":"phpstan","result":"passed","errors":0}`. First attempt at the default 128M crashed on
+  the tool's own memory limit (`Child process error: ... reached configured PHP memory limit: 128M`)
+  -- a tool/environment condition, not a code finding; re-run with `--memory-limit=1G` passed clean.
+  (`composer test`'s own `types:check` script already sets `--memory-limit=512M`, so this is specific
+  to running the bare `analyse` command standalone.)
+- RTL grep, two scopes: (a) whole `resources/js` tree -- 5 matches, all pre-existing shadcn/reka-ui
+  library files (`dropdown-menu`, `navigation-menu`, `select`, `tooltip`), all false positives on the
+  raw pattern matching inside animation-utility class names (`slide-in-from-left-2` etc.), none
+  touched by this PR; (b) scoped to only the files this PR changed under `resources/js/**`
+  (`git diff --name-only 9dbd70b..91a37db`) -- zero matches. RTL-clean for this PR's own diff.
+- `npm run build`: `✓ built in 1m 4s`, no errors.
+- `npx vue-tsc --noEmit`: no output, no errors -- clean.
+- `php artisan ledger:verify --no-interaction`: `"Ledger OK: every lesson sums to zero."`
+- Full Pest suite (`php artisan test --parallel`, run directly after `php artisan config:clear`):
+  `{"tool":"pest","result":"passed","tests":1977,"passed":1977,"assertions":10051,"duration_ms":380084}`
+  -- identical to the pre-merge count carried since `05:55` (this PR's 50 new dispute tests were
+  already inside that count). Suite did not shrink.
+- `composer test` as one command still fails partway on the already-disclosed WSL/bash relay issue
+  (§6 item B) -- it aborts at the `rtl:check` script (`bash scripts/rtl-check.sh`, no WSL/bash on
+  this box per ADR-001) before ever reaching Pest. Pint/PHPStan/`types:check` (`vue-tsc`) all passed
+  inside that same run, up to the point of failure; every constituent step above was then run
+  separately via the real shell to get the full, real result -- same disclosed workaround as
+  earlier this cycle, not a new mismatch.
+- Smoke check: `/`, `/login`, `/register`, `/tutors` on `http://project-elearning.test` -- all `200`.
+
+**Step 3 (9b disputes, R150) is now fully done, including merge.** R150's "done means" list
+(`docs/PLAN.md` step 3) is satisfied in full: merged; transition table quoted, no new edge; dial
+tests green; seeded-DB `ledger:verify` zero-sum with resolved disputes; `docs/reports/9b.md`;
+ADR-021; CP8 dispute box ticked. Next: STATUS.md full rewrite (step boundary, rule 5), then continue
+without stopping (rule 13) into `cp/9c-admin-ops` (R151) -- PLAN.md step 3 is "halt: only per R109"
+and nothing in that category has occurred; no owner action needed to proceed.
