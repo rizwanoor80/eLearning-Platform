@@ -4188,3 +4188,148 @@ drafted"): the anchor choice will be drafted against the actual `report_due_hour
 settings and `ReviewLateReports`' window next, then put back to the advisor before
 `ForceCompleteLesson` is written. The mid-build and pre-PR consults for 9c remain owed after that,
 per PLAN.md line 5's "minimum 3 per sub-cycle."
+
+[2026-09-29 08:13] NOTE — correction to 07d2368's own claim: SS6/S2/S4 were not actually restored from `git show f815d6d:docs/STATUS.md`
+07d2368's commit message and its STATUS.md header both stated the full SS6/S2 item 2/S4 register was
+"restored in full ... from `git show f815d6d:docs/STATUS.md`, the last commit that had it complete."
+That command was never actually run. After the compaction boundary this segment resumed from, the
+harness reported docs/STATUS.md "too large to include" in the carried summary, so f645121's original
+mistake was corrected using the pre-compaction conversation summary's paraphrase of the register, not
+the real file. The summary's own paraphrase was itself lossy in several places, e.g. items 0f/0g/2d/7
+were already compressed there ("(a)-(d) various", "(a)-(i) various", "(a)-(f) various") rather than
+carrying their real, longer verbatim text. This is the same class of mistake as f645121 itself —
+restoring from a summary rather than the true source — caught this time by the mandatory release-path
+advisor consult (below) before it went uncorrected any further. `git show f815d6d:docs/STATUS.md` has
+now actually been run (193 lines, saved to a temp file, read in full) and the real S1-S8 content
+confirmed differs from what 07d2368 wrote in several places beyond the AO/AP/tally/skip-ci/smoke-check
+fixes that write did get right. A further STATUS.md rewrite, using the real f815d6d text as its base
+this time, follows this entry. 07d2368 itself is left unedited (standing append-only convention for a
+historical commit's own message; only new work is affected).
+
+[2026-09-29 08:13] ADVISOR — mandatory 9c release-path consult (PLAN.md line 5's named "force-complete's release path (9c)")
+Consulted per PLAN.md line 5, which names "force-complete's release path (9c)" as its own required,
+separate consultation from the general 9c design consult already logged at 08:02 — this is that
+consult. Response, summarised point by point (full transcript in session record; tally goes to 16/14):
+
+1. Blocking before any further STATUS write: 07d2368's "restored in full from git show f815d6d" claim
+   is false — the file was rebuilt from a lossy conversation summary after the harness reported the
+   real file too large to include post-compaction. Fix: check out main (cp/9c has no commits to lose),
+   extract the real S6/S7 from `git show f815d6d:docs/STATUS.md` verbatim, layer only the intended
+   AO+ deltas on top, diff-prove it against the real source (reading the full persisted diff, not a
+   truncated preview, if needed), append a correcting NOTE, commit `[skip ci]`, push, then
+   `git checkout cp/9c-admin-ops && git merge --ff-only main` — never delete/recreate the branch.
+2. Force-complete anchor: read AutoReleaseReports/AutoReleaseLesson::due() (confirms the sweep trusts
+   the frozen auto_release_at row column, only falling back to ends_at for legacy null rows), where
+   report_late_at is stamped (unconditionally, no lateness-relative-to-actual-completion check), and
+   what ReviewLateReports counts (3 report_late_at flags in 90 days -> TutorStrike, suspension-adjacent).
+   Deciding question: does an ends_at anchor on a lesson stuck past ends_at+report_due_hours
+   automatically produce a suspension-counting late flag? Confirmed yes -> anchor on now(), reading
+   report_due_hours/auto_release_hours from Settings at transition and freezing them on the row exactly
+   as SettleEndedLesson::complete() does; log as a DECISION. Either way, require ends_at to already be
+   past for both in_progress and confirmed, mirroring SettleEndedLesson's own guard; also a DECISION.
+3. Dispute window: OpenDispute's 48h window is hard-coded on ends_at. A force-complete more than 48h
+   after ends_at leaves no dispute window. Do not touch OpenDispute in 9c (merged 9b money code, out of
+   R151's scope) — disclose in S6 plus a non-blocking Owner action with a recommended option.
+4. Four side-effect reads before writing either action: (a) grep InProgress listeners — none exist, so
+   chaining confirmed->in_progress->completed fires no unwanted join/room side effect; (b) grep
+   first_lesson_completed_at — SyncConversationForLesson stamps it unconditionally on any ->Completed
+   transition with no join-state check, a real invariant-8 unmask risk for a single-party-joined forced
+   completion, needing an explicit DECISION; (c) read RecordLessonCancelledNotification.php:40 and
+   SendWeeklyChargeMails.php:34 — the latter checks the specific TutorUnavailable value and is safe,
+   the former's silence/branch shape for a new machine cancel_reason needs checking against isReserved();
+   (d) a new LessonCancelReason::Admin case makes isReserved() true for it, which (i) correctly keeps
+   the recurring (recurring_slot_id, starts_at) index key on force-cancel (only slot_paused frees it),
+   but (ii) silences SendLessonSkippedMail entirely for a reserved force-cancel (no mail, and no bell —
+   RecordLessonCancelledNotification's freeSkip branch is gated the same way), and (iii) leaks the raw
+   string "Reason given: admin" to both parties via cancelled.blade.php's unguarded print for a
+   confirmed force-cancel. Minimal fix for (iii): a blade guard mirroring isReserved(), not printing
+   machine values.
+5. The confirmed-past-ends_at force-complete path is narrow — SettleEndedLesson::unattended() already
+   refunds at ends_at+close_grace, so force-complete from confirmed only really matters in the
+   webhook-failure gap (S6 0c(a)) or while the scheduler is down. Test that force-completing an
+   already-refunded lesson is refused cleanly with the ledger staying zero-sum.
+6. Reserved force-cancel: mirror CancelSlotReservedLessons::hasPendingAttempt(); also refuse a lesson
+   with a Captured or NeedsReview payment (no ledger path for it until CP5); assert `ledger:verify`
+   stays green in that test.
+
+Point 1 is addressed by the correction NOTE immediately above and the STATUS.md rewrite that follows
+this entry. Points 2-6 are addressed by the DECISION entries below and by the design of
+ForceCancelLesson/ForceCompleteLesson about to be built.
+
+[2026-09-29 08:13] DECISION — CC: ForceCompleteLesson anchors report_due_at/auto_release_at on now(), not ends_at
+Read app/Console/Commands/AutoReleaseReports.php and AutoReleaseLesson::due(): the sweep trusts the
+frozen auto_release_at column on the row (falls back to ends_at+hours only for legacy rows where that
+column is null) — whatever ForceCompleteLesson writes to the row governs the sweep, confirmed, not
+assumed. Read AutoReleaseLesson::__invoke(): it stamps report_late_at unconditionally the moment
+escrow auto-releases, with no check on whether the deadline had already been in the past when the
+lesson became completed. Read ReviewLateReports: 3 lessons with report_late_at set inside a rolling
+90-day window auto-creates a late_report_x3 TutorStrike row and emails admins. Chain: if
+ForceCompleteLesson anchored on the literal ends_at for a lesson stuck days past its scheduled end,
+auto_release_at = ends_at + auto_release_hours would already be in the past the instant the transition
+commits — the very next 5-minute sweep run would immediately release escrow and stamp report_late_at,
+for a delay the admin (or a Daily webhook failure) caused, not the tutor, with no way to distinguish it
+from a genuine late report. Decision: anchor both report_due_at and auto_release_at on now() at the
+moment of the forced completed transition, reading report_due_hours/auto_release_hours from Settings
+exactly as SettleEndedLesson::complete() already does — frozen on the row the same way, invariant 11
+intact (the window lengths are still the settings-driven, frozen-on-the-lesson values; only the anchor
+instant differs from the ordinary on-time path). Consistent with R151's "then the normal release path —
+report or 72h auto-release, unchanged": the mechanism is unchanged, only the instant a genuinely-late
+completion is judged from moves to the instant an admin actually closed it out.
+
+[2026-09-29 08:13] DECISION — CC: ForceCompleteLesson requires ends_at to already be in the past, both in_progress and confirmed
+Mirrors SettleEndedLesson::complete()'s own guard (ends_at->isFuture() refuses). Nothing gets
+force-completed mid-session; an admin cannot end a lesson that is still scheduled to be running.
+confirmed -> in_progress -> completed and the direct in_progress -> completed edge both carry this
+same check inside the one DB::transaction.
+
+[2026-09-29 08:13] DECISION — CC: OpenDispute's 48h ends_at-anchored window is left untouched this sub-cycle; disclosed, not fixed
+A lesson force-completed more than 48h after its own ends_at would find OpenDispute::problemFor()
+already refusing the moment it becomes disputable, leaving the affected family no real recourse if the
+forced completion was wrong. OpenDispute is merged 9b money code, not named in R151's scope, and
+changing its anchor (e.g. to completed_at) is a real design change to already-shipped, tested behaviour
+that deserves its own review, not a drive-by edit inside 9c. Recorded in S6 (new item, see STATUS.md
+rewrite) with a recommended Owner action; does not block 9c's build — the scenario requires a lesson to
+have been stuck uncompleted for 46+ hours before an admin acts, the same rare-and-already-disclosed
+shape as item 0b/0c(a).
+
+[2026-09-29 08:13] DECISION — CC: force-complete's unmasking of conversation contact details on a single-party-joined lesson is accepted admin-judgment design, not a gap
+SyncConversationForLesson stamps first_lesson_completed_at (invariant 8's masking gate) unconditionally
+on any transition to Completed, with no check on tutor_joined_at/learner_joined_at. Force-complete's
+whole purpose (S6 0b, 0c(a)) is the case where the ordinary SettleEndedLesson::complete() never ran
+because it requires both join timestamps non-null — so a force-completed lesson may genuinely have only
+one side's join timestamp set, or neither. The admin's required note is the safety mechanism here, the
+same trust-the-admin-with-an-audited-note pattern MarkProviderFailure already uses for an equally
+consequential call. Decision: no extra join-state guard is added — an admin marking a lesson complete
+is asserting, on the record, that it happened. Disclosed in S6 for the reviewer's attention, not
+treated as a defect.
+
+[2026-09-29 08:13] DECISION — CC: cancel_reason for ForceCancelLesson is the new machine value LessonCancelReason::Admin ('admin'), not a copied user-typed note
+R151's own text names the reason literally as admin. LessonCancelReason's docblock scopes the enum to
+machine-readable values written to cancel_reason when the platform, not a person's typed note, cancels
+a lesson — matches an admin panel action, not a tutor/parent's own free-text cancel (CancelLesson,
+which writes the raw string with no enum involved). Using a fixed enum value rather than the admin's
+free-text note also sidesteps isReserved()'s existing collision guard entirely. The admin's required
+note goes into the audit log's payload only (RecordAuditLog's $after), mirroring MarkProviderFailure's
+exact convention — never onto the lesson row. Confirmed side effect, not a defect: the recurring
+(recurring_slot_id, starts_at) partial unique index frees a row's key only for cancel_reason =
+'slot_paused'; 'admin' is not that value, so a force-cancelled recurring-generated lesson keeps its key
+and recurring:generate cannot recreate it next run — the same protective behaviour TutorSuspended/
+AccountSuspended already rely on, to be pinned by a test.
+
+[2026-09-29 08:13] DECISION — CC: notification behaviour for ForceCancelLesson — silent for reserved, existing generic mail/bell kept (with a copy fix) for confirmed
+Because LessonCancelReason::Admin will make isReserved($lesson->cancel_reason) true: (1) a reserved
+force-cancel gets no mail (SendLessonSkippedMail returns early on any recognised machine value) and no
+bell (RecordLessonCancelledNotification's freeSkip branch is gated the same way) — total silence, the
+same deliberate-silence shape already established for TutorSuspended/AccountSuspended/SlotPaused/
+SlotEnded. Decision: accept this silence for v1 rather than build a new dedicated mail/notification
+pair R151 never asked for (CLAUDE.md's scope guard) — disclosed in S6, not silently assumed. (2) A
+confirmed force-cancel is unaffected on the send/no-send side — both mail and bell fire as they already
+do for a normal cancellation, gated only on from=Confirmed && to=Cancelled, not on cancel_reason. Real
+problem found: cancelled.blade.php prints cancel_reason raw with no guard ("Reason given:
+{{ $lesson->cancel_reason }}"), so a confirmed force-cancel would literally show the family and tutor
+the string "Reason given: admin" — an internal machine value leaking as customer-facing copy. Fix: guard
+the blade view the same way SendLessonSkippedMail already guards its own send — skip the "Reason given"
+line when LessonCancelReason::isReserved($lesson->cancel_reason) is true — so any current or future
+machine value is silently omitted while a genuine tutor/parent-typed reason still shows as it does
+today. Confirmed SendWeeklyChargeMails.php:34's own CancelledByTutor branch checks cancel_reason ===
+TutorUnavailable->value specifically, so 'admin' cannot trigger its wrong copy there — no fix needed.
