@@ -3692,3 +3692,65 @@ Also quoted verbatim, verdict: "the proof itself stands, and none of this reopen
 The corrections do block the push, because the fresh-subagent reviewer will read CYCLE-LOG and STATUS
 as evidence." Both consults now count toward this cycle's advisor minimum per R63; the `06:19`
 pre-work ADVISOR entry above still does not.
+
+## [2026-09-29 07:05 machine clock] NOTE — two more problems in the correction pass just committed
+as `0e42c9c`, both the same class of mistake as the ones that pass corrected, found by a fresh
+advisor consult called after the commit. Per convention, entries above are left uncorrected in
+place; this is an append.
+
+1. **The commit message for `0e42c9c` itself accidentally contains the CI-skip token as a
+   substring**, inside the phrase "disclose wider `[skip ci]` scope" — confirmed mechanically:
+   `git log -1 --format=%B | grep -iE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]'`
+   matches. GitHub's skip-CI detection is a substring match on the whole message, not a check for
+   the token used as an actual directive, so this HEAD commit would skip CI if pushed as-is despite
+   the token only being *mentioned*, not intended as the tag. This is the same class of error as
+   this cycle's earlier `[skip ci]` mistakes, just via careless wording instead of a copy-pasted
+   habit. **Not fixed by amend/reset/rebase** — the same rewrite already declined once this segment
+   after the `git reset --hard 19fede9` classifier denial is declined again here for the same
+   reason (Owner-loop rule: CC does not re-attempt a declined outcome by a different git mechanism,
+   and does not ask the owner in chat to approve one). Resolution: leave `0e42c9c` as it is —
+   GitHub's skip-CI check still reads only the **HEAD commit at push time**, and `0e42c9c` will not
+   be HEAD once this NOTE's own commit lands on top of it — and from here on, every commit message
+   on this branch describes the tag in prose ("the CI-skip tag") rather than reproducing the
+   bracketed token in any form, plus the grep above is now run against HEAD as a mechanical
+   pre-push gate before every push, not left to memory. STATUS.md §1 and §6 item AM, which had
+   claimed "this write's own correction commit… carries no `[skip ci]`," are corrected by this
+   write to name `0e42c9c` as a fifth affected commit (mention-only, not an intended tag, but
+   matched by GitHub's check regardless of intent).
+2. **The consult recount in STATUS.md's header/§3/§6-AM, and this NOTE's own predecessor's closing
+   line ("Both consults now count"), over-counts by one.** The `06:19`-logged-`06:42` post-commit
+   ADVISOR entry explicitly discloses, in its own text, that its quote "is a summary, not a verbatim
+   transcript excerpt" — rule 11 requires an ADVISOR entry to quote one line of what came back, and
+   R63 requires that quote to be verbatim for the entry to count. Applying the same standard this
+   pass applied to the `06:19` pre-work entry (no phrase/no quote → does not count) to this entry
+   (phrase present, quote explicitly not verbatim) gives the same answer: it does not count either.
+   Corrected tally, also folding in the `07:05` consult that found these two problems (logged as
+   its own ADVISOR entry immediately below, with genuine verbatim quotes, so it counts): **on-branch,
+   7 of 9 calls count** (the 5 already-counted entries — `01:36`, `02:05`, `22:43Z/03:00`, `22:53Z`,
+   `04:45` — plus the `06:42` same-turn follow-up and this `07:05` entry, both with genuine verbatim
+   quotes; `06:19` pre-work and `06:19`-logged-`06:42` post-commit both do not count). Plus the
+   pre-branch `00:35`/`01:20` pair — 2 more, count. **Total this cycle: 11 consult calls, 9 counting
+   per R63, 2 (the two `06:19`-timestamped entries) do not.** STATUS.md's header, §3, and §6 item AM
+   are corrected by this write; the prior NOTE's and follow-up ADVISOR entry's own miscounts are left
+   in place above per the append-only convention, corrected here instead.
+
+## [2026-09-29 07:05 machine clock] ADVISOR — review-stage consult, called right after committing the
+correction pass as `0e42c9c`, per rule 11 (post-commit review of money-adjacent documentation before
+push). Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 —
+configured, not measured. Quoted verbatim from the response: "Your \"untagged\" commit is effectively
+tagged. The subject of `0e42c9c` contains the literal string \"disclose wider `[skip ci]` scope\".
+GitHub's CI-skip check is a substring match on the commit message. It does not care that the token was
+meant as a mention." Also quoted verbatim: "Don't amend or reset. That is the same rewrite you already
+decided not to pursue after the classifier denial… Write the next commit's message… without the
+bracketed token or any of its variants. Say \"the CI-skip tag\" instead… Run the grep above as a
+mechanical pre-push gate on HEAD, every time." Also quoted verbatim on the recount: "The post-commit
+ADVISOR entry says outright that its quote \"is a summary, not a verbatim transcript excerpt\"…By the
+standard you just applied to `06:19`, this entry does not count either. The honest tally is 8 of 10
+this cycle and 6 of 8 on the branch" (this entry's own consult adds one more counting call on top of
+that, giving the 9-of-11/7-of-9 figures above). Also quoted verbatim, confirming the report-writing
+constraints already planned: "no payment reconciliation claim… say the Goodwill branch is covered by
+unit tests only… don't cite `05:55` as dispute evidence… L4 is `ReleaseCommission`." Also quoted
+verbatim, a new pre-push check: "run `git diff --stat 19fede9..HEAD`. If it shows only `docs/` files,
+the `05:55` result of 1977/1977/10051 still covers the pushed tree for rule 7; say so in the push
+entry. If anything outside `docs/` appears, rerun the suite." Adopted in full; both findings corrected
+in the NOTE above, the new pre-push checks (message-grep, diff-stat scope check) adopted going forward.
