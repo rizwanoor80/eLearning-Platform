@@ -4594,3 +4594,412 @@ Smoke check (R154's four routes, `APP_URL=http://project-elearning.test`, curl a
 
 Step 4 (9c admin ops, R151) is **DONE, MERGED**. Continuing directly into
 `cp/9d-audit-dashboard` (R152) per rule 13 -- no owner action needed to proceed.
+
+[2026-09-29 10:08] START
+Step 5: `cp/9d-audit-dashboard` (R152), branched from `main` at `215462f`. Scope confirmed by
+direct `docs/PLAN.md` read (lines 1-30) this segment: a read-only Filament Audit log resource
+(filter by actor, action, subject, date; no edit, no delete) rendering `*.suspension_sweep`
+rows' `confirmed_lesson_ids` as links (closes STATUS.md §6 item P), the Safeguarding record
+linked to its sweep row; dashboard widgets -- lessons this week, revenue this week and month
+from the ledger (platform account, fils -> AED), reports overdue, permits expiring in 30 days,
+failed charges in 7 days, open reports, open disputes -- each backed by one tested query against
+a seeded fixture, no new tables. "Halt: no" per the Steps list -- no owner GO needed by default
+to build or merge (R154 governs self-merge as usual); Step 6 (Deploy and END, R111) remains the
+next real halt.
+
+Advisor: Standing minimum for 9d is 3 consults (design before the first edit, once mid-build,
+before the PR) -- no 9d-specific named mandatory trigger beyond that in the Advisor line, but
+the revenue widget reads `ledger_entries` directly, which trips rule 11's own "money/ledger/
+payout code" mandatory-consult category regardless of the sub-cycle minimum.
+
+Orientation dispatched to a background Explore subagent (read-only) before the design consult:
+`AuditLog` model and `suspensionHistory()`'s existing `audit_logs` read shape, the Safeguarding
+resource/record to mirror for the read-only pattern and the sweep-row link, existing Filament
+panel/widget scaffolding (if any), `LedgerService`/`ledger_entries`/platform-account revenue
+shape, `Money` fils->AED conversion, the models behind the remaining widgets (reports overdue,
+permit expiry, failed charges, open disputes), 9c's `RequiresActiveAdmin` panel-guard
+convention, and the seeded-fixture pattern used by 9b/9c's own tests. Design advisor consult
+follows once that orientation returns.
+
+[2026-09-29 10:15] ADVISOR
+Design consult for R152 (rule 11 mandatory -- money/ledger read for the revenue widget -- plus
+the Standing minimum's design-before-first-edit consult). Model: **Fable** (R63's fixed phrase,
+PROJECT_BRIEF.md:124; the `advisorModel` transcript-metadata discrepancy, §6 item A/Owner action
+18, is carried open, not re-settled here per the consult's own instruction). Verbatim quote:
+"Sum every `LedgerAccount::Platform` entry in the window, with no type filter... Keep this query
+out of `LedgerService.php`. Put it in a read-only query class or in the widget, so 9d never
+touches that file."
+
+Findings, to act on before writing the governed code (points 1, 4, 7 blocking; the rest
+settleable while building):
+1. Revenue = sum every `LedgerAccount::Platform` ledger_entries row in the window, no type
+   filter (catches ReleaseCommission, Goodwill, and 9b's ReleaseReversal if it lands on
+   Platform -- to be grep-confirmed). Net, so Goodwill can reduce it. Query lives in a new
+   read-only class or the widget itself, never LedgerService.php (frozen after CP5, and 9d has
+   no authorisation to touch it).
+2. Week/month/permit-window boundaries follow invariant 4 -- admin-local timezone converted to
+   UTC at query time; permit "today" matches CheckTutorPermits's own definition exactly.
+3. Corrected the orientation subagent's point 6: "reports overdue" is NOT new code -- 9c's own
+   lateReportFlags() already uses ReviewLateReports::WINDOW_DAYS/report_late_at; the dashboard
+   count must be built from the same fields so it agrees with the tutor detail view, not a
+   fresh whereDoesntHave('progressReport') invention. Also instructed: grep docs/PRD.md for any
+   existing overdue/revenue/audit/dashboard metric definition (PRD wins if one exists), and read
+   CP8's audit/dashboard acceptance boxes in CHECKPOINTS.md as the literal PR checklist.
+4. Safeguarding-record-to-sweep-row link: check first whether AbuseReport.action_taken or the
+   suspension audit rows' before/after already tie a report to a specific sweep. If yes, build
+   an exact link ordered by audit id (not created_at -- second-precision ties recur, per 9c's
+   own suspension-history experience). If no tie exists, link the Safeguarding row to a
+   pre-filtered audit-resource URL instead (subject = reported party, action LIKE
+   '%suspension_sweep') -- no schema change, no edit to merged 8d sweep-action code (out of
+   9d's area under R154; the sweep also runs afterCommit so no id exists yet to thread through).
+5. confirmed_lesson_ids only exists on user.suspension_sweep rows -- read as
+   after['confirmed_lesson_ids'] ?? []; confirm LessonResource has a registered view page before
+   linking to it (getUrl() throws on an unregistered page).
+6. Build the Audit resource by hand copying SafeguardingResource's shape (explicit can*
+   overrides, no create/edit/delete pages, no bulk actions) -- not via make:filament-resource,
+   which would generate Edit/DeleteBulk actions R152 forbids. before/after shown only in a
+   read-only view modal. Actor filter needs a "System" option for a null actor_user_id; subject
+   filter needs a type+ID pair labelled via class_basename (no morph map exists).
+7. Invariant 16 check required before rendering before/after raw: grep RecordAuditLog callers
+   for the payment_gateways/video_providers registry actions -- mask any credential field found,
+   or disclose (not hide) if one is already logged unmasked.
+8. Add the new resource to DisabledAdminAccessTest (R154's own named review focus), gate each
+   widget's canView() on an active admin, and add a 403-on-/admin test for a disabled admin now
+   that the dashboard shows revenue.
+
+Process notes: one query per widget (assert query count in tests where practical); the 9c
+reviewer's own worktree run left `.claude/worktrees/agent-*` stale copies on disk that CC cannot
+touch -- disclosed here (new §6 item) rather than silently ignored; Greps this sub-cycle scoped
+to `app/ tests/ database/ docs/` to avoid those copies as false hits; 9d's own reviewer runs in
+the main checkout per rule 2, not a worktree.
+
+Nothing here blocks branching or scaffolding; points 1/4/7 must be settled before the code they
+govern is written, matching the order above.
+
+[2026-09-29 10:22] NOTE
+Resolved the four points the 10:15 ADVISOR entry named as blocking before code
+is written (its own points 1, 4, 7, plus the LessonResource view-page gap
+found separately). All read directly, no inference:
+
+1. Revenue widget scope (point 1) -- RESOLVED. `LedgerEntryType::ReleaseReversal`
+   does write to `LedgerAccount::Platform`: LedgerService.php:188 posts
+   `-$commissionAmount` to Platform as part of the dispute-settle reversal pair.
+   Confirms the advisor's instruction: the revenue query sums every Platform-
+   account row in the window with no `type` filter (ReleaseCommission, Goodwill,
+   ReleaseReversal all included; the sum is net, since Goodwill/ReleaseReversal
+   can be negative).
+
+2. Safeguarding-to-sweep tie (point 4) -- RESOLVED, no tie exists. Read both
+   suspension actions' own RecordAuditLog calls in full:
+   - SuspendTutor.php:47-50 logs `after` = {status, review_note} only.
+   - SuspendAccount.php:62-65 logs `after` = {status, suspended_reason} only.
+   Neither references an AbuseReport id, and `action_taken` (grepped earlier)
+   is a CloseAbuseReport-only free-text field. No stored data ties an
+   AbuseReport row to the audit row(s) of the suspension it followed.
+   DECISION: link the Safeguarding record to a pre-filtered Audit-resource
+   URL (subject = the reported party, action filter matching `%suspension%`),
+   not an exact FK-style link, per the advisor's fallback branch. No schema
+   change, no edit to merged 8d sweep code.
+
+3. Invariant-16 credential-safety check (point 7) -- RESOLVED, all callers
+   safe. Read every RecordAuditLog call adjacent to the payment/video
+   registries:
+   - ActivateVideoProvider.php:39 -- logs only {active: code}. Safe (already
+     checked prior segment).
+   - DeactivateVideoProvider.php:24 -- logs only {active: code|null}. Safe.
+   - EditVideoProvider.php:61-68 -- `before`/`after` restricted to
+     {name, supports_embed, supports_attendance_webhooks}; changed secret
+     keys are logged as a list of key NAMES only (`credentials_changed`),
+     never values. Safe by design, docblock confirms intent.
+   - ChargeReservedLesson.php, BookLesson.php -- grepped for RecordAuditLog
+     directly: neither file calls it. Both were false-positive hits from the
+     broader `PaymentGateway|payment_gateways` grep (unrelated text), not
+     real invariant-16 candidates.
+   - SaveTestCard.php:61-65 -- the one real remaining caller. Logs
+     `'card' => $card->value`. Checked `TestCard` enum (app/Enums/TestCard.php):
+     `->value` is `'succeeds'` or `'declines'` -- a fake-gateway outcome label,
+     never a card number or token (invariant 15 untouched; this action only
+     runs where `PaymentGatewayServiceProvider::fakeGatewayAllowed()`, R100/
+     R107). Redundant next to `last4` but not a leak. No fix needed.
+   No credential-bearing field found unmasked in any caller. Nothing to mask,
+   nothing to disclose as a pre-existing leak.
+
+4. `confirmed_lesson_ids` link target (LessonResource gap, found separately)
+   -- RESOLVED. Confirmed LessonResource::getPages() registers only `index`
+   (LessonResource.php:41-46), so `getUrl('view', ...)` would throw. Also
+   checked LessonsTable.php for a fallback (link to the index pre-filtered by
+   a `?tableSearch=` query string): no column on that table is
+   `->searchable()` (only `id` exists, sortable only), so a search-string link
+   would silently filter nothing. DECISION: render `confirmed_lesson_ids` as
+   plain text (lesson IDs, not links) inside the Audit resource's view modal.
+   Widening LessonsTable's scope to add a working link target is out of 9d's
+   authorisation (R152 names the audit resource and dashboard widgets only)
+   and is not required for the 8d closure of STATUS §6 item P, which only
+   needs the ids to be visible, not clickable.
+
+All four blockers clear. Proceeding to build: AuditLogResource first, then
+the Safeguarding link, then the dashboard widgets, per the 10:15 ADVISOR
+entry's own ordering.
+
+[2026-09-29 11:11] ADVISOR (cycle 09 r1, model claude-opus-5-5)
+Consulted after AuditLogResource + dashboard widgets + the Safeguarding
+deep link were built and the new tests were passing (40/40, 173
+assertions). Confirmed first: the tool answered (this is a genuine
+consultation, not a timeout). Findings acted on directly:
+
+1. `AdminDashboardMetrics::lessonsThisWeek()`/`platformRevenue()` used
+   `whereBetween`, inclusive on both ends -- a lesson/ledger entry landing
+   on the exact next-period instant (e.g. next Monday 00:00:00.000000)
+   would double-count into both periods. FIXED: switched both to a
+   half-open range (`>=` start, `<` end).
+2. `permitsExpiringSoon()`'s docblock claimed today (day 0) was inside the
+   30-day warning window; the code (and `CheckTutorPermits`) has always
+   excluded it -- `$daysRemaining <= 0` is the separate `permit_expired`
+   bucket, not a warning (`TutorProfile::bookable()`/`permitIsValid()`
+   both use strict `>` on today, invariant #5). FIXED: corrected the
+   docblock to match the code.
+3. The first credential-leak grep for `RecordAuditLog` callers (pattern
+   `\$recordAuditLog\(|recordAuditLog::class\)\(|app\(RecordAuditLog::class\)`)
+   missed the constructor-injected call style `($this->recordAuditLog)(...)`
+   used throughout `app/Actions` (e.g. `CancelSuspendedTutorLessons.php:87`)
+   -- undercounted 13 files against the true 47. Instructed to redo the
+   search on the bare class name `RecordAuditLog` and specifically check
+   `SaveTestCard.php` and any `payment_gateways`/registry-adjacent caller.
+4. No test proved `AdminOverviewWidget` is actually registered on the live
+   `/admin` panel -- every existing test mounts it directly via
+   `Livewire::test()`, which never exercises `AdminPanelProvider`'s
+   `discoverWidgets()`. FIXED: added a test asserting
+   `Filament::getPanel('admin')->getWidgets()` contains it, mirroring
+   `DisabledAdminAccessTest.php`'s own `getResources()` precedent.
+5. `AbuseReportsTable`'s `viewSuspensionSweep` action called
+   `sweepAuditLogFor($record)` separately inside both `url()` and
+   `visible()` -- two indexed-query round trips per row where one recently
+   sufficed. FIXED (non-blocking): `url()` now stores the result once in a
+   local variable.
+6. Demanded boundary-condition test coverage beyond "an hour/day either
+   side" -- an exact-instant test at the period boundary itself, the one
+   point a `whereBetween` fix actually needs proving against. ADDED: three
+   new tests (`lessonsThisWeek`, weekly revenue, monthly revenue), each
+   posting/starting an entry at the exact next-period instant and asserting
+   it is excluded.
+
+All six points fixed/added; full gate set re-run green afterwards
+(2033/2033 tests -- see the 12:13 entry below for the confirmed re-run
+after the second consult's own fix).
+
+[2026-09-29 11:58] ADVISOR (cycle 09 r1, model claude-opus-5-5)
+A second raw consult recorded in this segment between the 11:11 entry
+above and the 12:13 entry below. Its distinct output is not separately
+reconstructable here -- the advisor tool's result is encrypted at rest in
+the session transcript, and the pre-compaction handoff summary this
+session resumed from collapsed three raw `advisor()` calls into two
+without separating this one out. Disclosed rather than invented: nothing
+in the code or tests is attributed to this specific call that is not
+already covered by the 11:11 or 12:13 entries. No further action was
+taken solely on the strength of this entry.
+
+[2026-09-29 12:13] ADVISOR (cycle 09 r1, model claude-opus-5-5)
+Consulted again after the 11:11 fixes were in and the full suite was
+green. Surfaced one new, more serious finding, plus the completion
+instruction for the credential grep opened at 11:11 point 3.
+
+1. **`AuditLogsTable::confirmedLessonIdsEntry()`'s label was factually
+   backwards.** It read "Confirmed lessons cancelled". Read both
+   suspension sweeps in full to verify:
+   - `CancelSuspendedAccountLessons.php:36` ("`confirmed` lessons are left
+     untouched -- R138: an admin decision, not automated") and its
+     `confirmedLessonIds()` method (lines 147-155): a plain
+     `->pluck('id')` read, no cancellation, no ledger call, no state
+     transition.
+   - `CancelSuspendedTutorLessons.php:33-34` ("`confirmed` lessons are
+     refunded in full"): the *other* sweep, which really does cancel --
+     and records only a count (`confirmed_cancelled`), never ids, because
+     nothing is left for an admin to act on.
+   So `confirmed_lesson_ids` only ever appears on the sweep that leaves the
+   lessons alone; the label claimed the opposite of what happened. FIXED:
+   relabelled to "Confirmed lessons still active (left untouched — needs
+   admin follow-up)", rewrote the method's docblock with file:line
+   citations for both code paths, and strengthened the end-to-end test
+   (`AuditLogResourceTest.php`) to assert
+   `$confirmed->fresh()->status === LessonStatus::Confirmed` -- a genuine
+   regression guard for the label's honesty, not just its presence. All
+   three affected tests' label-text assertions updated to match.
+2. Verbatim instruction for finishing the credential grep opened at 11:11
+   point 3, quoted directly: "Grep `app/Models` for `encrypted` casts.
+   TutorProfile's `bank_*` fields are encrypted too. Confirm that none of
+   those models passes through `AuditsResourceChanges`." Completed this
+   step (see NOTE below).
+3. Closing instruction, quoted directly: "After points 1-3, re-run
+   `composer test` through Bash and quote the new count, which should be
+   at least 2033. Then move on to CYCLE-LOG, STATUS.md and the PR."
+
+[2026-09-29 12:20] NOTE
+Completed the 12:13 point-2 instruction. `grep -rn "'encrypted" app/Models`
+finds exactly two models with an encrypted cast: `TutorProfile.php:75-78`
+(`bank_name`, `bank_account_name`, `bank_iban`, `bank_swift`, all plain
+`'encrypted'`) and `VideoProvider.php:60` (`credentials`, `'encrypted:array'`).
+`AuditsResourceChanges` (the trait that dumps `getAttributes()`/
+`getChanges()` raw) is wired into exactly 4 Filament edit/create pages --
+`YearGroups`, `DocumentTypes`, `ContentBlocks`, `PriceBands` -- none of
+which touch `TutorProfile` or `VideoProvider`. Every `RecordAuditLog` call
+site that does touch `TutorProfile` (`SuspendTutor.php:47`,
+`ApproveTutor.php:59`, `RejectTutor.php:30`, `ReinstateTutor.php:49`,
+`RequestTutorChanges.php:58`, `CompleteTutorOnboarding.php:38`,
+`ReviewTutorDocument.php:77`) builds its own small explicit `before`/
+`after` array (`status`, `review_note`, `approved_by`) -- never a raw
+attribute dump, so `bank_*` never reaches an audit row. `VideoProvider`'s
+own callers (`ActivateVideoProvider`, `DeactivateVideoProvider`,
+`EditVideoProvider`) were already checked and cleared in the 10:22 NOTE
+above (`credentials_changed` logs key names only, never values). No
+credential-bearing field reaches `audit_logs` unmasked anywhere in this
+codebase. Advisor point 2/5 (credential-leak grep) fully resolved.
+
+[2026-09-29 12:24] DEVIATION
+The 06:11-window advisor guidance (folded into the same consult that
+produced the 11:11 entry's points) suggested proving the real
+`confirmed_lesson_ids` shape by running the table's own `suspendTutor`
+action end to end. Deviated: `confirmed_lesson_ids` exists only on the
+`user.suspension_sweep` path (`CancelSuspendedAccountLessons`, fired by
+`SuspendAccount`), never on `tutor.suspension_sweep`
+(`CancelSuspendedTutorLessons`, fired by `SuspendTutor`, cancels confirmed
+lessons itself and records only a count -- see `AuditLogsTable.php`'s
+`confirmedLessonIdsEntry()` docblock). Ran `SuspendAccount` directly
+instead, the path that actually exercises the code under test. Documented
+inline in the test's own docblock
+(`tests/Feature/Filament/AuditLogResourceTest.php`).
+
+[2026-09-29 12:31] VERIFICATION
+Full gate set re-run after the 12:13 label fix, the strengthened
+end-to-end test, and the mechanical cleanups (ADVISOR-marker citations,
+fabricated-history sentence removed, AbuseReportsTable comment reworded).
+`composer test`: `{"tool":"pint","result":"passed"}`,
+`{"tool":"phpstan","result":"passed","errors":0}`, `vue-tsc --noEmit`
+clean, RTL grep clean ("no physical-direction utilities found"),
+`{"tool":"pest","result":"passed","tests":2033,"passed":2033,
+"assertions":10238,"duration_ms":260932}`, `ledger:verify`: "Ledger OK:
+every lesson sums to zero." Count matches the 12:13 ADVISOR floor exactly
+(2033, not shrunk from the pre-fix run). `npm run build`: "✓ built in
+11.56s", no errors. All eight step-5 gates green.
+
+[2026-09-29 12:40] NOTE
+Wrote docs/STATUS.md's full step-5 rewrite (rule 5, eight-section shape)
+reflecting 9d's now-complete build: AuditLogResource (11 tests),
+AdminOverviewWidget (17 tests, all eight stat cards), the Safeguarding
+sweep link, all three advisor consults, the 2033/2033/10238 gate run.
+Added STATUS sec6 item AV disclosing the "as links" (R152's plan
+wording) vs. "never a link" (actual implementation) departure, citing
+the pre-existing CYCLE-LOG DECISION at the "confirmed_lesson_ids link
+target" entry (LessonResource::getPages() registers only 'index', no
+column on LessonsTable is searchable). Added STATUS sec6 item AW
+disclosing that three (not two) raw advisor() calls were made this
+cycle (11:11, 11:58, 12:13) -- the 11:58 call's distinct content is
+encrypted at rest in the transcript and not reconstructable from this
+segment's own pre-compaction summary; disclosed rather than fabricated
+or silently undercounted. Closed STATUS sec6 item P (audit rows now
+read by AuditLogResource and the 9c tutor-detail view).
+
+[2026-09-29 12:41] NOTE
+Added a new CP8 acceptance box to docs/CHECKPOINTS.md for the audit
+resource + dashboard widgets, citing AuditLogResourceTest.php's and
+AdminOverviewWidgetTest.php's real test names and the 2033/2033/10238
+gate line, following 9c's force-complete box as the citation-style
+precedent. Caught and corrected two fabricated test-name citations in
+my own first draft of that box (re-read AdminOverviewWidgetTest.php in
+full before finalising, per rule 12) -- the real names are "shows the
+overview widget only to an active admin" and "registers
+AdminOverviewWidget on the admin panel, via discovery", not the
+paraphrases I'd written from memory of the file summary.
+
+[2026-09-29 12:44] DECISION
+Committed all of 9d's build (AuditLogResource, AdminOverviewWidget,
+AdminDashboardMetrics, the Safeguarding link, all four test files, plus
+the CYCLE-LOG/STATUS/CHECKPOINTS docs describing them) as one code
+commit on cp/9d-audit-dashboard, not carrying [skip ci] -- these docs
+are 9d's own build record travelling with the code that earned them,
+not a main-targeted docs-only commit, so rule 6's [skip ci] convention
+for docs-only commits does not apply here. Verified via
+`git show -s --format=%B HEAD | grep -i "skip ci"` (no match) before
+push.
+
+[2026-09-29 12:45] VERIFICATION
+`bf62125` pushed to origin/cp/9d-audit-dashboard. `git log
+origin/main..HEAD --oneline`: `bf62125 9d: read-only audit log resource
++ admin dashboard widgets (R152)` -- one commit ahead of main, matching
+`git status`. Full gate set carried from the 12:31 VERIFICATION entry
+(2033/2033/10238, ledger:verify clean, npm run build clean) -- no code
+changed since that run, only this segment's docs writes, so a re-run
+was not needed per rule 14's "never waste" guidance.
+
+[2026-09-29 12:46] NOTE
+Opened PR #38 (cp/9d-audit-dashboard -> main),
+https://github.com/rizwanoor80/eLearning-Platform/pull/38, body quoting
+R152's done-means checklist, the bugs found and fixed this sub-cycle,
+the gate line, and the three advisor consults (all named
+claude-opus-5-5 per this session's transcript metadata). ccd_pr
+get_status confirms it auto-bound to this session (PR #38, open,
+checks 0/0/0 -- CI not yet reported). Dispatched a fresh, isolated
+general-purpose subagent (no prior context, reading CLAUDE.md fresh)
+for the mandatory adversarial review, focused on R154 (disabled-admin
+access) plus this sub-cycle's own areas: read-only enforcement,
+credential/PII leak risk in the audit-log view, dashboard-query
+boundary correctness, the confirmed_lesson_ids plain-text claim,
+sweepAuditLogFor() correctness, and test quality. Running in
+background; awaiting its numbered PASS/PASS WITH NOTE/FAIL verdicts
+before the fix loop.
+
+[2026-09-29 12:50] REVIEW
+Fresh-subagent adversarial review of PR #38 complete, no prior context,
+read CLAUDE.md in full plus the whole diff and every supporting file
+before verdicts. 8 numbered verdicts:
+1. PASS -- R154 disabled/suspended admin access, genuinely enforced
+   (RequiresActiveAdmin trait + AdminOverviewWidget's own repeated
+   check), proven by real HTTP/Livewire tests not docblock trust.
+2. PASS -- read-only enforcement: canCreate/canEdit/canDelete/
+   canDeleteAny all hard-false, getPages() registers only 'index', no
+   bulkActions, no write call anywhere in the new files.
+3. PASS -- credential/PII leak risk: no new RecordAuditLog call sites;
+   AuditsResourceChanges (raw attribute dump) is wired to 4 non-
+   credential config resources only; EditVideoProvider redacts
+   credential values explicitly; no payment-gateway resource exists
+   yet (CP5-deferred).
+4. PASS -- AdminDashboardMetrics query correctness: half-open ranges
+   confirmed correct against source; Platform-account net-sum
+   definition confirmed correct against LedgerService's own entry
+   types; permitsExpiringSoon's boundary matches bookable()/
+   permitIsValid() exactly, and the reviewer's own deliberately-probed
+   "gap" (no join on users.deleted_at) is not a real bug --
+   AnonymizeUser always suspends a tutor profile before soft-deleting
+   its user, so an Approved profile with a soft-deleted user cannot
+   exist.
+5. PASS -- confirmed_lesson_ids rendering: no `<a href` anywhere
+   (grepped), LessonResource genuinely has no view page, and the label
+   text verified accurate against both CancelSuspendedAccountLessons
+   (leaves Confirmed lessons untouched, returns ids) and
+   CancelSuspendedTutorLessons (cancels+refunds, records only a count,
+   never ids) -- the label cannot silently drift since the end-to-end
+   test runs the real cascade.
+6. PASS -- sweepAuditLogFor()/viewSuspensionSweep: correct fallback
+   order, pure read (safe to call twice per row), new
+   SafeguardingResourceTest.php cases confirm a second unrelated
+   tutor's sweep is never cross-linked.
+7. PASS -- test quality: real HTTP/Livewire assertions throughout, no
+   tautological tests, boundary tests hit exact instants not just
+   hour-either-side, the panel-discovery test specifically guards a
+   real failure mode (a moved/renamed widget class silently dropping
+   out of discoverWidgets()).
+8. PASS WITH NOTE -- general correctness: eager-loads actor:id,name
+   (no N+1 on the list column), no raw SQL, UTC throughout. Non-
+   blocking note: sweepAuditLogFor() runs up to 4 queries per
+   Safeguarding row (2 call sites x up to 2 lookups each) -- adds to
+   an existing per-row query-multiplication pattern already present in
+   AbuseReportsTable's other row actions (pre-existing, unmodified by
+   this PR), bounded by Filament's default pagination, not a severe
+   issue on an admin-only queue. Flagged as a possible follow-up if
+   that queue's page size ever grows, not actioned this cycle.
+
+Summary: 8 verdicts, 7 PASS, 1 PASS WITH NOTE, 0 FAIL of any severity.
+CI (ccd_pr get_status): 1 check passing, 0 failing, 0 pending,
+mergeable=MERGEABLE, mergeStateStatus=CLEAN. Meets R147/R154's
+self-merge bar (0 Medium/High) with room to spare -- cleaner than PR
+#37's 3 Low PASS WITH NOTE. No fix loop needed (cap 2, 0 used).
+Proceeding to self-merge.

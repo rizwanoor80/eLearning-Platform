@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\UserStatus;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -107,6 +108,22 @@ class RoleAccessTest extends TestCase
         $response = $this->actingAs($user)->get('/admin');
 
         $response->assertOk();
+    }
+
+    /**
+     * CP8 9d (R152): `canAccessPanel()` already refuses a disabled admin (`status !==
+     * UserStatus::Active`), pre-dating this checkpoint — this test only newly exists because 9d's
+     * dashboard widgets put revenue figures on `/admin`, a more money-sensitive reason to prove
+     * the panel-level gate at the HTTP layer than existed before. Every resource-level gate is
+     * proven separately, and non-vacuously, by DisabledAdminAccessTest.php.
+     */
+    public function test_disabled_admin_cannot_visit_the_admin_panel()
+    {
+        $user = User::factory()->admin()->create(['status' => UserStatus::Suspended]);
+
+        $response = $this->actingAs($user)->get('/admin');
+
+        $response->assertForbidden();
     }
 
     public function test_account_owner_login_redirects_to_the_dashboard()
