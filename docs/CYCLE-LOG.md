@@ -3405,3 +3405,76 @@ targeted run and the PowerShell run before it failed). `npm run build` not yet r
 still owed as a separate pre-PR gate item per R150's "done means" list; the composer `test` script
 does not include it. Disclosing the PowerShell/WSL-relay quirk in STATUS §6 as a environment note,
 not a code finding — no file changed to work around it, only the invocation shell.
+
+## [2026-09-29 05:03 machine clock] DECISION — dispute-opened admin mail recipient: `AdminRecipients::resolve()` (R31 pattern)
+
+`SendAdminDisputeOpenedMail` (new, uncommitted) sends the admin-facing mail via
+`AdminRecipients::resolve()` rather than a direct `User` query, matching the R31 pattern already
+used by `SendAbuseReportFiledMail` and `SendTutorSuspendedForStrikesMail` — confirmed by reading
+all three listeners side by side. This keeps one recipient-resolution rule for "admin mail" across
+the codebase: once `support_address` is set in the admin registry, all admin mail (including this
+one) routes there instead of to individual admin inboxes, and if `AdminRecipients::resolve()`
+returns `[]` no mail is queued at all (`SendAdminDisputeOpenedMail.php`, guarded `if` around the
+send). Read `AdminDisputeOpenedMail.php`'s own docblock and the two precedent listeners directly
+before deciding — not inferred from the test suite alone.
+
+## [2026-09-29 05:03 machine clock] DECISION — dispute-opened admin bell recipient: direct active-admin `User` query, not `AdminRecipients::resolve()`
+
+`RecordDisputeOpenedNotification` (new, uncommitted) records the admin database notification via
+`User::where('role', Role::Admin)->where('status', UserStatus::Active)->get()` rather than
+`AdminRecipients::resolve()` — deliberately asymmetric with the mail path above. Reason, read
+directly from the listener and confirmed by grep: once `support_address` is set,
+`AdminRecipients::resolve()` returns plain email strings with no underlying `User` row to call
+`->notify()` on, so it cannot back a database notification at all; a bell needs a real notifiable.
+Confirmed by `grep -rn "databaseNotifications" app/` (zero matches) that the admin panel does not
+use Filament's own built-in bell — admins instead reach dispute-opened notifications through the
+same custom `/notifications` portal route (8e/CP7's own presenter-driven centre) as every other
+user, which is exactly what `DisputeOpenedNotificationTest.php`'s
+"renders a dispute-opened bell in an admin's notification centre..." case exercises. The bell's
+link target is `DisputeResource::getUrl('index')`, not `lessons.show`: an admin is never a party to
+the lesson (`LessonPolicy::attend` is tutor-or-account-holder only, so `lessons.show` would 403 an
+admin), and `DisputeResource` has no `view` page — resolve happens as a table action on the index —
+so `index` is the only page there is. Both blade mail views were read directly this segment
+(`resources/views/emails/lessons/dispute_opened.blade.php`,
+`resources/views/emails/admin/dispute_opened.blade.php`) and confirmed to quote only
+`$dispute->reason->label()`, never `$dispute->description` — matches
+`DisputeOpenedMail`/`AdminDisputeOpenedMail`'s own docblocks and the notification test's
+description-exclusion assertions. The "resolved" half of PRD §8's "Dispute opened / resolved |
+Both + admin" row, and adding the parent to "opened", remain out of this sub-cycle's authorised
+scope — `docs/CHECKPOINTS.md`'s CP8 box names no notification at all and R150's own sentence names
+only the tutor and admins for "opened" — disclosed in `DisputeOpenedNotificationTest.php`'s own
+docblock and carried to STATUS §6, not silently built.
+
+## [2026-09-29 05:55 machine clock] VERIFICATION — full pre-PR gate re-run before committing the notification layer; one timing-flake found and diagnosed, not a regression
+
+Re-ran the complete gate fresh via git-bash sub-steps (not reused from the `05:15` entry, per rule
+7's "suite never shrinks" and to cover the new notification-layer files, which were still
+uncommitted and thus untested by that run's own numbers). `./vendor/bin/pint --test` →
+`{"tool":"pint","result":"passed"}`. `./vendor/bin/phpstan analyse --memory-limit=512M` →
+`{"tool":"phpstan","result":"passed","errors":0}`. `npm run types:check` (vue-tsc) → exit 0, no
+errors. `bash scripts/rtl-check.sh` → "no physical-direction utilities found in resources/". `php
+artisan test --parallel` (first attempt, run concurrently with the phpstan/vue-tsc steps above
+rather than sequentially) → `{"tool":"pest","result":"failed","tests":1977,"passed":1976,
+"assertions":10050,"duration_ms":1552166,"failed":1,"failures":[{"test":"...stays_fast_on_adversarial_junk_gap_input__R144_Finding_2_
+with data set \"gate-open, long dash run before a word-like ending\"","message":"gate-open
+word-like took 53.6964ms, over the 50ms R144(b) budget"}]}` — one failure, a CPU-timing assertion
+from the 9a/R144(b) catastrophic-backtracking-cap test, not a logic failure. Diagnosed rather than
+accepted at face value: re-ran `MessageMaskerTest.php` alone once the concurrent phpstan/vue-tsc
+load had finished — `{"tool":"pest","result":"passed","tests":8,"passed":8,"assertions":24,
+"duration_ms":12948}`, the same dataset case included and green. Confirms the failure was this
+session's own concurrent CPU contention (three heavy processes — phpstan, vue-tsc, and the parallel
+test runner — racing for cores at once) pushing a genuinely tight 50ms regex-timing budget over
+the line, not a masker regression: no masker code changed between the two runs. Re-ran the full
+`php artisan test --parallel` suite a second time, alone, nothing else running concurrently →
+`{"tool":"pest","result":"passed","tests":1977,"passed":1977,"assertions":10051,
+"duration_ms":1133100}` — all green (+9 tests/+45 assertions over the `05:15` entry's
+1968/1968/10006, consistent with `DisputeOpenedNotificationTest.php`'s 9 new `it()`s). Total suite
+wall-clock (1,133,100 ms / 1,552,166 ms) ran markedly slower than the `05:15` entry's 406,579 ms on
+the same machine; no root cause chased beyond the contention finding above since the suite itself
+is green — disclosed as an open, non-blocking observation rather than a diagnosed cause. `php
+artisan ledger:verify --no-interaction` → "Ledger OK: every lesson sums to zero." `npm run build`
+→ exit 0, "built in 1m 30s", all chunks emitted including the new `Dispute-B1OeNpw5.js` bundle — the
+one pre-PR gate item the `05:15` entry had left owed. **Full gate now green end to end**:
+Pint/PHPStan/vue-tsc/RTL clean, Pest 1977/1977/10051, ledger:verify clean, build clean — nothing
+left open from R150's "done means" gate list except push/PR/review/merge and the report/ADR/CP8-box
+writing.
