@@ -5046,3 +5046,53 @@ precedent as 6c's `1ede299` vs `2ac3541`), never `--force`, wait for
 push-to-deploy, then the R91 read-only checks. `git log --oneline
 origin/rehearsal..f4c2892` counted below in the push entry. `d3c8a0a`
 is an ancestor of `f4c2892` (fast-forward confirmed).
+
+[2026-09-29 13:35] VERIFICATION
+Step 6 rehearsal deploy of `f4c2892` (R111 quoted at 13:20 DECISION).
+`git push origin f4c2892:refs/heads/rehearsal` (`d3c8a0a..f4c2892`,
+fast-forward, no force, 56 commits). Push-to-deploy landed before the
+first poll: `git log -1` in `/current` showed `f4c2892 Merge pull
+request #38 from rizwanoor80/cp/9d-audit-dashboard` on the first
+allow-listed check. Full R91 checklist over the allow-listed ssh shape,
+one command per invocation: `about` -- env rehearsal, debug OFF,
+Laravel 13.32.0, PHP 8.4.25, pgsql, queue redis, mail log, config/
+events/routes/views cached, Filament v5.8.2; `migrate:status` -- 0
+Pending (9d added no migrations, per R152's own "no new tables");
+`horizon:status` -- "Horizon is running."; `queue:failed` -- "No failed
+jobs found."; `schedule:list` -- 9 entries (tutors:check-permits,
+lessons:expire-unpaid, recurring:generate, recurring:charge,
+lessons:send-reminders, lessons:create-rooms, lessons:close-rooms,
+lessons:settle-ended each minute, lessons:auto-release-reports every 5
+minutes); `ls -l /home/forge/.forge/` + `tail -n 40` on the newest
+(`scheduled-2138095.log`, mtime Sep 29 08:13 server clock) -- all five
+per-minute jobs ran and DONE at 08:13:01-03, no failure; `ledger:verify`
+-- "Ledger OK: every lesson sums to zero."; `db:show --counts` --
+`audit_logs` 2 rows (9d's resource has a real, non-empty table to read;
+no new table exists to count, matching R152's scope), `tutor_profiles`
+7, `users` 8, `lessons`/`disputes`/`abuse_reports`/`ledger_entries` 0;
+`tail -n 200 storage/logs/laravel.log` grepped for error/exception: 0
+matches. curl over HTTPS: `/` 200, `/login` 200, `/tutors` 200,
+`/admin/login` 200, guest `/admin` 302 -> `/admin/login` (both R91-named
+checks: migrations Ran + guest /admin redirect + /tutors 200). No
+migration, seed, queue restart or any state-changing command was run by
+CC beyond the one fast-forward push itself; no credential read or
+echoed. Step 6's R91 checklist is complete and green.
+
+[2026-09-29 13:42] END
+Cycle 09 r1 (programme "CP8-pre") complete: steps 1-6 done. 9a (R149,
+`f64bee7`), 9b (R150, `91a37db`), 9c (R151, `e472e9e`), 9d (R152,
+`f4c2892`) all merged; rehearsal runs `f4c2892` with all migrations
+applied and every R91 check green (VERIFICATION 13:35). Tests on
+`main`: 2033/2033 passed, 10238 assertions, `ledger:verify` clean, both
+locally and on rehearsal. Advisor summary: 26 raw `advisor()` calls
+logged across this cycle's four sub-steps (9a design/item-f/item-c/
+pre-PR/post-review-merge-path, 9b design/settle-path/pre-work/post-
+commit/review-stage/pre-commit/pre-PR/pre-review, 9c design/release-
+path/pre-build/pre-commit, 9d design/money-path x3), all answered; this
+session's own JSONL transcript names the answering model as
+`claude-opus-5-5` on every call checked, distinct from R63/PROJECT_
+BRIEF.md:124's configured "Fable" -- a disclosed, unresolved naming
+discrepancy (§6 item A, Owner action 18), not a consultation gap; one
+call (9d's 11:58) has only its metadata reconstructable, not its
+content, disclosed separately (§6 item AW). Resume count 0 of 8.
+Nothing further is authorised; the planner writes the next plan.
