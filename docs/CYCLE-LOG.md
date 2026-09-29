@@ -3504,3 +3504,103 @@ app/Http/Controllers/Lessons/DisputeController.php` and `git status --porcelain=
 afterward, confirming an exact byte-for-byte restore. Re-ran the same filtered command:
 `{"tool":"pest","result":"passed","tests":2,"passed":2,"assertions":7,"duration_ms":5454}` — both
 green again. §6 item AG ("still not red-checked") closed by this entry.
+
+## [2026-09-29 06:19 machine clock] ADVISOR — pre-work consult on the seeded-DB `ledger:verify`
+proof required by `docs/PLAN.md:22`'s R150 done-means line
+
+Consulted before starting, per rule 11 (money/ledger work). The advisor (this session's own
+`advisor` tool, backed by a stronger reviewer model with the full transcript) flagged two things
+before any script was written: (1) the `05:55` VERIFICATION's "Ledger OK" run — quoted above at
+line 3475 — was against the local dev DB while it held 0 rows in `lessons`/`ledger_entries`
+(confirmed by this session's own `db:show --counts` output earlier in the cycle), so it is **not**
+evidence for R150's "seeded DB with resolved disputes" requirement and must not be cited as such in
+`docs/reports/9b.md` or ADR-021; (2) quote `docs/PLAN.md`'s literal wording rather than STATUS's
+paraphrase (done — `docs/PLAN.md:22`: "`ledger:verify` zero-sum on a seeded DB with resolved
+disputes") and confirm no real precedent exists (confirmed — the 2026-09-21 ADR-consult on
+`ledger:verify` vacuity, referenced in this cycle-log's 3b entries, only ever ran it against an
+empty test DB). The advisor also flagged a proof-design point worth recording: `LedgerService`'s
+`hold()`/`release()`/`settle()` don't read lesson `status` at all (confirmed by reading
+`app/Services/Ledger/LedgerService.php` in full this cycle), so a `Lesson::factory()->withStatus()`
+starting point (the factory's own sanctioned `Lesson::allowingStatusWrites()` scope — the same
+mechanism `OpenDisputeTest.php`'s `disputeSetup()` helper already relies on) is a legitimate way to
+reach a `Completed`/`CompletedReported` lesson without replicating `BookLesson`'s slot-matching or
+`SettleEndedLesson`'s attendance pipeline, provided the money and dispute-status paths themselves
+run through the real `LedgerService` methods and the real `OpenDispute`/`ResolveDispute` actions —
+never a direct `$lesson->status = ...` or a direct `ledger_entries` insert. Queued notification
+listeners dispatched by `OpenDispute`'s `Disputed` transition (CP8/R150 notification layer, `d922fc4`
+onward) are left unprocessed in Redis by this proof; decided not to drain them, since notification
+jobs never touch `ledger_entries`/`disputes` rows and this proof is scoped to the ledger, not the
+notification layer.
+
+## [2026-09-29 06:19 machine clock] VERIFICATION — seeded-DB `ledger:verify` zero-sum proof with
+resolved disputes (R150 done-means, `docs/PLAN.md:22`)
+
+Before: `php artisan db:show --counts --no-interaction` on the local dev `elearning` DB —
+`disputes` 0, `ledger_entries` 0, `lessons` 0 (quoted verbatim; confirms the proof below starts
+from empty, so its counts are non-vacuous). Ran a one-off scratchpad script (session scratchpad
+only, not part of the repo — `dispute_ledger_proof.php`, per the advisor's "no dispute seeder in
+the repo" guidance) via `php artisan tinker --execute="include '...';"`, building 4 scenarios, each
+with a fresh `TutorProfile::factory()->approved()`, fresh parent `User::factory()` and fresh
+`Learner::factory()` (mirroring `OpenDisputeTest.php`'s `disputeSetup()` fixture shape), and each
+lesson created via `Lesson::factory()->withStatus(...)` as a starting point only — every
+money/status change after that point runs through the real, frozen-file code:
+
+- **L1** — regular, price 10000/commission 2500/tutor 7500, `Completed` (not released).
+  `LedgerService::hold()`, then `OpenDispute` (reason Quality), then `ResolveDispute` dial 100/0.
+- **L2** — regular, same price shape, `Completed`. `hold()`, `OpenDispute` (Technical), `ResolveDispute`
+  dial 0/100.
+- **L3** — **trial**, price 8000/commission 2000/tutor 6000, `Completed`, mirroring
+  `ResolveDispute::prefillFor()`'s trial default. `hold()`, `OpenDispute` (NoShow), `ResolveDispute`
+  dial 100/0.
+- **L4** — regular, price 10001/commission 3000/tutor 7001 (deliberately not evenly divisible),
+  `CompletedReported` — i.e. `hold()` **and** `release()` run before the dispute, to reach the
+  `escrow === 0` branch of `settle()` (the `ReleaseReversal` claw-back legs). `OpenDispute` (Other),
+  `ResolveDispute` dial 33/67.
+
+Script output (per-lesson `LedgerService::sum()`, each asserting to 0 already inside `operate()`'s
+own automatic zero-sum check — this output is a second, independent confirmation):
+```
+L1: lesson 1, dispute 1, status settled, sum 0 fils
+L2: lesson 2, dispute 2, status settled, sum 0 fils
+L3: lesson 3, dispute 3, status settled, sum 0 fils
+L4: lesson 4, dispute 4, status settled, sum 0 fils
+
+ledger_entries total row count: 30
+resolved disputes count: 4
+```
+Non-vacuity: 0→30 `ledger_entries` rows, 0→4 resolved `disputes` rows, all written by this run.
+
+Full leg dump (`ledger_entries` ordered by lesson, account, type, amount, memo — quoted verbatim
+via `DB::table('ledger_entries')->get()`), confirming the exact `LedgerService::settle()` math read
+from `app/Services/Ledger/LedgerService.php:149-211`:
+- **L1** (100/0): `refund = Money::fils(10000)->percentage(100) = 10000`, `tutor =
+  Money::fils(7500)->percentage(0) = 0`, `platformDelta = 10000-10000-0 = 0` → only a `refund` leg
+  pair (escrow -10000 / refund +10000) after the `hold` pair. No `release_tutor`/commission legs,
+  matching a 0-value leg being skipped (`if ($tutor !== 0)`, `if ($platformDelta !== 0)`).
+- **L2** (0/100): `refund = 0`, `tutor = Money::fils(7500)->percentage(100) = 7500`, `platformDelta
+  = 10000-0-7500 = 2500` → `release_tutor` pair (7500) + `release_commission` pair (2500, positive
+  ⇒ `ReleaseCommission` type per `$platformDelta < 0 ? Goodwill : ReleaseCommission`), no refund leg.
+- **L3** (trial, 100/0): identical shape to L1 scaled to price 8000 — refund 8000 only.
+- **L4** (33/67, already-released): `escrow === 0` at settle time (confirmed: prior `release()`
+  wrote `release_tutor -7001/+7001` and `release_commission -3000/+3000`, then `settle()` opens
+  with 4 `release_reversal` legs exactly reversing those two pairs — escrow +7001/tutor -7001,
+  escrow +3000/platform -3000 — restoring escrow to 10001 before applying the dispute dials). Then
+  `refund = Money::fils(10001)->percentage(33) = 3300` (10001×0.33=3300.33, rounds down),
+  `tutor = Money::fils(7001)->percentage(67) = 4691` (7001×0.67=4690.67, rounds up) — **confirms
+  `tutorPayPct` is applied to the lesson's frozen `tutor_amount`, not to the price or to the
+  post-refund remainder**, a detail worth being explicit about since the two round differently and
+  it is not obvious from the dial names alone. `platformDelta = 10001-3300-4691 = 2010` (positive ⇒
+  `ReleaseCommission`, the platform's cut of the settlement, distinct from the reversed original
+  commission). All 3 leg pairs sum with the 2 reversal pairs and the original hold/release pairs to
+  exactly 0 across the lesson's 14 `ledger_entries` rows.
+
+`php artisan ledger:verify --no-interaction` → `"Ledger OK: every lesson sums to zero."` — run
+against the now-non-empty DB (4 lessons, 30 ledger_entries, 4 resolved disputes), unlike the `05:55`
+entry's run which was vacuous. **R150's "`ledger:verify` zero-sum on a seeded DB with resolved
+disputes" done-means item is satisfied by this entry.** The `05:55` entry (line 3475 above) stands
+uncorrected as a historical record of what it actually proved (a clean-suite build-gate run) but
+must not be read as dispute-path evidence; that correction is carried into STATUS.md and will be
+carried into `docs/reports/9b.md`/ADR-021 rather than editing the historical entry itself. Queued
+notification-listener jobs from the 4 `OpenDispute` calls were left undrained in Redis, per the
+ADVISOR entry above — does not affect `ledger_entries`/`disputes`, which is what this proof covers.
+The scratchpad script and its output are not part of the repo; this entry is the durable record.
