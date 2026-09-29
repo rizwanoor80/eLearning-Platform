@@ -3478,3 +3478,29 @@ one pre-PR gate item the `05:15` entry had left owed. **Full gate now green end 
 Pint/PHPStan/vue-tsc/RTL clean, Pest 1977/1977/10051, ledger:verify clean, build clean — nothing
 left open from R150's "done means" gate list except push/PR/review/merge and the report/ADR/CP8-box
 writing.
+
+## [2026-09-29 06:07 machine clock] VERIFICATION — red-checked `OpenDisputeTest`'s two stale-POST
+regression tests (lines 180–198), mirroring 9a item (f)'s throwaway-test precedent
+
+Both tests assert `->assertRedirect(route('lessons.show', $lesson))` on a stale/ineligible POST to
+`DisputeController::store()`, exercising the `catch (DisputeException|LessonTransitionException $e)`
+block added by `c29a2c4`. To prove they are non-vacuous (would actually fail if that catch clause
+regressed), temporarily narrowed `app/Http/Controllers/Lessons/DisputeController.php:58` from
+`catch (DisputeException|LessonTransitionException $e)` to `catch (DisputeException $e)`, removing
+the exact type the tests exist to cover, then ran `php artisan test
+tests/Feature/Lessons/OpenDisputeTest.php --filter="stale POST"` (background, task `bejq7ipde`).
+Result: **both tests failed red**, each with an uncaught `App\Exceptions\LessonTransitionException`
+surfacing as a raw 500 — `{"tool":"pest","result":"failed","tests":2,"passed":0,"assertions":2,
+"duration_ms":10752,"failed":2,"failures":[{"test":"...stale_POST_targets_an_ineligible_lesson",
+"message":"Expected response status code [201, 301, 302, 303, 307, 308] but received 500.
+...LessonTransitionException: A lesson cannot move from in_progress to disputed."},
+{"test":"...stale_POST_re_submits_an_already_disputed_lesson","message":"Expected response status
+code [201, 301, 302, 303, 307, 308] but received 500. ...LessonTransitionException: A lesson cannot
+move from disputed to disputed."}]}` — confirms the assert fires exactly as the controller comment
+describes, before `problemFor()`'s ordinary checks catch it, and that `assertRedirect` is what
+catches a regression here. Reverted `DisputeController.php:58` to
+`catch (DisputeException|LessonTransitionException $e)` via `Edit`; `git diff
+app/Http/Controllers/Lessons/DisputeController.php` and `git status --porcelain=v1` both empty
+afterward, confirming an exact byte-for-byte restore. Re-ran the same filtered command:
+`{"tool":"pest","result":"passed","tests":2,"passed":2,"assertions":7,"duration_ms":5454}` — both
+green again. §6 item AG ("still not red-checked") closed by this entry.
