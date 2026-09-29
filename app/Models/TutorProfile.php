@@ -2,6 +2,10 @@
 
 namespace App\Models;
 
+use App\Actions\Lessons\ReviewLateReports;
+use App\Enums\AbuseReportStatus;
+use App\Enums\AbuseReportSubjectType;
+use App\Enums\DisputeStatus;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Support\Facades\Settings;
@@ -13,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
@@ -216,6 +221,102 @@ class TutorProfile extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * @return HasMany<TutorStrike, $this>
+     */
+    public function strikes(): HasMany
+    {
+        return $this->hasMany(TutorStrike::class);
+    }
+
+    /**
+     * R151 admin tutor detail view: this tutor's lessons with a late progress-report flag
+     * (`report_late_at` set) inside the same rolling window `ReviewLateReports` counts against
+     * the 3-strike threshold — so what the admin sees here always matches what would actually
+     * trigger a review, never a stale stored counter (`late_report_count_90d` on this model is
+     * declared but unmaintained; this method is the source of truth instead).
+     *
+     * @return Collection<int, Lesson>
+     */
+    public function lateReportFlags(): Collection
+    {
+        return $this->lessons()
+            ->where('report_late_at', '>=', now()->subDays(ReviewLateReports::WINDOW_DAYS))
+            ->orderByDesc('report_late_at')
+            ->get(['id', 'report_late_at']);
+    }
+
+    /**
+     * R151 admin tutor detail view: open safeguarding reports where this tutor is the reported
+     * party. `AbuseReport` carries no real morph relation (see that model's docblock) and
+     * `reportedUser()` resolves the reported party in PHP per row — so this first narrows to
+     * reports whose subject could plausibly be this tutor (their own profile row, a direct
+     * `User` row against their account, or one of their lessons or conversations — every case
+     * `AbuseReportSubjectType` declares), then confirms each one in PHP before returning it. A
+     * report against the account on the *other* side of one of this tutor's lessons or
+     * conversations is correctly excluded by that confirmation step.
+     *
+     * @return Collection<int, AbuseReport>
+     */
+    public function openAbuseReports(): Collection
+    {
+        $lessonIds = $this->lessons()->pluck('id');
+        $conversationIds = Conversation::query()->where('tutor_profile_id', $this->id)->pluck('id');
+
+        return AbuseReport::query()
+            ->where('status', AbuseReportStatus::Open)
+            ->where(function (Builder $query) use ($lessonIds, $conversationIds): void {
+                $query->where(function (Builder $q): void {
+                    $q->where('subject_type', AbuseReportSubjectType::TutorProfile)->where('subject_id', $this->id);
+                })
+                    ->orWhere(function (Builder $q): void {
+                        $q->where('subject_type', AbuseReportSubjectType::User)->where('subject_id', $this->user_id);
+                    })
+                    ->orWhere(function (Builder $q) use ($lessonIds): void {
+                        $q->where('subject_type', AbuseReportSubjectType::Lesson)->whereIn('subject_id', $lessonIds);
+                    })
+                    ->orWhere(function (Builder $q) use ($conversationIds): void {
+                        $q->where('subject_type', AbuseReportSubjectType::Conversation)->whereIn('subject_id', $conversationIds);
+                    });
+            })
+            ->get()
+            ->filter(fn (AbuseReport $report): bool => $report->reportedUser()?->id === $this->user_id)
+            ->values();
+    }
+
+    /**
+     * R151 admin tutor detail view: open disputes on this tutor's lessons.
+     *
+     * @return Collection<int, Dispute>
+     */
+    public function openDisputes(): Collection
+    {
+        return Dispute::query()
+            ->whereHas('lesson', fn (Builder $query): Builder => $query->where('tutor_profile_id', $this->id))
+            ->where('status', DisputeStatus::Open)
+            ->with('lesson:id,starts_at')
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
+     * R151 admin tutor detail view: this tutor's suspension history, read directly from the
+     * append-only audit log ahead of 9d's general audit resource (design consult, CYCLE-LOG
+     * `08:02`) — also the reader for `tutor.suspension_sweep` rows STATUS §6 item P flagged as
+     * otherwise unread anywhere.
+     *
+     * @return Collection<int, AuditLog>
+     */
+    public function suspensionHistory(): Collection
+    {
+        return AuditLog::query()
+            ->where('subject_type', self::class)
+            ->where('subject_id', $this->id)
+            ->whereIn('action', ['tutor.suspended', 'tutor.reinstated', 'tutor.suspension_sweep'])
+            ->orderByDesc('created_at')
+            ->get();
     }
 
     /**
