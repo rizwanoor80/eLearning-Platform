@@ -4880,3 +4880,69 @@ clean, RTL grep clean ("no physical-direction utilities found"),
 every lesson sums to zero." Count matches the 12:13 ADVISOR floor exactly
 (2033, not shrunk from the pre-fix run). `npm run build`: "✓ built in
 11.56s", no errors. All eight step-5 gates green.
+
+[2026-09-29 12:40] NOTE
+Wrote docs/STATUS.md's full step-5 rewrite (rule 5, eight-section shape)
+reflecting 9d's now-complete build: AuditLogResource (11 tests),
+AdminOverviewWidget (17 tests, all eight stat cards), the Safeguarding
+sweep link, all three advisor consults, the 2033/2033/10238 gate run.
+Added STATUS sec6 item AV disclosing the "as links" (R152's plan
+wording) vs. "never a link" (actual implementation) departure, citing
+the pre-existing CYCLE-LOG DECISION at the "confirmed_lesson_ids link
+target" entry (LessonResource::getPages() registers only 'index', no
+column on LessonsTable is searchable). Added STATUS sec6 item AW
+disclosing that three (not two) raw advisor() calls were made this
+cycle (11:11, 11:58, 12:13) -- the 11:58 call's distinct content is
+encrypted at rest in the transcript and not reconstructable from this
+segment's own pre-compaction summary; disclosed rather than fabricated
+or silently undercounted. Closed STATUS sec6 item P (audit rows now
+read by AuditLogResource and the 9c tutor-detail view).
+
+[2026-09-29 12:41] NOTE
+Added a new CP8 acceptance box to docs/CHECKPOINTS.md for the audit
+resource + dashboard widgets, citing AuditLogResourceTest.php's and
+AdminOverviewWidgetTest.php's real test names and the 2033/2033/10238
+gate line, following 9c's force-complete box as the citation-style
+precedent. Caught and corrected two fabricated test-name citations in
+my own first draft of that box (re-read AdminOverviewWidgetTest.php in
+full before finalising, per rule 12) -- the real names are "shows the
+overview widget only to an active admin" and "registers
+AdminOverviewWidget on the admin panel, via discovery", not the
+paraphrases I'd written from memory of the file summary.
+
+[2026-09-29 12:44] DECISION
+Committed all of 9d's build (AuditLogResource, AdminOverviewWidget,
+AdminDashboardMetrics, the Safeguarding link, all four test files, plus
+the CYCLE-LOG/STATUS/CHECKPOINTS docs describing them) as one code
+commit on cp/9d-audit-dashboard, not carrying [skip ci] -- these docs
+are 9d's own build record travelling with the code that earned them,
+not a main-targeted docs-only commit, so rule 6's [skip ci] convention
+for docs-only commits does not apply here. Verified via
+`git show -s --format=%B HEAD | grep -i "skip ci"` (no match) before
+push.
+
+[2026-09-29 12:45] VERIFICATION
+`bf62125` pushed to origin/cp/9d-audit-dashboard. `git log
+origin/main..HEAD --oneline`: `bf62125 9d: read-only audit log resource
++ admin dashboard widgets (R152)` -- one commit ahead of main, matching
+`git status`. Full gate set carried from the 12:31 VERIFICATION entry
+(2033/2033/10238, ledger:verify clean, npm run build clean) -- no code
+changed since that run, only this segment's docs writes, so a re-run
+was not needed per rule 14's "never waste" guidance.
+
+[2026-09-29 12:46] NOTE
+Opened PR #38 (cp/9d-audit-dashboard -> main),
+https://github.com/rizwanoor80/eLearning-Platform/pull/38, body quoting
+R152's done-means checklist, the bugs found and fixed this sub-cycle,
+the gate line, and the three advisor consults (all named
+claude-opus-5-5 per this session's transcript metadata). ccd_pr
+get_status confirms it auto-bound to this session (PR #38, open,
+checks 0/0/0 -- CI not yet reported). Dispatched a fresh, isolated
+general-purpose subagent (no prior context, reading CLAUDE.md fresh)
+for the mandatory adversarial review, focused on R154 (disabled-admin
+access) plus this sub-cycle's own areas: read-only enforcement,
+credential/PII leak risk in the audit-log view, dashboard-query
+boundary correctness, the confirmed_lesson_ids plain-text claim,
+sweepAuditLogFor() correctness, and test quality. Running in
+background; awaiting its numbered PASS/PASS WITH NOTE/FAIL verdicts
+before the fix loop.
