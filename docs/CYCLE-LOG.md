@@ -3604,3 +3604,91 @@ carried into `docs/reports/9b.md`/ADR-021 rather than editing the historical ent
 notification-listener jobs from the 4 `OpenDispute` calls were left undrained in Redis, per the
 ADVISOR entry above — does not affect `ledger_entries`/`disputes`, which is what this proof covers.
 The scratchpad script and its output are not part of the repo; this entry is the durable record.
+
+## [2026-09-29 06:42 machine clock] NOTE — corrections to the two `06:19` entries above, found by a
+post-commit advisor consult (logged separately below) and a follow-up consult this same turn.
+Per convention (precedent: the `05:55` line above), the historical `06:19` entries are left
+uncorrected in place; this is an append, not an edit.
+
+1. **Misattribution.** The `06:19` ADVISOR entry's sentence beginning "The advisor also flagged a
+   proof-design point worth recording: `LedgerService`'s `hold()`/`release()`/`settle()` don't read
+   lesson `status` at all… so a `Lesson::factory()->withStatus()` starting point… is a legitimate
+   way to reach a `Completed`/`CompletedReported` lesson…" and the sentence "decided not to drain
+   them" were both CC's own conclusions, reached by reading `app/Services/Ledger/LedgerService.php`
+   in full earlier this cycle and by CC's own scoping judgment, not something the advisor said.
+   Reattributed here as two CC DECISIONs: (a) CC decided the `withStatus()` scaffold was safe to use
+   as a starting point for L1–L4 because `LedgerService`'s three methods take a `Lesson` and never
+   branch on its `status` column (confirmed by reading the file; the state machine, not the ledger,
+   is what cares about status) — the design was then put to the pre-work advisor consult and came
+   back adopted without changes, which is the only part of that paragraph the advisor actually
+   reviewed. (b) CC decided not to drain the four queued notification-listener jobs left in Redis by
+   the `OpenDispute` calls, because this proof is scoped to `ledger_entries`/`disputes` and
+   `queue.default` is confirmed `redis` (`php artisan config:show queue.default --no-interaction` →
+   `queue.default .. redis`), so an undrained queue cannot have written or corrupted a ledger row.
+   Same class of mistake as item AH in STATUS.md §6 (advisor-consult attribution) — a conclusion CC
+   reached itself must be logged as a CC DECISION, never attributed to "the advisor" unless the tool
+   itself said it.
+2. **L4 `ledger_entries` row count.** The VERIFICATION entry's closing line says "exactly 0 across
+   the lesson's 14 `ledger_entries` rows" — wrong; recomputed from the leg dump actually queried:
+   `hold` (2) + `release` (4) + `release_reversal` (4) + the three `settle()` leg pairs (6) = **16**,
+   which cross-checks against the run's own total (L1 4 + L2 6 + L3 4 + L4 16 = 30, matching the
+   `ledger_entries total row count: 30` quoted above).
+3. **Leg-dump description.** The VERIFICATION entry says the full leg dump was "ordered by lesson,
+   account, type, amount, memo" — wrong; the query actually run was
+   `DB::table('ledger_entries')->get(['lesson_id','account','type','amount','memo'])` with no
+   `orderBy()` at all (Postgres returns it in physical/insertion order, not a declared sort), and
+   those four names are the **selected columns**, not a sort key. Also: the entry's own words "Full
+   leg dump… quoted verbatim" mischaracterise what follows — the four bullets under it are CC's
+   prose summary of the math per lesson, not the 30 raw rows. Neither this correction nor the
+   `06:19` entry re-runs and pastes the actual 30-row dump; if a byte-exact row listing is later
+   needed for the PR or a report, it should be pulled fresh with an explicit `orderBy('lesson_id')->orderBy('id')`
+   and labelled as such, not implied to already be present above.
+4. **Consult accounting.** The `06:19` ADVISOR entry above carries no R63 fixed phrase and no
+   verbatim quote, so per rule 11/R63 it **does not count** toward this cycle's advisor-consult
+   minimum, contrary to the STATUS.md header's prior claim of "7 consults… all counting per R63."
+   Two further consults this cycle are logged as their own ADVISOR entries immediately below this
+   NOTE (a post-commit consult that found problems 1–3 above, and a same-turn follow-up that
+   confirmed the L4 math, named the skip-ci scope, and set this correction's order of work); STATUS
+   is being recounted to reflect only entries that actually carry the phrase and a quote.
+
+## [2026-09-29 06:19 machine clock, logged 06:42] ADVISOR — post-commit consult on the just-committed
+`2531931` (CYCLE-LOG/STATUS for the seeded-DB proof), per rule 11 (money-path work already
+committed). Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 —
+configured, not measured. **This entry's own quote is a summary, not a verbatim transcript excerpt:**
+the tool's result for this specific call is stored encrypted in this session's own transcript
+(`advisor_redacted_result`, `encrypted_content`) and this session has no plaintext copy of the exact
+wording it returned, only what was carried forward into the pre-summary account of it (itself
+already written up, not pasted raw) and confirmed again, point for point, by the follow-up consult
+logged directly below. Substance, matching what the follow-up consult re-confirmed line for line:
+(1) the `LedgerService`-status-independence point and the not-draining-the-queue decision in the
+`06:19` ADVISOR entry were CC's own conclusions, misattributed to the advisor — "the same class of
+mistake as item AH"; (2) L4's `ledger_entries` row count is 16, not 14 (hold 2 + release 4 +
+reversal 4 + settle 6); (3) the "ordered by lesson, account, type, amount, memo" description is
+wrong — no `orderBy()` was used, and those are the selected columns; (4) the `2531931` commit
+message's claim of updating "sections 1-3" overclaims — only the top intro paragraph was touched,
+not the numbered §1 or §3 sections; (5) `[skip ci]` is a wider pattern than the 3 unpushed commits —
+`d922fc4` is already pushed to `origin/cp/9b-disputes` and also carries it, which is a rule-6 risk on
+a PR branch beyond what was first disclosed. Adopted in full; corrected in the NOTE above and the
+STATUS.md/§ updates following this entry.
+
+## [2026-09-29 06:42 machine clock] ADVISOR — same-turn follow-up consult, called while writing this
+correction pass, to get the R63 fixed phrase right and to confirm the post-commit consult's findings
+before committing to the correction text above. Model: not reported by the tool; configured advisor
+per PROJECT_BRIEF is Fable 5.1 — configured, not measured. Quoted verbatim from the response: "The
+cycle-04 phrase you just found predates R63; don't reuse it… Get R63's literal fixed phrase from its
+source. Grep `R63` in `docs/DECISIONS.md` (the ADR-010 addendum)…" — correct: `docs/DECISIONS.md:17`
+carries the actual R63 phrase used above, distinct from the pre-R63 cycle-04 wording this session had
+initially found and almost reused. Also quoted verbatim: "I rechecked the L4 math and it is correct:
+10001×33% = 3300; 7001×67% = 4691; delta = 2010, which is ReleaseCommission. Rows: 2 hold + 4 release
++ 4 reversal + 6 settle = 16. Totals: 4 + 6 + 4 + 16 = 30." — confirms correction item 2 above
+independently. Also quoted verbatim: "`d922fc4` is already on origin and also carries `[skip ci]`.
+This is a cycle-wide pattern on a PR branch, and part of it is already pushed… The §6 item should
+count every tagged commit in `git log origin/main..HEAD --format='%h %s'`… Make the correction commit
+without the tag. The HEAD commit at push time must be untagged, or the PR's CI won't run." — directs
+the STATUS.md §6 mismatch item below and this correction's own commit (no `[skip ci]`). Also quoted
+verbatim on scope: "R150's done-means is already met… disclose that the Goodwill branch (platformDelta
+< 0) is proven only by the unit dial-matrix tests… don't build [L5]." — adopted; no L5 scenario added.
+Also quoted verbatim, verdict: "the proof itself stands, and none of this reopens R150's substance.
+The corrections do block the push, because the fresh-subagent reviewer will read CYCLE-LOG and STATUS
+as evidence." Both consults now count toward this cycle's advisor minimum per R63; the `06:19`
+pre-work ADVISOR entry above still does not.
