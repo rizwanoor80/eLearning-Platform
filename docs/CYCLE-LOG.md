@@ -4523,3 +4523,50 @@ that missed §4 (`grep '^-[^-]'`) is retired; going forward a compression check 
 `grep -n '^-' <diff> | grep -v '^[0-9]*:--- a/'` (excludes only the diff's own file-header line, not
 markdown bullets) and every hit is checked against the intended-changes list by hand, not filtered
 further by pattern.
+
+[2026-09-29 09:53] REVIEW
+Fresh-subagent adversarial review of PR #37 (`cp/9c-admin-ops`, commits `7e94605`/`486134c`
+vs `main`), run in an isolated worktree with no prior context, per rule 6/R154. Named focus:
+force-cancel/force-complete without an audit row or bypassing `LessonStateMachine::transition()`;
+a disabled admin reaching any resource. Read every touched file in full plus
+`LessonStateMachine.php`/`LedgerService.php`/`Services/Payments/*` to confirm they are byte-
+identical to `main` (frozen files untouched). Could not run the Pest suite in its own worktree
+(no `vendor/`, no `.env`, no DB) — disclosed explicitly rather than claiming a test run that
+didn't happen; relied on this checkout's own already-logged `09:39` VERIFICATION (2000/2000/
+10152) for the gate result and reasoned about the four new/changed test files by direct reading
+instead.
+
+14 verdicts, 0 FAILs (11 PASS, 3 PASS WITH NOTE, all Low):
+1. PASS -- ForceCancelLesson never assigns `$lesson->status` directly; both branches go through
+   `LessonStateMachine::transition()` on already-legal edges.
+2. PASS -- ForceCompleteLesson likewise, chaining two legal edges, no new edge added.
+3. PASS -- `LessonStateMachine.php` confirmed byte-for-byte untouched (empty diff on that path).
+4. PASS -- `LedgerService.php`/`Services/Payments/*` confirmed untouched (empty diff).
+5. PASS -- both actions write an unconditional audit row inside the same `DB::transaction()` as
+   the status change -- commit or roll back together, no path skips one but not the other.
+6. PASS -- a disabled/suspended admin is blocked by three independent layers: `canAccessPanel()`
+   (panel-wide), `RequiresActiveAdmin` on both resources, and each action's own re-check; both
+   new test files assert a Suspended admin is rejected at the action layer and via Livewire.
+7. PASS -- no double-refund/no money movement outside `LedgerService`; reserved-branch refused
+   on any Pending/Captured payment row, confirmed-branch delegates to the existing, unmodified
+   `LessonSettlement::refundParent()`.
+8. PASS -- ForceCompleteLesson never calls settlement/ledger at all; escrow balance/sum asserted
+   untouched by the test for both starting states.
+9. PASS WITH NOTE (Low) -- `TutorProfile::openAbuseReports()` has an N+1 read pattern (per-row
+   query in a `->filter()` closure); admin-only, low-traffic, not a correctness bug.
+10. PASS WITH NOTE (Low) -- `LessonCancelReason::isReserved()` is a confusing name for "is this
+    a recognised machine value"; logic itself correct and test-covered.
+11. PASS WITH NOTE (Low) -- admin force-cancellations reuse the existing `cancelled_by_tutor`
+    terminal status rather than a dedicated one (no such state machine edge exists); disclosed
+    in both docblocks, matches an existing precedent (`TutorSuspended`/`AccountSuspended`).
+12. PASS -- `AuditLog.php` diff is docblock-only, no behavioural change.
+13. PASS -- the blade guard correctly suppresses "Reason given" for any machine value while
+    still showing a genuine human-typed reason, test-covered for both `admin` and the
+    pre-existing `tutor_suspended` case.
+14. Not independently verified -- Pest/ledger:verify/npm build could not run in the review's
+    own isolated worktree; explicitly disclosed, not fabricated.
+
+0 Medium/High findings; diff confined to the sub-cycle's own area (Lessons actions, Filament
+Lessons/TutorProfiles resources, TutorProfile model, the one enum case, the one blade file,
+their tests) plus docs. CI green (1 passing, 0 failing, `mergeStateStatus: CLEAN`, `ccd_pr
+get_status`). Meets R147/R154's self-merge bar. Fix loop not needed (0 findings to fix).
