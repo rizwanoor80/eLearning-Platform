@@ -5031,3 +5031,18 @@ curl returned 000 on all four routes until corrected); all four routes
 `/register` 200. Step 5 (9d, R152) done. ccd_pr get_status pre-merge:
 1 check passing, 0 failing, mergeable=MERGEABLE,
 mergeStateStatus=CLEAN.
+
+[2026-09-29 13:20] DECISION
+Step 6 start. Quoting R111 (PLAN cycle 05 r4, standing, rehearsal only,
+restated unchanged by cycle 06 r1 and every cycle since) before acting:
+"CC deploys trustutor-rehearsal itself -- owner ruling 2026-09-26,
+standing, rehearsal only. This is the owner's standing named
+authorisation (rule 8) for every rehearsal deploy and the migrations
+that run inside it; CC quotes this ruling in the log before each
+deploy." Mechanism, matching the 6c/7/8e precedent exactly: fast-forward
+`rehearsal` to the merged 9d code commit `f4c2892` (the exact code
+commit; the later docs-only `54201f0`/`ff9411f` are not deployed, same
+precedent as 6c's `1ede299` vs `2ac3541`), never `--force`, wait for
+push-to-deploy, then the R91 read-only checks. `git log --oneline
+origin/rehearsal..f4c2892` counted below in the push entry. `d3c8a0a`
+is an ancestor of `f4c2892` (fast-forward confirmed).
