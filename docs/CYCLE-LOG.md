@@ -3897,3 +3897,77 @@ with resolved disputes (§6 item AL); `docs/reports/9b.md` written and corrected
 corrected; the CP8 dispute box ticked with corrected evidence. Next: the still-owed pre-PR advisor
 consult (mirroring 9a's own protocol step), then the mechanical CI-skip grep gate on the eventual
 commit message, then push and PR.
+
+## [2026-09-29 07:30 machine clock] ADVISOR — pre-PR consult, mirroring 9a's own protocol step, per
+rule 11 (production-affecting judgment call: this write decides whether the branch is ready to push)
+
+Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 — configured, not
+measured (R63 phrase). Called after commit `9833acf` landed (the nine-point correction pass), before
+any push. Confirmed the commit and both mechanical gates are fine, then found four more problems to
+fix before pushing. Verbatim, numbered:
+
+"This is the pre-PR consult. The commit and both gates are fine. Four things to handle before you
+push, in this order: **1. Log this consult now, in this turn.** ... **2. STATUS.md still
+contradicts itself.** Your diff showed the paragraph directly under the header as unchanged context,
+and it still says: "Not yet built this sub-cycle: `docs/reports/9b.md`, ADR-021, and the CP8
+dispute-box tick … so this sub-cycle continues rather than opening a PR now." That is the
+stale-STATUS mistake this cycle has already made twice. ... **3. The `07:03` timestamp can't be
+right.** That entry sits after the committed `07:05` entry. ... Don't edit the entry itself; follow
+your own correction convention. Fix two related problems in the same NOTE: the `07:20` DECISION has
+a garbled line: "is now satisfied: merged is still pending:". The same line shows that done-means
+includes merge. So "fully satisfied" in the commit message, the STATUS header and §2 overclaims. Say
+"satisfied except merge". **4. Check the "no new edge" claim against git before the reviewer does.**
+... **Empty for the state machine:** "no new edge" is true. ... Do the same for `LedgerService.php`
+if CP5 counts as merged: the report should name the frozen-file authorisation for `settle()`."
+
+Acted on in order:
+1. This entry, written in this turn, per the guidance's own point 1.
+2. `git log -4 --format='%h %ci %s'` run: `9833acf` at `2026-09-29 07:16:45 +0400`, `6c31b7e` at
+   `06:55:28`, `0e42c9c` at `06:51:50`, `2531931` at `06:22:03`. Confirms point 3: the already-
+   committed `07:05` ADVISOR entry (in the file before the `07:03` entry) predates `9833acf`'s real
+   commit time of `07:16:45`, so a `07:03` heading for a consult that reviewed drafts made *after*
+   `6c31b7e` (06:55:28) and landed inside a commit at 07:16:45 is chronologically impossible as
+   written. Corrected by a separate NOTE below (append-only convention — the `07:03` heading itself
+   is not edited).
+3. `git diff origin/main...HEAD --stat -- app/Services/Lessons/LessonStateMachine.php
+   app/Services/Ledger/ app/Services/Payments/` run: **empty for `LessonStateMachine.php`** — "no new
+   edge" is confirmed true, nothing further needed there. **Not empty for `LedgerService.php`**
+   (118 insertions) — checked against the already-logged `01:35` DECISION (this cycle, on `main`
+   before this branch was cut): `LedgerService.php` is "frozen after CP5" per CLAUDE.md, and CP5's
+   own CHECKPOINTS section has no boxes ticked, so the freeze clock has not started — `settle()` was
+   implemented directly under normal money-trigger discipline (advisor consults + review), no
+   frozen-file build→prove→halt→GO gate applies, and none was skipped. `docs/reports/9b.md`'s
+   frozen-files row already states this; confirmed accurate, no correction needed there. CP5 does
+   **not** count as merged, so the guidance's conditional second half does not apply.
+4. STATUS.md's header, the paragraph under it, §1, §2 item 3, §3, §5, §6 (new item AN, below) and
+   §8 rewritten as a full pass this same write, per point 2's instruction not to patch only the one
+   paragraph. Advisor tally in the new header: **13 consult calls this cycle, 11 counting per R63**
+   (this entry added to the prior 12/10).
+
+## [2026-09-29 07:32 machine clock] NOTE — two corrections to already-committed CYCLE-LOG entries,
+found by the `07:30` pre-PR ADVISOR consult; neither historical entry edited, per the standing
+append-only correction convention
+
+1. **The `07:03` ADVISOR heading's timestamp is wrong.** That consult reviewed drafts (ADR-021,
+   `docs/reports/9b.md`, the CP8 box tick) written after commit `6c31b7e` (06:55:28 +0400, already
+   on this branch) and its own findings were fixed and committed as `9833acf` at 07:16:45 +0400 —
+   both bounds are later than "07:03". The already-committed `07:05` ADVISOR entry, which sits
+   *before* the `07:03` entry in the file, is further evidence of the same problem: entries are
+   meant to append in chronological order and this one does not. The consult happened; its content,
+   quote and R63 phrase are all genuine and still count toward the tally. Only the clock label is
+   wrong — corrected reading: **approximately 07:14 machine clock**, between the `07:05` entry and
+   the `9833acf` commit. No entry is edited; this NOTE is the correction of record.
+2. **The `07:20` DECISION entry's closing paragraph has a garbled sentence and an overclaim.** It
+   reads "R150's full 'done means' list ... is now satisfied: merged is still pending: the
+   transition table quoted ...", which reads as a run-on/copy-paste artefact, and its next sentence
+   ("R150's full 'done means' list (`docs/PLAN.md` step 3) is now satisfied") overclaims: R150's own
+   done-means list (quoted in STATUS §2 item 3) names "merged" as one of its items, and this branch
+   has not merged yet. Corrected reading: **R150's done-means list is satisfied except merge** — the
+   transition table is quoted with no new edge; dial tests are green; `ledger:verify` is zero-sum on
+   a seeded DB with resolved disputes (§6 item AL); `docs/reports/9b.md`, ADR-021 and the CP8 box are
+   all written and corrected. Merging is the one remaining item, gated on push → PR → fresh-subagent
+   review → fix loop (cap 2) → self-merge under R147/R154 or an owner GO. The commit message for
+   `9833acf` and the STATUS header/§2 written before this NOTE both repeat the "fully satisfied"
+   overclaim; STATUS is rewritten in this same write to say "satisfied except merge" instead — the
+   commit message itself is historical and is not amended, per the same rewrite-declined precedent
+   as the `[skip ci]` corrections above.
