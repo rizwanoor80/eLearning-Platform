@@ -13,7 +13,9 @@ use App\Enums\Role;
 use App\Enums\TutorProfileStatus;
 use App\Enums\UserStatus;
 use App\Exceptions\TutorStatusTransitionException;
+use App\Filament\Resources\Audit\AuditLogResource;
 use App\Models\AbuseReport;
+use App\Models\AuditLog;
 use App\Models\TutorProfile;
 use App\Models\User;
 use Filament\Actions\Action;
@@ -173,6 +175,23 @@ class AbuseReportsTable
 
                         Notification::make()->success()->title('Account suspended')->send();
                     }),
+                Action::make('viewSuspensionSweep')
+                    ->label('View suspension sweep')
+                    ->color('gray')
+                    // CYCLE-LOG 2026-09-29 11:11 ADVISOR: `sweepAuditLogFor()` is deliberately
+                    // not memoised (see its own docblock), so `url()` and `visible()` calling it
+                    // separately each cost one pair of indexed queries -- two lookups per row
+                    // render in total, down from three before this fix folded `url()`'s own
+                    // double call into one local variable.
+                    ->url(function (AbuseReport $record): ?string {
+                        $sweep = self::sweepAuditLogFor($record);
+
+                        return $sweep instanceof AuditLog
+                            ? AuditLogResource::getUrl('index', ['tableFilters' => ['id' => ['value' => $sweep->id]]])
+                            : null;
+                    })
+                    ->visible(fn (AbuseReport $record): bool => self::sweepAuditLogFor($record) instanceof AuditLog)
+                    ->openUrlInNewTab(),
                 Action::make('reinstateAccount')
                     ->label('Reinstate account')
                     ->color('success')
@@ -209,6 +228,57 @@ class AbuseReportsTable
         $user = $record->reportedUser();
 
         return $user?->role === Role::Tutor ? $user->tutorProfile : null;
+    }
+
+    /**
+     * CP8 9d (design consult, CYCLE-LOG 10:15 ADVISOR point 4): no stored data ties an
+     * `AbuseReport` to the suspension it led to (`SuspendTutor`/`SuspendAccount` audit rows
+     * carry only a status and a free-text note, never a report id), so this resolves the link at
+     * read time instead of adding a column. Tries the tutor-specific sweep first
+     * (`tutor.suspension_sweep`, subject = `TutorProfile` — fired whenever `SuspendTutor` runs,
+     * whether reached directly or via `SuspendAccount`'s own cascade for an approved tutor),
+     * then falls back to the account-level sweep (`user.suspension_sweep`, subject = `User`).
+     * Ordered by `id`, not `created_at` — the same second-precision tie this cycle already hit
+     * once in 9c's own suspension history.
+     *
+     * Deliberately NOT memoised: a `static` cache on this class lives for the whole PHP process,
+     * not one request — harmless under PHP-FPM (one request per process) but wrong the moment two
+     * calls in the same process must see different data (every feature test; Octane, if this ever
+     * moves there). Caught this cycle by `SafeguardingResourceTest.php`'s own
+     * `viewSuspensionSweep` tests, which check "hidden" then act then check "visible" inside one
+     * test run — a stale `false` from the first check was still being returned after the sweep
+     * had actually written its row. Two lightweight, single-row indexed lookups per row render is
+     * cheap enough on an admin queue to not need caching at all.
+     */
+    private static function sweepAuditLogFor(AbuseReport $record): ?AuditLog
+    {
+        $user = $record->reportedUser();
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $profile = $user->role === Role::Tutor ? $user->tutorProfile : null;
+
+        if ($profile !== null) {
+            $found = AuditLog::query()
+                ->where('subject_type', TutorProfile::class)
+                ->where('subject_id', $profile->id)
+                ->where('action', 'tutor.suspension_sweep')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return AuditLog::query()
+            ->where('subject_type', User::class)
+            ->where('subject_id', $user->id)
+            ->where('action', 'user.suspension_sweep')
+            ->orderByDesc('id')
+            ->first();
     }
 
     private static function isSuspendableAccount(AbuseReport $record): bool

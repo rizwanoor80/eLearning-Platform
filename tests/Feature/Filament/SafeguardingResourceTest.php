@@ -8,9 +8,11 @@ use App\Enums\LessonStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Enums\UserStatus;
+use App\Filament\Resources\Audit\AuditLogResource;
 use App\Filament\Resources\Safeguarding\Pages\ListAbuseReports;
 use App\Filament\Resources\Safeguarding\SafeguardingResource;
 use App\Models\AbuseReport;
+use App\Models\AuditLog;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
 use App\Models\Learner;
@@ -236,6 +238,53 @@ it('offers reinstateAccount only for a suspended non-admin reported user, and re
         ->callTableAction('reinstateAccount', $reportOnSuspended);
 
     expect($suspended->fresh()->status)->toBe(UserStatus::Active);
+});
+
+// ---- viewSuspensionSweep (CP8 9d, R152, closing STATUS §6 item P) -------------------------------
+
+it('hides viewSuspensionSweep when no suspension sweep has run yet, and shows it once one has', function () {
+    $tutor = TutorProfile::factory()->approved()->create();
+    $report = AbuseReport::factory()->create(['status' => AbuseReportStatus::Open, 'subject_type' => AbuseReportSubjectType::TutorProfile, 'subject_id' => $tutor->id]);
+
+    Livewire::actingAs($this->admin)
+        ->test(ListAbuseReports::class)
+        ->assertTableActionHidden('viewSuspensionSweep', $report)
+        ->callTableAction('suspendTutor', $report, ['note' => 'Safeguarding concern upheld.']);
+
+    Livewire::actingAs($this->admin)
+        ->test(ListAbuseReports::class)
+        ->assertTableActionVisible('viewSuspensionSweep', $report->fresh());
+});
+
+it('links viewSuspensionSweep to the exact tutor.suspension_sweep audit row for this tutor, not any other', function () {
+    $tutor = TutorProfile::factory()->approved()->create();
+    $otherTutor = TutorProfile::factory()->approved()->create();
+    $report = AbuseReport::factory()->create(['status' => AbuseReportStatus::Open, 'subject_type' => AbuseReportSubjectType::TutorProfile, 'subject_id' => $tutor->id]);
+
+    Livewire::actingAs($this->admin)
+        ->test(ListAbuseReports::class)
+        ->callTableAction('suspendTutor', $report, ['note' => 'Safeguarding concern upheld.']);
+
+    // A second, unrelated tutor's own sweep must never be the one linked.
+    Livewire::actingAs($this->admin)
+        ->test(ListAbuseReports::class)
+        ->callTableAction('suspendTutor', AbuseReport::factory()->create([
+            'status' => AbuseReportStatus::Open,
+            'subject_type' => AbuseReportSubjectType::TutorProfile,
+            'subject_id' => $otherTutor->id,
+        ]), ['note' => 'Unrelated.']);
+
+    $sweep = AuditLog::query()
+        ->where('subject_type', TutorProfile::class)
+        ->where('subject_id', $tutor->id)
+        ->where('action', 'tutor.suspension_sweep')
+        ->sole();
+
+    $expectedUrl = AuditLogResource::getUrl('index', ['tableFilters' => ['id' => ['value' => $sweep->id]]]);
+
+    Livewire::actingAs($this->admin)
+        ->test(ListAbuseReports::class)
+        ->assertTableActionHasUrl('viewSuspensionSweep', $expectedUrl, $report->fresh());
 });
 
 // ---- the dedicated ledger:verify-with-suspension-refunds proof (PLAN step 5 done-means) ---------
