@@ -3268,3 +3268,140 @@ so don't use it in VERIFICATION."* This matches exactly what happened next in th
 in `DisputeController.php`, and — after the fix — a fresh background `composer test` run rather than
 reusing the pre-fix `b230v3nx5` count), so the guidance was acted on in full even though only this
 one line is quotable. Disclosed here rather than reconstructed or invented.
+
+## [2026-09-29 04:10 machine clock] START — cycle 09 r1 (R150) continues, resumed after compaction
+
+Segment resumed via the harness's own compaction summary (no owner `update` — mid-cycle continuation
+per rule 2, "one window runs many sessions in sequence"). Carried in from the pre-compaction summary:
+`ResolveDispute.php` written, zero test coverage, no Filament UI. `git status --short` confirmed
+nothing pushed since `c93d20b`; working tree matched the pre-compaction state exactly (`ResolveDispute.php`
+untracked, no Filament resource, no test files for either). Proceeding per R150's "done means" list
+(PLAN.md step 3): test coverage for `ResolveDispute`, the Filament `DisputeResource`, then the
+notification layer.
+
+## [2026-09-29 04:35 machine clock] VERIFICATION — ResolveDispute test suite + Filament DisputeResource UI built, gate green
+
+`tests/Feature/Lessons/ResolveDisputeTest.php` (11 tests): the happy path (dial-matrix arithmetic
+cross-checked against `LedgerServiceTest.php`'s own 25%-commission fixture), the reversal-aware
+already-released path, note/dial validation, the active-admin-only guard, the advisor-flagged
+double-submit proving `LessonTransitionException` (not `DisputeException`) surfaces on a second
+resolve of an already-settled lesson, the lesson_id cross-check, and `prefillFor()`. Filament layer
+built mirroring `SafeguardingResource`'s established shape (`RequiresActiveAdmin`, no create/edit/
+delete, auto-discovered — no manual registration needed, and `DisabledAdminAccessTest.php`'s dataset
+is a filesystem glob so it covers the new resource with no edit needed): `app/Filament/Resources/
+Disputes/DisputeResource.php`, `Pages/ListDisputes.php`, `Tables/DisputesTable.php` (the "Resolve"
+action, dials prefilled via `ResolveDispute::prefillFor()`, catching
+`DisputeException|LessonTransitionException`). `tests/Feature/Filament/DisputeResourceTest.php`
+(7 tests): access/no-delete-or-edit, listing, resolve visibility, the actual settle-over-Livewire
+path, trial prefill, and the double-submit race.
+
+Combined run: `{"tool":"pest","result":"passed","tests":36,"passed":36,"assertions":189,
+"duration_ms":24980}`. `./vendor/bin/pint --test` → passed (one auto-fix applied mid-build: an
+inline `\App\Actions\Lessons\ResolveDispute::class` FQCN in the test file replaced with a proper
+`use` import, `ordered_imports`). `./vendor/bin/phpstan analyse --memory-limit=512M` (project scope,
+per `composer.json`'s `types:check`; `tests/` is outside `phpstan.neon`'s configured `paths`, so an
+isolated single-file invocation against a test file gives false positives — confirmed by reproducing
+the same false positives against the already-passing, already-committed `OpenDisputeTest.php`) →
+`{"tool":"phpstan","result":"passed","errors":0}`.
+
+## [2026-09-29 04:40 machine clock] NOTE — Filament's own `visible()` re-check is a genuine, earlier server-side gate than ResolveDispute's own exception catch
+
+`DisputeResourceTest.php`'s double-submit test was first written to assert a danger toast from
+`DisputesTable`'s `catch (DisputeException|LessonTransitionException)` branch, and failed
+empirically: `Failed asserting that an action with name [resolve] is visible on the [ListDisputes]
+component.` (`vendor/filament/actions/src/Testing/TestsActions.php:162`). Root cause, confirmed not
+papered over: `callTableAction()` re-fetches the record and re-checks the action's `visible()`
+closure before invoking `action()` at all, so a *sequential* double-submit through the Livewire test
+harness (and, by extension, the real Livewire request cycle) never reaches `ResolveDispute`'s second
+call in the first place — `visible()` is a real, additional layer of defense, not a substitute for
+the exception catch. Rewrote the test to assert the actually-provable behaviour
+(`assertTableActionVisible` before, resolve via plain PHP, `assertTableActionHidden` after, values
+unchanged), with a docblock cross-referencing `ResolveDisputeTest.php`'s plain-PHP proof that the
+exception really is `LessonTransitionException` (so the table action's catch clause is not vacuous —
+it exists for the true-concurrency window a sequential test cannot drive). No code change needed;
+disclosed here per rule 12.
+
+## [2026-09-29 04:45 machine clock] ADVISOR — post-build consult before the notification layer (rule 11 minimum + judgement-call trigger)
+
+Sixth consult on `cp/9b-disputes`. Model: not reported by the tool; configured advisor per
+PROJECT_BRIEF.md is Fable 5.1 (owner, 2026-09-28) — same standing disclosure as every other entry
+this cycle. Confirmed answering: real tool result returned, not a timeout.
+
+Framing: ResolveDispute + the Filament UI built and green; next is the dispute-opened notification,
+where `OpenDispute` already fires the existing `LessonStatusChanged` event (no bespoke event needed)
+and `AdminRecipients::resolve()` returns email strings incompatible with a database-notification
+bell, with no admin-bell precedent anywhere in the codebase.
+
+Quoted: *"Your design for the admin bell is right: send it to active admin `User` rows directly, not
+through `AdminRecipients`."* Full findings, most severe first: (0) commit the six uncommitted files
+as a code commit before anything else, with VERIFICATION/DECISION/ADVISOR log entries — durability
+before further work; (1) **blocking** — the trial prefill contradicts R150 and the Filament test's
+own title: `prefillFor()` still returned `[100, null]`, not the `[100, 0]` the 02:10 NOTE already
+corrected it to — a real bug, not a stale-plan question, to be fixed with the dataset expanded to
+cover every named default; (2) for the notification layer: re-check whether `AdminRecipients` or
+every active admin `User` is the right mail-recipient reading against PRD §8/R31 (log a DECISION
+disclosing the wording gap either way), and check whether an admin can even reach the 8e portal
+notification centre or whether the Filament panel calls `->databaseNotifications()` before assuming
+the bell is seen by anyone; mirror 8e's test precedent (description absent from mail/bell payload
+and the serialized job, suspended admin gets neither, non-Disputed transition fires nothing,
+learner/account holder get nothing); (3) check whether the CP8 box or PRD §8's row requires a
+"dispute resolved" notification (8e.md cites "opened/resolved") before ticking CP8 with only
+"opened" built.
+
+Action: fix point 1 immediately, log it, re-verify, commit — all below — before starting the
+notification layer proper under points 2–3.
+
+## [2026-09-29 04:55 machine clock] DECISION — trial-prefill bug fixed (advisor point 1), gate re-verified
+
+`ResolveDispute::prefillFor()` (`app/Actions/Lessons/ResolveDispute.php:127-134`) returned
+`[100, null]` for a trial dispute — the pre-02:10-NOTE value — even though its own docblock already
+cited "corrected by the 02:10 NOTE"; the code was never actually updated to match, evidently lost
+across the compaction boundary between the 02:10 NOTE and this segment. Fixed to `[100, 0]`,
+docblock rewritten to state the 100/0 result plainly (still explaining the 01:41-vs-02:10 history,
+since a future reader would otherwise wonder why `tutorPayPct` isn't left empty per PRD line 48's
+literal wording). `tests/Feature/Lessons/ResolveDisputeTest.php`'s prefill test expanded from one
+assertion into a 6-case dataset (advisor: "add a dataset covering every R150 default") — trial ×
+{quality, no_show} reason → `[100, 0]` both times (trial always wins regardless of reason); regular
+× no_show → `[null, null]` (student/tutor no-show indistinguishable post hoc, 02:11 NOTE); regular ×
+{quality, technical, other} → `[null, null]` (R150's plain "otherwise empty" bucket).
+`DisputeResourceTest.php`'s matching Livewire assertion corrected from `'tutor_pay_pct' => null` to
+`=> 0`.
+
+Re-verified: `{"tool":"pest","result":"passed","tests":41,"passed":41,"assertions":193,
+"duration_ms":44286}` (+5 tests over the pre-fix 36, matching the dataset's 6 cases replacing 1
+assertion-only test = net +5). `./vendor/bin/pint --test` → `{"tool":"pint","result":"passed"}`.
+`./vendor/bin/phpstan analyse --memory-limit=512M` (project scope) → `{"tool":"phpstan",
+"result":"passed","errors":0}`. All green; committing next per advisor point 0.
+
+## [2026-09-29 05:05 machine clock] DECISION — commit `fb30f97` made; STATUS.md read in full before rewrite
+
+Staged and committed the six files from the advisor's point 0 (`ResolveDispute.php`, the three
+`app/Filament/Resources/Disputes/*` files, `DisputeResourceTest.php`, `ResolveDisputeTest.php`) as
+`fb30f97` — a code commit, no `[skip ci]`, kept separate from this file's own docs-only edits per
+rule 6. `git log origin/main..HEAD` now shows 6 commits on `cp/9b-disputes`
+(`a5c7fd2 b1f609e 2c57699 c29a2c4 c93d20b fb30f97`). Read `docs/STATUS.md` in full (both halves,
+the second via `offset=155` after the tool's own truncation notice) before starting the rewrite,
+per rule 12 — confirms Owner actions 3/4/8/9/12/13/14/15 are the only open items, all already
+disclosed non-blocking, none touching 9b.
+
+## [2026-09-29 05:15 machine clock] VERIFICATION — full pre-write gate re-run, one environment quirk found and worked around
+
+Before rewriting STATUS.md, re-ran the complete gate on the current branch tree rather than reusing
+the header's now-stale pre-segment numbers. `composer test` invoked through PowerShell failed
+partway — not a code failure: pint and phpstan passed, `npm run types:check` (vue-tsc) produced no
+error, then the chained `bash scripts/rtl-check.sh` step errored
+(`WSL (9 - Relay) ERROR: CreateProcessCommon:818: execvpe(/bin/bash) failed`) because composer's
+script runner resolves `bash` through a broken WSL relay when composer itself is invoked from
+PowerShell in this environment — an environment/shell-resolution quirk, not a regression in
+`scripts/rtl-check.sh` or the RTL-safety rule itself. Worked around by running each `composer test`
+sub-step directly against the real (git-bash) shell instead of through PowerShell's `composer test`:
+`bash scripts/rtl-check.sh` → passed clean ("no physical-direction utilities found in resources/");
+`php artisan test --parallel` → `{"tool":"pest","result":"passed","tests":1968,"passed":1968,
+"assertions":10006,"duration_ms":406579}` (+25 tests / +2097 assertions over the header's pre-segment
+1943/9909 baseline — consistent with this segment's dispute-suite growth); `php artisan
+ledger:verify --no-interaction` → "Ledger OK: every lesson sums to zero."; `npm run types:check`
+(vue-tsc) → clean, no output. Pint/PHPStan already confirmed clean above (both this segment's
+targeted run and the PowerShell run before it failed). `npm run build` not yet run this segment —
+still owed as a separate pre-PR gate item per R150's "done means" list; the composer `test` script
+does not include it. Disclosing the PowerShell/WSL-relay quirk in STATUS §6 as a environment note,
+not a code finding — no file changed to work around it, only the invocation shell.
