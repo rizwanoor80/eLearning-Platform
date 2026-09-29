@@ -5110,3 +5110,62 @@ rehearsal-deploy ruling. Context size at write: not measured by the
 tool. Compactions this session: at least 2 (one mid-9b, one mid-9d, per
 the pre-compaction summaries this session continued from). Resume count
 0 of 8.
+
+[2026-09-30 09:00] START
+Cycle 10 r1, programme "cleanup" (R156). `git fetch` + fast-forward:
+`main` already equal to `origin/main` (`87c20af`). Read `docs/HOW-WE-
+WORK.md`, `docs/PROJECT_BRIEF.md`, `docs/PRD.md`, `docs/DATA_MODEL.md`,
+`docs/CHECKPOINTS.md`, `docs/PLAN.md`, `docs/STATUS.md` in full and the
+tail of this file, per CLAUDE.md's mandatory session-start order.
+`docs/PLAN.md` (cycle 10 r1) is uncommitted and newer than the last
+committed revision (cycle 09 r1) -- to be committed as "PLAN.md cycle
+10 r1" before any other work, per the owner-loop's rule 1. Grep count 0
+for an END on cycle 10 r1 in this file before this entry -- execution
+permitted. Scope per PLAN.md: Step 1 docs-only (this commit); Step 2
+`cp/10a-cleanup` (R157, three items: (a) item X fail-closed masker
+handling on `Conversation::counterpartNameFor()`, (b) items AB/AD/AE
+comment-only corrections, (c) item AC EMAIL-pattern greedy-label cap);
+Step 3 deploy + END (R111, R91 checklist). Authorisation boundary and
+frozen-file exclusions per PLAN.md quoted and binding (no edits to
+`LessonStateMachine.php` or `LedgerService.php`; no second branch; no
+production or CP5 work). Resume cap reset to 0 of 8 (R162). Advisor
+minimum for 10a: 2 (design before first edit; before the PR), plus
+rule-11 mandatory triggers.
+
+[2026-09-30 09:04] ADVISOR
+Rule-11 trigger consult (plan-repo conflict): PLAN.md's R164 states
+that cycle 09's closing STATUS.md write left §7/§8 reading "Step 6
+starting" under a header that says END, and instructs Step 1 to repair
+it. The working-tree STATUS.md read this session already has §7 (line
+181) and §8 (lines 211-221) reading "complete"/"done" consistent with
+its END header. Advisor as configured in PROJECT_BRIEF.md (the tool
+does not report the answering model). The advisor answered. Quoted
+line: "That is stale plan text under rule 11, not a conflict that
+blocks. Proceed." Taken: proceeded to verify the premise against git
+history (see next entry) rather than either silently redoing a repair
+already done or silently skipping Step 1's actual required deliverable
+(a whole-file STATUS.md rewrite for cycle 10 r1, which stands regardless
+of whether the specific §7/§8 defect still exists). This consult is a
+rule-11 trigger, separate from 10a's own two-minimum design/pre-PR
+consults, logged as such so that count stays clean. First consultation
+of the session, confirmed answered.
+
+[2026-09-30 09:06] DECISION
+R164's premise is stale plan text (rule 11) -- disclosed, not silently
+corrected or silently ignored. `git show ff9411f --stat` and `git show
+87c20af --stat` confirm: `ff9411f` (2026-09-29 12:11, "9d/step6: STATUS.
+md boundary -- step 5 closed/merged, step 6 ... starting") is the write
+that left §7/§8 reading "Step 6 starting" under stale text -- this is
+almost certainly the checkout state the planner read. `87c20af`
+(2026-09-29 12:19, "step6: final STATUS.md halt write") landed 8 minutes
+later and rewrote §7/§8 (among other sections) to reflect the completed
+halt -- its own commit message names §7 and §8 explicitly. `87c20af` is
+`main`'s current tip; the repair R164 describes is already in the tree
+that started this session. Step 1 still executes in full: PLAN.md's own
+"done means" for Step 1 ("§7 and §8 of STATUS consistent with its
+header") is unaffected by which commit did the fixing, and the whole-
+file rewrite for cycle 10 r1 (new header, new §7/§8, §6 carried with
+R158-R160's closures and R157's "in 10a" markers) is still owed. This
+finding is recorded as a new STATUS §6 item (item AX) rather than
+reopening or re-litigating `87c20af`'s or `ff9411f`'s own commit
+messages, which stay unedited per the append-only convention.
