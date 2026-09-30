@@ -5414,3 +5414,81 @@ pre-PR advisor consult and then the PR.
 Code+test commit for R157(a)/(b)/(c) made on `cp/10a-cleanup`:
 `7d927d2`. Docs (this file, STATUS.md, DECISIONS.md, reports/9b.md)
 committed separately, immediately after this entry.
+
+[2026-09-30 10:30] ADVISOR
+Advisor as configured in PROJECT_BRIEF.md (the tool does not report
+the answering model). Consulted per 10a's second stated minimum
+("before the PR") ahead of opening the cp/10a-cleanup PR, with the
+full session transcript (items X/AB/AC/AD/AE, R159, gate results)
+forwarded. Four issues came back, none blocking a decision on
+mechanism, all blocking the PR: (1) the 09:44 ADVISOR entry below is
+missing this cycle's required compliance phrase and does not count
+toward any advisor-minimum as written; (2) the running advisor-call
+count in STATUS.md's header needed re-verification against
+CYCLE-LOG rather than being restated from an earlier draft; (3) two
+EMAIL edge cases -- a dash immediately after '@' on the domain side,
+and a bare trailing dash after a fully-formed domain -- were
+disclosed in prose (DEVIATION / ADR-019 amendment) but not pinned as
+fixtures per ADR-019's own convention; (4) docs/DECISIONS.md's
+ADR-019 row amendment should be read back for a possible broken
+markdown table row given its length. Quoted line from the advisor's
+answer: "Items 1-2 are docs-only fixes on the branch, no
+`[skip ci]`. Item 3 is a fixture pass -- re-run the two masker suites
+and the literal count in the log after." Issue 3 resolved
+immediately following this entry (see VERIFICATION below); issues 1,
+2 and 4 resolved in the NOTE entries that follow it.
+
+[2026-09-30 10:33] NOTE
+Correcting the 09:44 ADVISOR entry above (append-only per item V's
+precedent -- the original entry is never edited): that entry's text
+does not contain this cycle's required phrase ("Advisor as
+configured in PROJECT_BRIEF.md (the tool does not report the
+answering model)"), so per ADR-010's addendum and R63/R161 it does
+not count toward any advisor-consult minimum, as flagged by the
+10:30 consult above. The consultation itself genuinely happened and
+was genuinely answered -- the six-probe redirect, the prescribed
+repro, and the measured red numbers (n=500 2.8ms, n=2000 threw at
+12.0ms, etc.) all stand and are not in question, only the compliance
+marker was omitted when the entry was written. Running raw
+`advisor()` total for cycle 10 r1 as of this NOTE: 4 calls
+(09:04, 09:12, 09:44 [non-counting, this NOTE], 10:30). 3 of 4 count
+toward the cycle's advisor minimums; the 09:44 call does not, though
+its content is not in question.
+
+[2026-09-30 10:41] VERIFICATION
+Issue 3 (10:30 ADVISOR) resolved: added two fixtures to
+`tests/Unit/Messaging/MessageMaskerTest.php`'s masking dataset --
+`sara@-name.com` (masks whole; AT_GAP's class already includes '-'
+and absorbs the leading domain-side dash before BARE_DOMAIN_LABEL
+starts, confirmed via scratchpad probe against the running code, not
+a leak) and `sara@name.com-` (pins the disclosed cosmetic-only
+trailing-dash behaviour change: `PLACEHOLDER.'-'`, dash left outside
+the match). `vendor/bin/pint --test` on the file: passed.
+`vendor/bin/pest tests/Unit/Messaging tests/Feature/Messaging`:
+230/230 passed, 698 assertions (up from 228/696 before this pass).
+No regressions.
+
+[2026-09-30 10:45] NOTE
+Issue 4 (10:30 ADVISOR) resolved: read back `da93e42`'s
+`docs/DECISIONS.md` diff in full (`git show da93e42 -- docs/DECISIONS.md`)
+and checked the ADR-019 row for a stray `|` that could break the
+markdown table, given the amendment's length. Counted pipe
+characters on the row directly (`grep -n "^| ADR-019"`, then
+`grep -o '|' | wc -l`): 6, the same count as every other row in the
+table (checked ADR-020 as a control, also 6) -- 5 columns, no
+broken cell, no fix needed. `docs/STATUS.md`'s header advisor-call
+count corrected next to reflect the true running total established
+by the 10:33 NOTE (4 raw calls, 3 counting). All four issues from
+the 10:30 pre-PR consult are now closed.
+
+[2026-09-30 10:55] VERIFICATION
+Full pre-push gate set re-run after the pre-PR consult's fixture
+pass, per rule 7 (full suite green with the literal count before
+every feature-branch push): Pint passed; PHPStan (`--memory-limit=1G`)
+0 errors; `vue-tsc --noEmit` clean; RTL check passed; `npm run build`
+green ("built in 59.89s"); `php artisan ledger:verify` clean; full
+`composer.bat test` (which runs all of the above plus Pest as one
+unit): **2043/2043 passed, 10276 assertions**, ~341s -- up from the
+predecessor run (2041/2041, 10274 assertions) by exactly 2, matching
+the two new masking fixtures added this write. Suite did not shrink.
+Ready to commit docs and push.

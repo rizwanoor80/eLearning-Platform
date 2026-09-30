@@ -88,6 +88,13 @@ dataset('masking fixtures', [
     'hyphenated domain still masks whole (R157(c))' => ['admin@my-site.com', MessageMasker::PLACEHOLDER],
     // The local part's own class (unaffected by R157(c)) still keeps '-'.
     'dash in the local part is unaffected by R157(c)' => ['sara-k@gmail.com', MessageMasker::PLACEHOLDER],
+    // AT_GAP ('[^\p{L}\p{Nd}@]*+') still includes '-', so a dash immediately after '@' is absorbed
+    // there before BARE_DOMAIN_LABEL ever starts matching -- confirmed empirically, not a leak.
+    'leading dash after @ still masks whole (R157(c))' => ['sara@-name.com', MessageMasker::PLACEHOLDER],
+    // Disclosed cosmetic-only behaviour change (CYCLE-LOG DEVIATION, ADR-019 amendment): a bare
+    // trailing dash right after a fully-formed domain is no longer absorbed into the match, since
+    // the domain label class dropped '-'. Pinned as a fixture per ADR-019's convention.
+    'trailing dash after domain is left outside the match (R157(c) disclosed behaviour change)' => ['sara@name.com-', MessageMasker::PLACEHOLDER.'-'],
     'mail provider with a space for the dot' => ['sara@gmail com', MessageMasker::PLACEHOLDER.' com'],
     'mail provider with no dot' => ['sara@hotmail', MessageMasker::PLACEHOLDER],
     'mail provider in capitals with spaces' => ['sara  @  GMAIL  com', MessageMasker::PLACEHOLDER.'  com'],
