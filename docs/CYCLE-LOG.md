@@ -5676,3 +5676,37 @@ frozen file touched (`LedgerService.php`, `LessonStateMachine.php`
 both confirmed untouched by every diff this cycle). Resume cap:
 0 of 8 (R162). Nothing further authorised this cycle; STATUS.md
 being rewritten as the closing HANDOFF now.
+
+[2026-10-01 01:15] START
+Cycle 11 r1, programme "daily-webhook" (R165-R167), committed as
+`72ed9e4`. Owner action 3 in progress: Daily account created on
+`trustutor-rehearsal`, credentials saved and activated, but Daily's
+own webhook-verification POST to `/webhooks/video/daily` gets 401
+even though the owner proved the stored secret and documented
+scheme both work when he signs a request himself. Step 1 this run:
+`cp/11a-daily-webhook` implementing R166(a) (tolerate a millisecond
+`X-Webhook-Timestamp`) and R166(b) (one non-leaking diagnostic log
+line on any rejection). Advisor minimum for 11a: 2 (design before
+first edit, before the PR). No CYCLE-LOG entry existed yet for this
+revision (last entry was cycle 10 r1's END, 2026-09-30 11:37), so
+executing is authorised per protocol.
+
+[2026-10-01 01:15] ADVISOR
+Design-before-first-edit consult for 11a, before touching
+`DailyVideoProvider.php`. Advisor as configured in
+PROJECT_BRIEF.md (the tool does not report the answering model).
+Confirmed the R166(a)(b) design as specified: divide the timestamp
+by 1000 only for the tolerance check while signing the original
+header string, route every rejection through one logging helper so
+a test can prove exactly one log line per rejection, decode
+`json_decode($payload)` without `assoc=true` for the body-
+normalisation diagnostic (an `assoc=true` empty-object body would
+silently defeat that check), and hardcode the Daily provider code
+in the log context since the constructor and interface sit outside
+R166's file list. Flagged that `tests/Feature/Video/
+VideoWebhookTest.php`'s existing Daily bad-signature case will now
+also emit the new log line -- checked `tests/Pest.php`, confirmed
+nothing there fakes `Log` globally, so no existing test breaks.
+Quoted line: "Sign the original header string, divide only for the
+tolerance check, and route every `return false` through one
+logging helper so `->once()` can prove a single log line."
