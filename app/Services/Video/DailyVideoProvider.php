@@ -3,10 +3,12 @@
 namespace App\Services\Video;
 
 use App\Enums\VideoParticipant;
+use App\Enums\VideoProviderCode;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Daily.co driver: embed and attendance webhooks. Built and tested against HTTP fakes only — no
@@ -88,7 +90,10 @@ class DailyVideoProvider implements VideoRoomProvider
 
     /**
      * Daily signs `"<X-Webhook-Timestamp>.<raw body>"` with HMAC-SHA256, keyed by the base64-decoded
-     * webhook secret, and sends the base64 of the digest in `X-Webhook-Signature`.
+     * webhook secret, and sends the base64 of the digest in `X-Webhook-Signature`. The timestamp is
+     * accepted in seconds or milliseconds (a value of 12+ digits is divided by 1000 before the
+     * tolerance check); the original header string is still what gets signed either way, so a
+     * millisecond stamp verifies against the same signature a seconds stamp would.
      */
     public function verifyWebhook(string $payload, array $headers): bool
     {
@@ -97,17 +102,69 @@ class DailyVideoProvider implements VideoRoomProvider
         $timestamp = $headers['x-webhook-timestamp'] ?? '';
         $key = base64_decode($secret, true);
 
-        if ($key === false || $key === '' || $signature === '' || ! ctype_digit($timestamp)) {
-            return false;
+        if ($key === false || $key === '') {
+            return $this->reject('no_key', $timestamp, $signature, $payload, $headers);
         }
 
-        if (abs(time() - (int) $timestamp) > (int) config('video.webhook_tolerance_seconds')) {
-            return false;
+        if (! ctype_digit($timestamp)) {
+            return $this->reject('bad_timestamp', $timestamp, $signature, $payload, $headers);
+        }
+
+        $seconds = strlen($timestamp) >= 12 ? intdiv((int) $timestamp, 1000) : (int) $timestamp;
+
+        if (abs(time() - $seconds) > (int) config('video.webhook_tolerance_seconds')) {
+            return $this->reject('stale', $timestamp, $signature, $payload, $headers);
         }
 
         $expected = base64_encode(hash_hmac('sha256', $timestamp.'.'.$payload, $key, true));
 
-        return hash_equals($expected, $signature);
+        if (! hash_equals($expected, $signature)) {
+            return $this->reject('mismatch', $timestamp, $signature, $payload, $headers, $secret, $key);
+        }
+
+        return true;
+    }
+
+    /**
+     * Logs one diagnostic line for a rejected webhook and returns `false`, so every `verifyWebhook`
+     * exit but the success one flows through here (R166(b)). Never logs the secret, the body or the
+     * signature value. For `mismatch` only, adds two booleans that narrow down what Daily's real
+     * request differs on without ever putting the credential or the body in the log: `$rawSecret` and
+     * `$key` are only ever the un-decoded and decoded forms `verifyWebhook` has already validated for
+     * this same request, never re-derived here.
+     *
+     * @param  array<string, string>  $headers
+     */
+    private function reject(string $reason, string $timestamp, string $signature, string $payload, array $headers, ?string $rawSecret = null, ?string $key = null): false
+    {
+        $context = [
+            'provider' => VideoProviderCode::Daily->value,
+            'reason' => $reason,
+            'timestamp' => $timestamp,
+            'timestamp_digits' => strlen($timestamp),
+            'signature_length' => strlen($signature),
+            'body_length' => strlen($payload),
+            'header_names' => array_keys($headers),
+        ];
+
+        if ($reason === 'mismatch' && $rawSecret !== null && $key !== null) {
+            $context['matches_with_raw_secret'] = hash_equals(
+                base64_encode(hash_hmac('sha256', $timestamp.'.'.$payload, $rawSecret, true)),
+                $signature,
+            );
+
+            $normalisedBody = json_validate($payload) ? json_encode(json_decode($payload)) : false;
+
+            $context['matches_with_normalised_body'] = $normalisedBody !== false
+                && hash_equals(
+                    base64_encode(hash_hmac('sha256', $timestamp.'.'.$normalisedBody, $key, true)),
+                    $signature,
+                );
+        }
+
+        Log::warning('video.webhook.rejected', $context);
+
+        return false;
     }
 
     public function parseWebhook(string $payload): ?AttendanceEvent
