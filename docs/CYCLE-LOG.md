@@ -5595,3 +5595,84 @@ merged; proceeding to Step 3 (deploy `main` at `c3b91a3` to
 trustutor-rehearsal under standing ruling R111, then the R91
 read-only SSH verification checklist) without pausing for a clear,
 per rule 13.
+
+[2026-09-30 11:30] DECISION
+Step 3 (R111, standing authorisation -- no per-command "yes" needed):
+fast-forwarded the `rehearsal` branch to `main`'s current tip
+(`b53c55a`, which carries the merged `c3b91a3` plus the post-merge
+docs commit). Verified `origin/rehearsal` (`f4c2892`) was a strict
+ancestor of `origin/main` (`b53c55a`) via `git merge-base
+--is-ancestor` before pushing, so the update was a genuine
+fast-forward, never a force-push. Executed: `git push origin
+main:rehearsal` -- `f4c2892..b53c55a main -> rehearsal`. This
+triggers Forge's push-to-deploy on `trustutor-rehearsal` (proven
+2026-09-26, `1ede299`). `main` itself was never deployed; only the
+`rehearsal` branch moved. Next: wait for the deploy webhook to
+finish, then run the R91 read-only SSH verification checklist.
+
+[2026-09-30 11:35] VERIFICATION
+Step 3 (R111) deploy + R91 read-only SSH verification checklist,
+all against `trustutor-rehearsal` at 167.233.122.19, using only the
+allow-listed key/command shape from CLAUDE.local.md:
+- `git log -1 --oneline` (in `current/`): `b53c55a` -- matches
+  `main`'s tip exactly, confirming the fast-forward deploy landed.
+- `php8.4 artisan about`: Laravel 13.32.0, PHP 8.4.25, env
+  `rehearsal`, debug OFF, pgsql, queue redis, mail log, storage
+  LINKED, Filament v5.8.2 -- matches the 2026-09-19 owner-verified
+  baseline exactly, no drift.
+- `php8.4 artisan horizon:status`: "Horizon is running."
+- `php8.4 artisan migrate:status` (tail): all migrations through
+  the disputes/ledger set show `Ran`; nothing pending.
+- `php8.4 artisan ledger:verify`: "Ledger OK: every lesson sums to
+  zero." -- clean on rehearsal's real seeded data, not just local.
+- `php8.4 artisan queue:failed`: "No failed jobs found."
+- `php8.4 artisan db:show --counts`: 43 tables, 2.05 MB, seed data
+  present (curricula 5, document_types 4, availability_rules 21),
+  transactional tables empty as expected on a freshly reset
+  rehearsal cycle.
+- `tail -n 40 storage/logs/laravel.log`: empty (no errors logged
+  since the last deploy).
+- Scheduler proof: `crontab -l` unexpectedly returned "no crontab
+  for forge" (exit 1) -- disclosed as a minor discrepancy, not a
+  blocker. Cross-checked via CLAUDE.local.md's own alternate
+  sanctioned method: `ls -l /home/forge/.forge/` plus `tail -n 40`
+  on the newest `scheduled-*.log` (`scheduled-2138095.log`). Its
+  content's timestamp (`2026-09-30 01:29:03`) matches the server's
+  own `date -u` output to the second, and shows five named jobs
+  (`lessons:expire-unpaid`, `lessons:send-reminders`,
+  `lessons:create-rooms`, `lessons:close-rooms`,
+  `lessons:settle-ended`) all completing DONE in the same second --
+  proves `schedule:run` is firing every minute via Forge's own
+  daemon (root-owned `/home/forge/.forge/daemon-*.log` present),
+  not the `forge` user's personal crontab. Scheduler is live; the
+  crontab-based proof method just doesn't apply to this Forge
+  provisioning, and the log-based method (also on the allow-list)
+  confirms it directly.
+- HTTP smoke, all four required routes, over HTTPS against the live
+  domain: `https://rehearsal.trustutor.com/` -> 200, `/login` -> 200,
+  `/admin/login` -> 200, `/tutors` -> 200.
+No red finding. Step 3 complete.
+
+[2026-09-30 11:37] END
+Cycle 10 r1, programme "cleanup" (R156), complete. All three steps
+done: Step 1 (`de038de`, docs), Step 2 (`cp/10a-cleanup` ->
+`c3b91a3`, PR #39, R157/R159/R162's three items built/fixed/
+disclosed, fresh-subagent adversarial review 4/4 PASS, self-merged,
+post-merge record green), Step 3 (`main` at `b53c55a` deployed to
+`trustutor-rehearsal` under R111, full R91 verification green).
+Advisor summary for this cycle: 4 raw `advisor()` calls, 3 counting
+toward the cycle's stated minimums -- 09:04 (Step 1 rule-11
+plan-repo-conflict consult), 09:12 (10a's own design-before-first-
+edit consult), 09:44 (item AC's mid-work redirect -- does not count,
+missing the required R63/R161 compliance phrase, disclosed via a
+10:33 NOTE), 10:30 (10a's second stated minimum, before the PR --
+correctly phrased, surfaced four follow-up issues, all resolved).
+Both of 10a's stated minimums (design-before-first-edit,
+before-the-PR) are satisfied by counting calls 09:04/09:12/10:30;
+sequencing checked directly and confirmed no violation. Suite never
+shrank across the cycle (2041 -> 2043 tests, 10274 -> 10276
+assertions, exactly matching the two new fixtures added). No
+frozen file touched (`LedgerService.php`, `LessonStateMachine.php`
+both confirmed untouched by every diff this cycle). Resume cap:
+0 of 8 (R162). Nothing further authorised this cycle; STATUS.md
+being rewritten as the closing HANDOFF now.
