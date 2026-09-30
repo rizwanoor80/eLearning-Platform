@@ -5710,3 +5710,105 @@ nothing there fakes `Log` globally, so no existing test breaks.
 Quoted line: "Sign the original header string, divide only for the
 tolerance check, and route every `return false` through one
 logging helper so `->once()` can prove a single log line."
+
+[2026-10-01 02:51] DEVIATION
+11a's advisor minimum is 2: design before first edit (logged 01:15)
+and before the PR. PR #40 was opened between those two points
+without the second consult running first -- the sequencing in the
+plan was not followed. Disposition: the PR has not been merged, so
+the substantive gate (an advisor opinion informing the merge
+decision) is still intact if the consult runs now, before merge,
+rather than before the PR's creation. Running it below. Disclosed
+here and in STATUS.md SS6 rather than silently treated as satisfied
+by the 01:15 consult alone.
+
+[2026-10-01 02:51] ADVISOR
+Before-merge consult for 11a (see DEVIATION above), covering the
+fix-loop commit `8f62261` on `cp/11a-daily-webhook`. Advisor as
+configured in PROJECT_BRIEF.md (the tool does not report the
+answering model). Confirmed the verifyWebhook() chain order,
+ctype_digit('') routing a missing timestamp header to bad_timestamp,
+the (int) cast's clamp-not-wrap behaviour on an oversized numeric
+string keeping the ms path from ever reaching stale/replay as a
+match, and the fix-loop's $key threaded into reject() instead of
+re-derived. Flagged that rehearsal's real header_names array will be
+far wider than the two test headers (the controller lower-cases
+every incoming header, including host/user-agent/content-type), and
+that review note #1 (unbounded timestamp value in the log) should be
+accepted with a stated reason rather than left as bare "informational"
+-- R166(b) requires the header value verbatim, Monolog's
+LineFormatter JSON-encodes context so a stray character stays inside
+one log line, and nginx already bounds header length, so no log-
+injection or unbounded-growth path exists. Quoted line: "The fix-loop
+commit stays inside R166's two files and no Medium or High is open,
+so R167/R147's merge conditions are met once CI is green on
+8f62261."
+
+[2026-10-01 02:51] REVIEW
+Fresh-subagent adversarial review of PR #40 (`cp/11a-daily-webhook`,
+head at the time of review `04b9c91`), scoped to R167's three named
+checks plus general correctness/leak review of the two files R166
+authorises.
+1. PASS -- no stale/replay timestamp is accepted via the millisecond
+   path. Verified empirically: PHP's `(int)` cast on an out-of-range
+   numeric string clamps to PHP_INT_MAX rather than wrapping, so an
+   oversized digit-count timestamp is rejected as stale, never
+   accepted as current.
+2. PASS -- no secret, body or signature value reaches
+   `video.webhook.rejected` in any of the four reasons (no_key,
+   bad_timestamp, stale, mismatch); only lengths, digit counts,
+   header names and the two derived booleans are logged.
+3. PASS -- the pre-existing seconds-form path is unchanged and still
+   verifies correctly; confirmed by the new seconds-form unit test
+   and by `VideoWebhookTest.php`'s unchanged 98/98 pass.
+4. PASS WITH NOTE (Low, PLAUSIBLE) -- `DailyVideoProvider.php:143`
+   logs the raw timestamp header value with no length bound; a
+   pathological header could grow the log line. Disposition:
+   accepted as-is. Reason (from the 02:51 ADVISOR consult above):
+   R166(b) requires the header value verbatim for diagnosis, Monolog's
+   LineFormatter JSON-encodes context so this cannot break log
+   parsing, and nginx already caps header length before the request
+   reaches PHP. Not a fix-loop item.
+5. PASS WITH NOTE (Low, PLAUSIBLE) -- the two stale-timestamp tests
+   (`DailyVideoProviderTest.php`, pre-fix-loop) asserted only the
+   boolean return, not that the log line tags the rejection
+   `reason === 'stale'` rather than `'mismatch'`. Disposition: fixed
+   in fix-loop iteration 1, commit `8f62261` -- both tests now assert
+   `$context['reason'] === 'stale'` and the absence of the
+   mismatch-only keys.
+6. PASS WITH NOTE (Low, PLAUSIBLE) -- `reject()` (pre-fix-loop)
+   re-derived the decoded HMAC key from the raw secret for the
+   normalised-body diagnostic instead of reusing the `$key`
+   `verifyWebhook()` had already validated for this request (dead
+   fallback path, same value either way but unnecessary
+   recomputation). Disposition: fixed in fix-loop iteration 1, commit
+   `8f62261` -- `$key` is now threaded through as a parameter.
+0 FAIL. Fix loop iteration 1 of 2 used, closing items 5 and 6; item 4
+accepted as-is. `git diff main...cp/11a-daily-webhook --stat` after
+the fix-loop commit confirms the diff is confined to
+`app/Services/Video/DailyVideoProvider.php` and
+`tests/Feature/Video/DailyVideoProviderTest.php`, matching R166's
+authorised file list.
+
+[2026-10-01 02:51] DECISION
+Rule-6 reading for 11a's merge path, by Claude Code, recorded because
+it was reasoned through privately before now. HOW-WE-WORK's general
+rule 6 says "Medium+ or anything in code/config/routes/migrations/
+tests stops and returns to the owner," in the same sentence that
+establishes the fix loop (cap 2) for resolving review findings before
+merge. R167 (11a's specific merge rule) keys the merge decision on
+R147: "no Medium or High open and CI is green on the head." Reading
+both together: rule 6's owner-halt is for findings a fix loop does
+not clear -- i.e. anything Medium or higher, or a Low finding the fix
+loop failed to close within the cap. The three findings above were
+all Low/PLAUSIBLE, confined to the two files R166 already authorises,
+and two of the three were closed within fix-loop iteration 1 of 2;
+the third is accepted as-is with a stated reason, not silently
+dropped. No Medium or High was ever open, so R147's merge condition
+was met without triggering rule 6's halt. This reading matches
+precedent: cycle 08 closed four advisor follow-up issues via the fix
+loop without an owner halt, and cycle 10 stated a bare "no PASS WITH
+NOTE" as the bar for a *clean* merge -- implying a PASS WITH NOTE
+merge is still possible, it is just not clean, once the fix loop has
+run. Same paragraph placed in STATUS.md SS6 so the owner can rule on
+this reading for future cycles if it disagrees.
