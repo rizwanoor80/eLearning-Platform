@@ -93,10 +93,18 @@ use Normalizer;
  * exponential — the class has no internal repeated ambiguity of its own) without reopening Finding 2, whose
  * cost came from the *outer* group's iteration count, not from backtracking inside one label.
  * (R149(b): `NAMED_DOMAIN_LOOSE`, `NAMED_DOMAIN_TIGHT` and `COUNTRY_DOMAIN` no longer share this label class
- * with `JUNK` — see `BARE_DOMAIN_LABEL` below and the R149(b) docblock paragraph further down. Only `EMAIL`
- * keeps `-` in its label class today; the "gmail-com" fixture above is still `EMAIL`'s, unaffected by
- * R149(b), which touches none of `EMAIL`'s constants. The label run stays greedy, not possessive, in all
- * four patterns regardless — R149(b) changed the label *class*, not this quantifier choice.)
+ * with `JUNK` — see `BARE_DOMAIN_LABEL` below and the R149(b) docblock paragraph further down. At the time,
+ * only `EMAIL` kept `-` in its label class; R149(b) touched none of `EMAIL`'s constants. The label run
+ * stays greedy, not possessive, in all four patterns regardless — R149(b) changed the label *class*, not
+ * this quantifier choice.)
+ * (R157(c): `EMAIL`'s *domain* labels now use `BARE_DOMAIN_LABEL` too — no `-` — closing a related gap the
+ * R149(b) paragraph below did not cover (see its own text and the class docblock's R157(c) paragraph). The
+ * "gmail-com" fixture still passes with the same output: the dash is now consumed by `LABEL_GAP` as an
+ * ordinary junk separator between "gmail" and "com" instead of sitting inside the first label, matching
+ * the same overall span either way. `EMAIL`'s domain label run stays greedy (never possessive) for
+ * consistency with `BARE_DOMAIN_LABEL`'s other uses, though greedy vs. possessive is moot for it now: a
+ * class disjoint from what follows never needs to give anything back. Only `EMAIL`'s *local-part* class
+ * (`[\p{L}\p{Nd}._%+\-]++`) still keeps `-` — untouched, still possessive, still for "sara-k@..." addresses.)
  * 2. The local part (`[\p{L}\p{Nd}._%+\-]++`) and the `@` run (`@++`) stay possessive as planned: nothing
  * after them shares their class the way a label shares `-` with `JUNK`, so there is no separator to steal.
  *
@@ -140,8 +148,8 @@ use Normalizer;
  *
  * R149(b) (cycle 09 r1): closes the gate-open gap the previous paragraph disclosed, exactly the way it
  * named — removing the `-` overlap between LABEL and JUNK, and capping label-run *iterations* — for
- * NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT and COUNTRY_DOMAIN only (`JUNK`, `EMAIL` and `MAIL_PROVIDER` are
- * untouched: see BARE_DOMAIN_LABEL/MAX_BARE_DOMAIN_LABELS above for why EMAIL never had this shape). These
+ * NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT and COUNTRY_DOMAIN only (`JUNK` and `MAIL_PROVIDER` are untouched;
+ * at the time, `EMAIL` was believed untouched too — R157(c) below found otherwise for one shape). These
  * three patterns' label runs now use `BARE_DOMAIN_LABEL` (`[\p{L}\p{Nd}]+`, no `-`) instead of the shared
  * `[\p{L}\p{Nd}\-]+`, so letter/digit and junk are disjoint character classes for them — a label and its
  * following gap can no longer both claim the same character, which forecloses the `(a+)+` shape rather than
@@ -151,6 +159,25 @@ use Normalizer;
  * the "gate-open" timing fixtures added alongside this paragraph); so does a domain built from more labels
  * than the cap allows, which now matches its last `MAX_BARE_DOMAIN_LABELS` labels and the ending rather than
  * failing the message closed or passing through unmasked.
+ *
+ * R157(c) (cycle 10a): item AC named "cap `EMAIL`'s greedy first label by iteration count, mirroring
+ * R149(b)'s bare-domain fix" — no target for that literal mechanism exists in `EMAIL` (its outer domain
+ * group is already possessive, so there is no iteration to cap, and capping it anyway would leak a chain
+ * of labels beyond the cap in plain text, since unlike the three ending-anchored patterns above, `EMAIL`
+ * is anchored at `@` — see MAX_BARE_DOMAIN_LABELS above). Measuring first, per standing practice, rather
+ * than accepting or dismissing the item on the wording alone: R149(b)'s own reasoning for leaving `EMAIL`
+ * untouched (anchored at `@`, possessive local part, possessive outer domain group) covers the outer
+ * group's iteration count but not the *first* domain label, whose greedy (non-possessive, DEVIATION 1
+ * above) match can still give back one character at a time into a following `LABEL_GAP` that shared its
+ * `-`. Empirically (`sara@a` followed by a long run of dashes and no closing label — no ending anchor to
+ * fall back on, so the outer group never completes even one repetition to make the give-back moot): cost
+ * grows superlinearly and `MessageMaskingFailedException` was thrown (default `pcre.backtrack_limit`
+ * exhausted) at 2,000 dashes, well below any length a real message could not otherwise carry — a
+ * legitimate-length message refused closed, the same availability hole R149(b) closed for the bare-domain
+ * patterns, not a leak either way but a real defect. The applicable half of R149(b)'s mechanism is the
+ * disjoint-class fix, not the iteration cap: `EMAIL`'s domain labels now use `BARE_DOMAIN_LABEL` too (see
+ * its docblock and the EMAIL constant above), which forecloses the ambiguity by construction the same way,
+ * without capping or touching the local part. Measured before and after in CYCLE-LOG VERIFICATION entries.
  *
  * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
  * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
@@ -219,17 +246,27 @@ class MessageMasker
     private const LOOSE_DOT_JUNK = '\s*+(?:'.self::JUNK.'\s*+)++';
 
     /**
-     * R149(b): the bare-domain label used only by NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT and
-     * COUNTRY_DOMAIN. Unlike EMAIL's label class, this one drops `-`: `JUNK` (above) already accepts `-`
-     * as a separator, and while the label shared it too, a label and the gap that followed it could each
-     * read the same dash run in more than one way once the pattern's ending token made a match possible at
-     * all (`hasCandidate()`'s gate open) — the classic `(a+)+` shape, catastrophic only once the gate is
-     * open (see the class docblock's R144 paragraphs). Letter/digit and junk are now fully disjoint
-     * character classes for these three patterns, so a label and the gap after it can never both claim the
-     * same character: every position in the subject belongs to exactly one side of that boundary, which
-     * forecloses the ambiguity rather than merely bounding its cost. `EMAIL` keeps `-` in its label class
-     * (see DEVIATION 1 below) because, unlike these three, it is anchored by a leading `@`, possessive
-     * throughout, and never fully backtracking — it was never the shape Finding 2 described.
+     * R149(b): the bare-domain label, dropping the `-` that `JUNK` (above) also accepts as a separator —
+     * sharing it let a label and the gap after it read the same dash run in more than one way once the
+     * pattern's ending token made a match possible at all (`hasCandidate()`'s gate open) — the classic
+     * `(a+)+` shape, catastrophic only once the gate is open (see the class docblock's R144 paragraphs).
+     * Letter/digit and junk are now fully disjoint character classes wherever this constant is used, so a
+     * label and the gap after it can never both claim the same character: every position in the subject
+     * belongs to exactly one side of that boundary, which forecloses the ambiguity rather than merely
+     * bounding its cost.
+     *
+     * Used by NAMED_DOMAIN_LOOSE, NAMED_DOMAIN_TIGHT, COUNTRY_DOMAIN (R149(b)) and, for the domain side
+     * only, EMAIL (R157(c) — see the class docblock's R157(c) paragraph). R149(b) originally reasoned that
+     * `EMAIL` never needed this: anchored by a leading `@`, possessive local part and possessive outer
+     * domain group, "never the shape Finding 2 described." That held for the *outer* group's iteration
+     * count — `EMAIL`'s stays possessive and uncapped, unlike these three, because it is anchored at `@`
+     * rather than at a fixed ending, so an unbounded chain of labels is never a leak (see MAX_BARE_DOMAIN_
+     * LABELS below). It did not hold for the *first* domain label, whose own greedy match (kept greedy,
+     * not possessive, so a trailing separator can still be given back to the gap — DEVIATION 1 below) can
+     * backtrack one character at a time against a following `LABEL_GAP` that shared its `-`. R157(c) found
+     * this empirically (`sara@a` plus a long dash run with no closing label) and closed it the same way as
+     * R149(b): drop `-` from the domain label class, leaving `EMAIL`'s own local-part class (which keeps
+     * `-` for addresses like "sara-k@...") untouched.
      */
     private const BARE_DOMAIN_LABEL = '[\p{L}\p{Nd}]+';
 
@@ -244,6 +281,12 @@ class MessageMasker
      * pattern is anchored at the ending, not at the first label, so `preg_replace` still matches starting
      * from a later label — the earliest labels fall outside the match, never the whole address leaking
      * unmasked (see the "more labels than the cap" fixture).
+     *
+     * Not used by `EMAIL` (R157(c), which reuses BARE_DOMAIN_LABEL but not this cap): `EMAIL` is anchored
+     * at `@`, not at a fixed ending, so a chain of labels beyond any cap would fall entirely outside the
+     * match and leak unmasked (`sara@[hidden].realdomain.com` instead of one placeholder) rather than
+     * shifting the match to a later label the way the ending-anchored patterns do. Its outer group stays
+     * possessive and uncapped instead — see the EMAIL constant and its class-docblock R157(c) paragraph.
      */
     private const MAX_BARE_DOMAIN_LABELS = 16;
 
@@ -255,8 +298,12 @@ class MessageMasker
      * Local part, an `@` (a run of one or more collapses to one, so "sara@@gmail.com" still matches), loose junk
      * either side of the `@`, then two or more letter/digit labels joined by loose junk. The `@` itself is the
      * strong signal, so unlike a bare domain any junk (not just a dot) is accepted between labels here.
+     *
+     * R157(c): the domain's labels use `BARE_DOMAIN_LABEL` (no `-`), not the local part's own
+     * `[\p{L}\p{Nd}._%+\-]` class — see BARE_DOMAIN_LABEL's docblock and the class docblock's R157(c)
+     * paragraph for why. The local part, `AT_GAP` and `LABEL_GAP` are unchanged.
      */
-    private const EMAIL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'[\p{L}\p{Nd}\-]+(?:'.self::LABEL_GAP.'[\p{L}\p{Nd}\-]+)++~u';
+    private const EMAIL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.self::BARE_DOMAIN_LABEL.'(?:'.self::LABEL_GAP.self::BARE_DOMAIN_LABEL.')++~u';
 
     /** A well-known mail provider after an `@` needs no domain ending at all: "sara@gmail com" and "sara@gmail" are addresses. */
     private const MAIL_PROVIDER = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|proton(?:mail)?|aol|msn)(?![\p{L}\p{Nd}])~iu';

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TutorProfileStatus;
 use App\Enums\UserStatus;
+use App\Exceptions\MessageMaskingFailedException;
 use App\Support\Messaging\MessageMasker;
 use Database\Factories\ConversationFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,6 +33,12 @@ class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */
     use HasFactory;
+
+    /**
+     * R157(a): shown instead of a masked name when the masker itself fails closed, so the failure
+     * never surfaces the real name and never 500s. Never the same string as a real display name.
+     */
+    public const NEUTRAL_COUNTERPART = 'Participant';
 
     protected $fillable = ['account_user_id', 'tutor_profile_id'];
 
@@ -121,6 +128,12 @@ class Conversation extends Model
      * a name that carries one (a user can type anything into it) is masked like a message. The single
      * source of truth for this — reused by MessageController and by the 8e notification/email code —
      * so a contact-detail leak can only be fixed in one place.
+     *
+     * R157(a): a masker failure here (fail-closed, never a partial mask) previously reached every
+     * caller as an uncaught exception — a 500 on the Messages list/thread pages, a failed (and
+     * retried, then dead-lettered) job for the notification/email path. It is caught here, once, so
+     * every caller — both portal pages, the notification, the mail and its listener — falls back to
+     * `NEUTRAL_COUNTERPART` instead, never the unmasked name.
      */
     public function counterpartNameFor(User $viewer): string
     {
@@ -129,7 +142,11 @@ class Conversation extends Model
             : $this->account->name;
 
         if (! $this->contactIsVisible()) {
-            $name = app(MessageMasker::class)->mask($name)->text;
+            try {
+                $name = app(MessageMasker::class)->mask($name)->text;
+            } catch (MessageMaskingFailedException) {
+                return self::NEUTRAL_COUNTERPART;
+            }
         }
 
         return Str::limit($name, 60);
