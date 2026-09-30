@@ -5169,3 +5169,326 @@ R158-R160's closures and R157's "in 10a" markers) is still owed. This
 finding is recorded as a new STATUS §6 item (item AX) rather than
 reopening or re-litigating `87c20af`'s or `ff9411f`'s own commit
 messages, which stay unedited per the append-only convention.
+
+[2026-09-30 09:12] ADVISOR
+10a design consult (1 of 2 for this sub-cycle), before the first code
+edit, per PLAN.md's Standing line and R157(a)'s scope. Advisor as
+configured in PROJECT_BRIEF.md (the tool does not report the answering
+model). The advisor answered. Quoted line: "R157(a) says '*it* returns
+a neutral placeholder' -- the method, not the callers. Index, Show,
+notification, mail and listener all inherit. Don't wrap call sites."
+Full guidance, acted on: (1) the fail-closed guard belongs inside
+`Conversation::counterpartNameFor()` itself, not at each of its five
+call sites (`MessageController::index()`/`show()`, `NewMessageNotification`,
+`NewMessageMail`, `SendNewMessageMail`) -- this also resolves the
+call-site-exposure gap found while reading `MessageController.php`
+before this consult (index()/show() call the method unguarded, wider
+than item X's original text named); wrapping the method covers all
+five automatically. (2) catch `MessageMaskingFailedException` by name,
+never a bare `RuntimeException` -- a bare catch would also swallow a
+`QueryException` from the `tutorProfile`/`account` relation access,
+exactly the conflation `MessageMaskingFailedException`'s own docblock
+exists to prevent. (3) keep the try narrow around the `mask()` call
+only; add a public `Conversation::NEUTRAL_COUNTERPART = 'Participant'`
+constant so tests assert against it, mirroring
+`MessageMaskingFailedException::NOTICE`. (4) "one test per portal page
+that renders it" read as two tests, Index and Show (the controller's
+own docblock: "the same routes serve an account holder and a tutor");
+each forces the masker to throw via a mock and asserts a 200, the
+`counterpart` prop equal to the constant, and the real name absent
+from the response body. (5) disclose, not build, one behaviour change:
+in the queued mail/notification path a masking failure previously
+failed the job (retry, then dead-letter, no email sent); after this
+fix the job succeeds and the email reads "Participant" instead --
+strictly safer (no leak either way) but a real change, one line in the
+DECISION below and in the PR body; no new tests there, since R157(a)
+names portal pages only and R156 forbids scope creep. Cross-checked
+STATUS.md §6 items AB/AD/AE (verbatim, for 10a(b)) and AC (verbatim,
+for 10a(c)) before writing anything: AC's own text already says
+"iteration count," the same mechanism R157(c) names, so no
+plan-vs-STATUS reconciliation is actually needed there (see DECISION
+below). Taken: proceed to build R157(a) inside the model method per
+(1)-(4); disclose (5) in STATUS §3/§6 and the PR body when written.
+
+[2026-09-30 09:14] DECISION
+Design for R157(a), adopted from the advisor consult above: fail-closed
+handling lives inside `Conversation::counterpartNameFor()`, wrapping
+only the `MessageMasker::mask()` call in a `try`/`catch
+(MessageMaskingFailedException)`, returning a new public constant
+`Conversation::NEUTRAL_COUNTERPART = 'Participant'` on catch. This
+covers all five current call sites (`MessageController::index()`,
+`MessageController::show()`, `NewMessageNotification`, `NewMessageMail`,
+`SendNewMessageMail`) without touching any of them, including the two
+(`index()`/`show()`) found unguarded while reading the controller
+before this consult -- wider exposure than item X's original PR #35
+text named, now closed by construction rather than by patching each
+site. "One test per portal page that renders it" (R157(a)'s literal
+text) is built as two feature tests, one for `messages/Index` and one
+for `messages/Show`, per the controller docblock's "same routes serve
+an account holder and a tutor." Also noted for the PR body and STATUS
+§3/§6: the queued mail/notification path changes behaviour on a
+masking failure -- previously the job failed (retry, then
+dead-letter, no email); after this fix the job succeeds and sends an
+email reading "Participant." Strictly safer under invariant 8 (no
+unmasked name either way) but disclosed as a real change, not silently
+absorbed. Separately: STATUS §6 item AC's own wording ("cap ... by
+iteration count") already matches R157(c)'s wording -- the advisor
+flagged a possible reconciliation gap between item AC and R157(c) as
+something to check before designing 10a(c); read verbatim, they agree,
+so no DEVIATION is needed there; noted here so the check is on record.
+
+[2026-09-30 09:22] VERIFICATION
+R157(a) built per the DECISION above: `Conversation.php` gained
+`NEUTRAL_COUNTERPART` and the try/catch inside `counterpartNameFor()`;
+`MessageMaskingFailureTest.php` gained the two portal-page tests
+(Index, Show), each asserting the JSON response contains
+`NEUTRAL_COUNTERPART` and never the real (mocked-distinctive) name.
+`vendor/bin/pest tests/Feature/Messaging tests/Unit/Messaging` ->
+{"tool":"pest","result":"passed","tests":222,"passed":222,
+"assertions":682,"duration_ms":33500}. Item X closed.
+
+[2026-09-30 09:30] DECISION
+Item AB (STATUS §6, R157(b)): investigated
+`app/Http/Middleware/EnsureAccountActive.php` expecting to apply PR
+#35's review correction to its docblock. `git show 1925902 --
+app/Http/Middleware/EnsureAccountActive.php` shows the exact corrected
+wording already committed to `main` in cycle 9a (commit message
+"9a(f/c): close item (f)'s literal-403 gap; rework
+EnsureAccountActive docblock (R149(f), R149(c))") -- before this
+cycle branched. This is the same shape as item AX earlier in 10a:
+stale STATUS/PLAN text describing work already done pre-cycle. Per
+rule 11, disclosed here rather than either silently re-doing the
+already-finished repair or silently skipping the item without a
+record. Taken: no edit to `EnsureAccountActive.php` in this cycle;
+item AB closes in STATUS §6 as "already fixed pre-cycle in 1925902,
+stale text disclosed," not as a 10a fix.
+
+[2026-09-30 09:36] NOTE
+Item AD (STATUS §6, R157(b)):
+`tests/Feature/Filament/DisabledAdminAccessTest.php`'s docblock
+carried a false rationale -- it claimed Livewire's
+`/livewire/update` endpoint runs only Livewire's default `web`-group
+middleware, not the panel's `authMiddleware`. Checked against
+`vendor/filament/filament/src/FilamentServiceProvider.php:106`:
+`FilamentServiceProvider::boot()` registers `Authenticate` (among
+others) via `Livewire::addPersistentMiddleware()`, so it re-runs on
+every Livewire component update too, not just the initial page load
+-- the claim was wrong. Rewrote the docblock: the real reason this
+file's `Livewire::test()`-based assertions are non-vacuous is that
+`Livewire::test()` mounts the component in-process and never
+dispatches an HTTP request, so no middleware (persistent or
+otherwise), `canAccessPanel()` included, ever runs against it --
+verified against the same vendor source before writing. Comment-only;
+no behaviour change.
+
+Item AE (STATUS §6, R157(b)): `tests/Unit/Messaging/MessageMaskerTest.php`
+around line 224 had an off-by-one in its comment ("18-label window");
+the cap is `MAX_BARE_DOMAIN_LABELS = 16` and the fixture uses 19
+labels, so the window the cap allows through is 17, not 18. While
+fixing this I found a second, related arithmetic slip in the same
+sentence: "one more than" the window should read "two more than" (19
+- 17 = 2, not 1). Fixed both. Comment-only; no behaviour change.
+
+Verification for AD+AE together: `vendor/bin/pint --test` ->
+{"tool":"pint","result":"passed"}; `vendor/bin/pest
+tests/Feature/Filament/DisabledAdminAccessTest.php
+tests/Unit/Messaging/MessageMaskerTest.php` ->
+{"tool":"pest","result":"passed","tests":208,"passed":208,
+"assertions":327,"duration_ms":32841}. Items AD and AE closed.
+
+[2026-09-30 09:44] ADVISOR
+Consulted before concluding item AC (STATUS SS6, R157(c), EMAIL's
+backtracking risk). Six initial adversarial timing probes (pure
+letters, dotted, `-` alternating, long local+domain combinations, up
+to n=32000) all measured linear and fast, matching the earlier
+pattern of AB/AX -- a stale premise, nothing to build. About to
+disclose AC the same way. The advisor stopped this: the probes had
+not hit the shape MessageMasker's own class docblock names as the
+residual ambiguity -- a domain that never resolves to a second label,
+sharing EMAIL's first-label class with LABEL_GAP's `-`. Told to
+measure that exact shape before deciding. Ran the prescribed repro
+(`'sara@a'.str_repeat('-', $n)`) against the unmodified code:
+n=500 2.8ms, n=1000 6.0ms, n=2000 THREW MessageMaskingFailedException
+after 12.0ms (default pcre.backtrack_limit exhausted), n=4000 THREW
+after 12.6ms, n=8000 THREW after 12.3ms (limit hit sooner as the
+engine gives up faster once it's clearly superlinear). This confirmed
+the advisor's correction and reversed the conclusion: AC is a real
+defect, not a stale premise. Quoted line from the advisor's answer:
+"Your probes didn't hit the shape the docblock itself names as the
+residual ambiguity. Measure that first, then decide."
+
+[2026-09-30 09:47] VERIFICATION (red, pre-fix)
+R157(c) reproduced against unmodified `MessageMasker.php` using the
+advisor-prescribed shape, `hrtime(true)`-timed, three runs per length
+for stability: n=500 ~2.8ms no throw; n=1000 ~6.0ms no throw; n=2000
+THREW `MessageMaskingFailedException` (backtrack limit exhausted)
+after ~12.0ms; n=4000 THREW after ~12.6ms; n=8000 THREW after ~12.3ms.
+Cause traced manually: EMAIL's domain-first-label class
+(`[\p{L}\p{Nd}\-]+`, greedy, not possessive) overlaps LABEL_GAP's `-`;
+on a domain that never resolves to two valid labels the label's
+greedy match backtracks against LABEL_GAP one dash at a time,
+producing the same `(a+)+`-shaped cost R149(b) fixed for the
+bare-domain patterns -- but EMAIL was not touched by that fix, and
+is not gated by `hasCandidate()` (it runs unconditionally, unlike
+NAMED_DOMAIN_LOOSE/_TIGHT/COUNTRY_DOMAIN), so nothing else in the
+pipeline bounds it. This is fail-closed (refuses the message,
+`MessageMaskingFailedException`), not a leak -- but a legitimate
+message of ordinary length being refused is still the defect R157(c)
+targets.
+
+[2026-09-30 09:50] DEVIATION
+PLAN.md's R157(c) wording: "cap the EMAIL pattern's greedy first
+label by iteration count (mirroring R149(b)'s bare-domain fix)". This
+does not match what the repo needed or what R149(b) actually shipped.
+R149(b) used two independent mechanisms: (1) disjoint label/junk
+character classes (BARE_DOMAIN_LABEL, no `-`) and (2) a cap on the
+outer group's iteration count (MAX_BARE_DOMAIN_LABELS). EMAIL's outer
+domain group was already possessive (`(?:LABEL_GAP label)++`) before
+this cycle -- there is no iteration count in it to cap, mechanism (2)
+does not apply. Confirmed with the advisor that applying it anyway
+(imposing a cap on EMAIL's outer group) would be actively harmful:
+EMAIL is anchored at `@`, not an ending-token list, so a capped
+outer group cannot safely "shift the match" to a later label the way
+the ending-anchored bare-domain patterns can -- it would instead
+leave labels past the cap as unmasked plain text, an actual leak
+where none exists today. Taken: shipped mechanism (1) only -- EMAIL's
+domain labels now use BARE_DOMAIN_LABEL (the same disjoint class
+R149(b) introduced), leaving the local part and LABEL_GAP untouched,
+and deliberately not reusing MAX_BARE_DOMAIN_LABELS. Disclosed as a
+DEVIATION per rule 11 rather than following the plan's literal
+mechanism into a regression. Also disclosing a cosmetic-only
+behaviour change this fix introduces: a domain immediately followed
+by a bare trailing dash (e.g. `sara@name.com-`) previously had that
+dash absorbed into the match; it is now left outside the match as
+plain text. Checked against every existing EMAIL fixture (grep, full
+suite) -- none exercises this shape, so no regression, but it is a
+real output difference from before this cycle and is recorded here
+rather than left implicit.
+
+[2026-09-30 10:05] VERIFICATION (green, post-fix)
+Same advisor-prescribed repro against the fixed `MessageMasker.php`:
+n=500/1000/2000/4000/8000 all completed in ~0.1ms, no throw, in
+every case. Also re-ran the six original (already-linear) probes and
+two scaling series -- unchanged, still linear. `php -l
+app/Support/Messaging/MessageMasker.php` -> no syntax errors. New
+fixtures added to `tests/Unit/Messaging/MessageMaskerTest.php`: two
+masking-dataset entries (`admin@my-site.com` still masks whole;
+`sara-k@gmail.com`'s local-part dash is unaffected) and a new `it()`
+block with four dash-run/long-local-part timing fixtures (<50ms,
+`PREG_NO_ERROR`), correctly labeling the domain's first label -- not
+the local part -- as the adversarial position per the advisor's
+correction. `vendor/bin/pint --test`
+app/Support/Messaging/MessageMasker.php
+tests/Unit/Messaging/MessageMaskerTest.php ->
+{"tool":"pint","result":"passed"}. `vendor/bin/pest
+tests/Unit/Messaging tests/Feature/Messaging` ->
+{"tool":"pest","result":"passed","tests":228,"passed":228,
+"assertions":696,"duration_ms":26623} -- 222 pre-existing (including
+the traced-through `dash for the dot` fixture, output unchanged) plus
+6 new, zero regressions. Item AC closed.
+
+[2026-09-30 10:08] NOTE
+R159's deferred report line added: `docs/reports/9b.md`'s Known
+limits section gains one entry naming the accepted 48h dispute-window
+gap (STATUS SS6 item AR) -- carried over from Step 1's scope into
+Step 2 per R162, as PLAN.md specified. Docs-only, no code touched.
+
+[2026-09-30 10:22] VERIFICATION
+Full pre-PR gate set on `cp/10a-cleanup`, all R157(a)/(b)/(c) and R159
+work complete: `vendor/bin/pint --test` -> {"tool":"pint","result":
+"passed"}; `vendor/bin/phpstan analyse --memory-limit=1G` ->
+{"tool":"phpstan","result":"passed","errors":0}; `bash
+scripts/rtl-check.sh` -> passed, no physical-direction utilities;
+`php artisan ledger:verify --no-interaction` -> "Ledger OK: every
+lesson sums to zero."; `npm run build` -> built in 1m 58s, no errors.
+Full `composer.bat test` (Pint, PHPStan, vue-tsc, RTL check, Pest,
+ledger:verify, as one unit): {"tool":"pest","result":"passed",
+"tests":2041,"passed":2041,"assertions":10274,"duration_ms":403956}
+(~404s, under the 10-minute stall line -- no BLOCKER). Suite grew
+from cycle 09's close (2033/2033) by 8 tests: item X's masking-fix
+tests plus R157(c)'s 2 new masking-dataset fixtures and 4 new timing
+fixtures. Suite never shrank. All gates green; proceeding to the
+pre-PR advisor consult and then the PR.
+
+[2026-09-30 10:25] NOTE
+Code+test commit for R157(a)/(b)/(c) made on `cp/10a-cleanup`:
+`7d927d2`. Docs (this file, STATUS.md, DECISIONS.md, reports/9b.md)
+committed separately, immediately after this entry.
+
+[2026-09-30 10:30] ADVISOR
+Advisor as configured in PROJECT_BRIEF.md (the tool does not report
+the answering model). Consulted per 10a's second stated minimum
+("before the PR") ahead of opening the cp/10a-cleanup PR, with the
+full session transcript (items X/AB/AC/AD/AE, R159, gate results)
+forwarded. Four issues came back, none blocking a decision on
+mechanism, all blocking the PR: (1) the 09:44 ADVISOR entry below is
+missing this cycle's required compliance phrase and does not count
+toward any advisor-minimum as written; (2) the running advisor-call
+count in STATUS.md's header needed re-verification against
+CYCLE-LOG rather than being restated from an earlier draft; (3) two
+EMAIL edge cases -- a dash immediately after '@' on the domain side,
+and a bare trailing dash after a fully-formed domain -- were
+disclosed in prose (DEVIATION / ADR-019 amendment) but not pinned as
+fixtures per ADR-019's own convention; (4) docs/DECISIONS.md's
+ADR-019 row amendment should be read back for a possible broken
+markdown table row given its length. Quoted line from the advisor's
+answer: "Items 1-2 are docs-only fixes on the branch, no
+`[skip ci]`. Item 3 is a fixture pass -- re-run the two masker suites
+and the literal count in the log after." Issue 3 resolved
+immediately following this entry (see VERIFICATION below); issues 1,
+2 and 4 resolved in the NOTE entries that follow it.
+
+[2026-09-30 10:33] NOTE
+Correcting the 09:44 ADVISOR entry above (append-only per item V's
+precedent -- the original entry is never edited): that entry's text
+does not contain this cycle's required phrase ("Advisor as
+configured in PROJECT_BRIEF.md (the tool does not report the
+answering model)"), so per ADR-010's addendum and R63/R161 it does
+not count toward any advisor-consult minimum, as flagged by the
+10:30 consult above. The consultation itself genuinely happened and
+was genuinely answered -- the six-probe redirect, the prescribed
+repro, and the measured red numbers (n=500 2.8ms, n=2000 threw at
+12.0ms, etc.) all stand and are not in question, only the compliance
+marker was omitted when the entry was written. Running raw
+`advisor()` total for cycle 10 r1 as of this NOTE: 4 calls
+(09:04, 09:12, 09:44 [non-counting, this NOTE], 10:30). 3 of 4 count
+toward the cycle's advisor minimums; the 09:44 call does not, though
+its content is not in question.
+
+[2026-09-30 10:41] VERIFICATION
+Issue 3 (10:30 ADVISOR) resolved: added two fixtures to
+`tests/Unit/Messaging/MessageMaskerTest.php`'s masking dataset --
+`sara@-name.com` (masks whole; AT_GAP's class already includes '-'
+and absorbs the leading domain-side dash before BARE_DOMAIN_LABEL
+starts, confirmed via scratchpad probe against the running code, not
+a leak) and `sara@name.com-` (pins the disclosed cosmetic-only
+trailing-dash behaviour change: `PLACEHOLDER.'-'`, dash left outside
+the match). `vendor/bin/pint --test` on the file: passed.
+`vendor/bin/pest tests/Unit/Messaging tests/Feature/Messaging`:
+230/230 passed, 698 assertions (up from 228/696 before this pass).
+No regressions.
+
+[2026-09-30 10:45] NOTE
+Issue 4 (10:30 ADVISOR) resolved: read back `da93e42`'s
+`docs/DECISIONS.md` diff in full (`git show da93e42 -- docs/DECISIONS.md`)
+and checked the ADR-019 row for a stray `|` that could break the
+markdown table, given the amendment's length. Counted pipe
+characters on the row directly (`grep -n "^| ADR-019"`, then
+`grep -o '|' | wc -l`): 6, the same count as every other row in the
+table (checked ADR-020 as a control, also 6) -- 5 columns, no
+broken cell, no fix needed. `docs/STATUS.md`'s header advisor-call
+count corrected next to reflect the true running total established
+by the 10:33 NOTE (4 raw calls, 3 counting). All four issues from
+the 10:30 pre-PR consult are now closed.
+
+[2026-09-30 10:55] VERIFICATION
+Full pre-push gate set re-run after the pre-PR consult's fixture
+pass, per rule 7 (full suite green with the literal count before
+every feature-branch push): Pint passed; PHPStan (`--memory-limit=1G`)
+0 errors; `vue-tsc --noEmit` clean; RTL check passed; `npm run build`
+green ("built in 59.89s"); `php artisan ledger:verify` clean; full
+`composer.bat test` (which runs all of the above plus Pest as one
+unit): **2043/2043 passed, 10276 assertions**, ~341s -- up from the
+predecessor run (2041/2041, 10274 assertions) by exactly 2, matching
+the two new masking fixtures added this write. Suite did not shrink.
+Ready to commit docs and push.

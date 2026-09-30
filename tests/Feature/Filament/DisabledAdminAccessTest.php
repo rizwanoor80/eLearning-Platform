@@ -14,12 +14,16 @@ use Livewire\Livewire;
  * `canAccessPanel()` already blocks a suspended admin's full page loads — Filament's own
  * `Authenticate` middleware calls it on every panel route — so a test built on an HTTP request
  * would pass whether or not a resource has its own guard, the same vacuity the design consult
- * flagged for R149(d)'s trusted-proxies test. This app has no published config/livewire.php, so
- * Livewire's own `/livewire/update` endpoint runs Livewire's default `web`-only middleware group,
- * not the panel's `authMiddleware` — an admin already viewing a resource when an admin suspends
- * them can still fire Livewire actions against it unless the resource's own can*() methods refuse
- * them. This file calls those methods directly, bypassing HTTP and `canAccessPanel()` entirely,
- * so it actually proves the resource-level gate rather than the panel-level one.
+ * flagged for R149(d)'s trusted-proxies test. `Authenticate` also re-runs on a Livewire component
+ * update, not just the initial page load — `FilamentServiceProvider::boot()` registers it via
+ * `Livewire::addPersistentMiddleware()` — so an admin already viewing a resource when they are
+ * suspended cannot fire a further Livewire action either; there is no live gap there. What stays
+ * vacuous is testing through `Livewire::test()` itself: that helper mounts the component
+ * in-process and never dispatches an HTTP request, so no middleware — persistent or otherwise,
+ * `canAccessPanel()` included — ever runs against it. This file calls the resource's own can*()
+ * methods directly and drives its Livewire assertions through `Livewire::test()`, so both bypass
+ * `canAccessPanel()` entirely and the resulting 403 can only be the resource-level gate, never
+ * the panel-level one.
  *
  * The dataset is sourced from a filesystem glob of app/Filament/Resources, not
  * `Filament::getPanel('admin')->getResources()`, because Pest evaluates a `with()` dataset

@@ -81,6 +81,20 @@ dataset('masking fixtures', [
     'dot operator for the dot' => ['sara@gmail⋅com', MessageMasker::PLACEHOLDER],
     'comma for the dot' => ['sara@gmail,com', MessageMasker::PLACEHOLDER],
     'dash for the dot' => ['sara@gmail-com', MessageMasker::PLACEHOLDER],
+    // R157(c): EMAIL's domain labels dropped '-' from their character class (see MessageMasker's class
+    // docblock and BARE_DOMAIN_LABEL). A real hyphenated business domain must still mask whole: the dash
+    // is now consumed by LABEL_GAP as an ordinary junk separator between "my" and "site" instead of sitting
+    // inside one greedy label, but the matched span -- and this fixture's expected output -- is unchanged.
+    'hyphenated domain still masks whole (R157(c))' => ['admin@my-site.com', MessageMasker::PLACEHOLDER],
+    // The local part's own class (unaffected by R157(c)) still keeps '-'.
+    'dash in the local part is unaffected by R157(c)' => ['sara-k@gmail.com', MessageMasker::PLACEHOLDER],
+    // AT_GAP ('[^\p{L}\p{Nd}@]*+') still includes '-', so a dash immediately after '@' is absorbed
+    // there before BARE_DOMAIN_LABEL ever starts matching -- confirmed empirically, not a leak.
+    'leading dash after @ still masks whole (R157(c))' => ['sara@-name.com', MessageMasker::PLACEHOLDER],
+    // Disclosed cosmetic-only behaviour change (CYCLE-LOG DEVIATION, ADR-019 amendment): a bare
+    // trailing dash right after a fully-formed domain is no longer absorbed into the match, since
+    // the domain label class dropped '-'. Pinned as a fixture per ADR-019's convention.
+    'trailing dash after domain is left outside the match (R157(c) disclosed behaviour change)' => ['sara@name.com-', MessageMasker::PLACEHOLDER.'-'],
     'mail provider with a space for the dot' => ['sara@gmail com', MessageMasker::PLACEHOLDER.' com'],
     'mail provider with no dot' => ['sara@hotmail', MessageMasker::PLACEHOLDER],
     'mail provider in capitals with spaces' => ['sara  @  GMAIL  com', MessageMasker::PLACEHOLDER.'  com'],
@@ -220,8 +234,8 @@ question 12
     // MAX_BARE_DOMAIN_LABELS (16) iterations (see MessageMasker's class docblock and the
     // MAX_BARE_DOMAIN_LABELS constant). A domain with more labels than the cap allows is not left fully
     // unmasked: the pattern is anchored at the ending, not the first label, so it still matches starting
-    // from a later label — here 19 single-letter labels ("a" through "s") before ".com", one more than
-    // the 18-label window (1 + 16 additional) the pattern can cover in one match, so the leftmost
+    // from a later label — here 19 single-letter labels ("a" through "s") before ".com", two more than
+    // the 17-label window (1 + 16 additional) the pattern can cover in one match, so the leftmost
     // starting position that fits is the third label ("c"): "a." and "b." are left unmasked, "c" through
     // "s" and "com" are one placeholder. Confirmed against the live pattern, not just reasoned about (see
     // CYCLE-LOG VERIFICATION).
@@ -313,6 +327,43 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
     'gate-open, long dash run before a non-word ending' => ['gate-open non-word', str_repeat('a-', 1000).'.com'],
     'gate-open, long dash run before a word-like ending' => ['gate-open word-like', str_repeat('a-', 1000).'.shop'],
     'gate-open, mixed dot/dash run before a non-word ending' => ['gate-open mixed', str_repeat('a-', 500).str_repeat('a.', 500).'.com'],
+]);
+
+// R157(c): EMAIL is not gated by `hasCandidate()` (it runs unconditionally in the masking pipeline,
+// unlike NAMED_DOMAIN_LOOSE/_TIGHT/COUNTRY_DOMAIN above), and unlike those ending-anchored patterns its
+// outer domain group was already possessive — so neither of R144 Finding 2's fixes applied to it as
+// written. The actual adversarial position, confirmed empirically and by advisor review, is EMAIL's
+// domain *first label*: pre-fix it shared EMAIL's own `[\p{L}\p{Nd}._%+\-]` class with LABEL_GAP's `-`,
+// so a domain that never resolves to two valid labels (an `@` followed by a long dash run with no
+// second label) made the first label's greedy match backtrack against LABEL_GAP one dash at a time.
+// Unfixed, this exhausted the default `pcre.backtrack_limit` at ~2000 dashes (measured directly against
+// the pre-fix pattern) — a fail-closed `MessageMaskingFailedException`, not a leak, but a legitimate
+// message of ordinary length being refused. The fix reuses BARE_DOMAIN_LABEL (no `-`) for the domain
+// side of EMAIL, the same disjoint-character-class mechanism R149(b) used for the bare-domain patterns
+// — deliberately not MAX_BARE_DOMAIN_LABELS' iteration cap, which would be actively harmful here (EMAIL
+// is anchored at `@`, not an ending list, so capping the outer group would leak labels beyond the cap
+// as plain text instead of safely shifting the match). Note the plan text for R157(c) named the local
+// part as the adversarial fixture; the local part's own class was already disjoint from `@` and stays
+// O(n) at every length tested — the fixture below targets the domain's first label instead, which is
+// where the empirical failure actually was.
+it('stays fast on an EMAIL domain that never resolves to a second label (R157(c))', function (string $label, string $body) {
+    $start = hrtime(true);
+    $result = (new MessageMasker)->mask($body);
+    $elapsedMs = (hrtime(true) - $start) / 1_000_000;
+
+    expect(preg_last_error())->toBe(PREG_NO_ERROR)
+        ->and($elapsedMs)->toBeLessThan(50.0, "{$label} took {$elapsedMs}ms, over the 50ms R144(b)/R157(c) budget")
+        ->and($result)->toBeInstanceOf(MaskedMessage::class);
+})->with([
+    // The exact shape that exhausted the default pcre.backtrack_limit pre-fix (measured at n=2000).
+    'dash run after @, no second label, 2000 dashes' => ['dash-run 2000', 'sara@a'.str_repeat('-', 2000)],
+    'dash run after @, no second label, 8000 dashes' => ['dash-run 8000', 'sara@a'.str_repeat('-', 8000)],
+    // Same shape with legitimate text following, to confirm the fixture is not just "runs off the end
+    // of the string with nothing left to backtrack into".
+    'dash run after @, trailing word, 2000 dashes' => ['dash-run trailing', 'x@'.str_repeat('-', 2000).' ok'],
+    // The plan's own framing: a long adversarial local part. Kept for completeness, truthfully labeled
+    // as O(n) rather than as the adversarial position (see comment above the test).
+    '2000-char local part, no @ at all' => ['long local part', str_repeat('a', 2000)],
 ]);
 
 // R144(b): a genuine PCRE engine failure — forced here via a backtrack limit far below what any real
