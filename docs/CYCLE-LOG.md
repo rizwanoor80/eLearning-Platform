@@ -5836,3 +5836,72 @@ only route -- proves the route is wired, not a failure). 11a closed
 on `main`. Advisor count for 11a: 2 (design-before-first-edit at
 01:15, before-merge at 02:51, per the DEVIATION entry above) -- 2
 times, matching the plan's stated minimum.
+
+[2026-10-01 03:10] DECISION
+Step 2 (R111, standing authorisation -- no per-command "yes" needed):
+"CC deploys trustutor-rehearsal itself -- owner ruling 2026-09-26,
+standing, rehearsal only. This is the owner's standing named
+authorisation (rule 8) for every rehearsal deploy and the migrations
+that run inside it; CC quotes this ruling in the log before each
+deploy." Verified `origin/rehearsal` (`b53c55a`) was a strict
+ancestor of `origin/main` (`c4c6d75`) via `git merge-base
+--is-ancestor` before pushing, so the update was a genuine
+fast-forward, never a force-push. Executed: `git push origin
+main:rehearsal` -- `b53c55a..c4c6d75 main -> rehearsal`. This
+triggers Forge's push-to-deploy on `trustutor-rehearsal`. `main`
+itself was never deployed; only the `rehearsal` branch moved. Next:
+wait for the deploy webhook to finish, then run the R91 read-only
+SSH verification checklist.
+
+[2026-10-01 03:20] VERIFICATION
+Step 2 (R111) deploy + R91 read-only SSH verification checklist,
+all against `trustutor-rehearsal` at 167.233.122.19, using only the
+allow-listed key/command shape from CLAUDE.local.md:
+- `git log -1 --oneline` (in `current/`): `c4c6d75` -- matches
+  `main`'s tip exactly, confirming the fast-forward deploy landed
+  (already live by the time this was checked -- push-to-deploy had
+  finished).
+- `php8.4 artisan about`: Laravel 13.32.0, PHP 8.4.25, env
+  `rehearsal`, debug OFF, pgsql, queue redis, mail log, storage
+  LINKED, Filament v5.8.2 -- matches the owner-verified baseline
+  exactly, no drift.
+- `php8.4 artisan horizon:status`: "Horizon is running."
+- `php8.4 artisan migrate:status` (tail): all migrations show Ran;
+  nothing pending. 11a shipped no new migration, as expected.
+- `php8.4 artisan ledger:verify`: "Ledger OK: every lesson sums to
+  zero."
+- `php8.4 artisan queue:failed`: "No failed jobs found."
+- `php8.4 artisan db:show --counts`: 43 tables, 2.04 MB, seed data
+  present, transactional tables consistent with prior verification.
+- `tail -n 40 storage/logs/laravel.log`: empty -- no errors, and no
+  `video.webhook.rejected` lines yet (expected: the owner has not
+  re-run Daily's webhook registration since this deploy landed).
+- Scheduler proof: `crontab -l` again returned "no crontab for
+  forge" (exit 1) -- same known discrepancy as cycle 10, not a
+  blocker. Cross-checked via the alternate sanctioned method:
+  `ls -l /home/forge/.forge/` plus `tail -n 40` on the newest
+  `scheduled-2138095.log`. Its last block's timestamp
+  (`2026-09-30 23:21:0x`) matches the server's own `date -u` output
+  (`Wed Sep 30 23:21:41 UTC 2026`) to within the same second, and
+  shows all five named jobs completing DONE together -- scheduler is
+  live. (Note: the server's real UTC clock reads 2026-09-30 23:21,
+  not 2026-10-01 -- this log's own local machine-clock timestamps
+  are ahead of the server; disclosed so a future reader isn't
+  confused by the date mismatch between this entry and the server
+  check it describes.)
+- HTTP smoke, all four required routes, over HTTPS against the live
+  domain: `https://rehearsal.trustutor.com/` -> 200, `/login` -> 200,
+  `/admin/login` -> 200, `/tutors` -> 200.
+No red finding. Step 2 complete.
+
+[2026-10-01 03:22] HANDOFF
+Cycle 11 r1 halts here per PLAN step 2's mandatory HANDOFF (does not
+count toward the resume cap). Step 1 done: PR #40 merged (`6adc4e0`),
+DEVIATION/ADVISOR/REVIEW/DECISION logged, post-merge VERIFICATION
+green. Step 2 done: `trustutor-rehearsal` deployed to `c4c6d75` under
+R111, full R91 checklist green (above). Nothing else authorised this
+run. Context size and compaction count go in STATUS.md's header.
+STATUS.md being rewritten now as the closing handoff, with the single
+Owner action verbatim from PLAN step 2: re-run the two PowerShell
+webhook-registration lines and reply `update` with whether Daily
+printed a `uuid` or a 401.
