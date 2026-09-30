@@ -5812,3 +5812,27 @@ NOTE" as the bar for a *clean* merge -- implying a PASS WITH NOTE
 merge is still possible, it is just not clean, once the fix loop has
 run. Same paragraph placed in STATUS.md SS6 so the owner can rule on
 this reading for future cycles if it disagrees.
+
+[2026-10-01 03:05] VERIFICATION
+Post-merge record, PR #40 merged as `6adc4e0` ("Merge pull request
+#40 from rizwanoor80/cp/11a-daily-webhook") on `main`, fast-forwarded
+locally `83f1371..6adc4e0`, diff exactly the two files R166
+authorises (matches the PR diff, nothing unexpected pulled in).
+First `composer test` run on `6adc4e0` failed one test --
+`MessageMaskerTest`'s R144(b) adversarial-junk timing budget (gate-
+open, long dash run before a non-word ending) took 98.19ms against
+its 50ms budget. Unrelated to R166 (Messaging module, not touched by
+this PR's two-file diff) -- reran immediately as a timing-flake
+check: second run passed clean, 2052/2052, 10311 assertions. Treating
+the first run as a flake from machine load (a Vite build had run
+moments before in the same session) rather than a real regression;
+disclosed here rather than silently ignored. Full gate on the
+passing run: Pint passed; PHPStan 0 errors; RTL grep passed; vue-tsc
+passed; pest 2052/2052, 10311 assertions; `ledger:verify`: "Ledger OK:
+every lesson sums to zero." Read-only smoke against local
+`http://project-elearning.test`: `/` 200, `/login` 200,
+`/admin/login` 200, `/webhooks/video/daily` 405 (GET against a POST-
+only route -- proves the route is wired, not a failure). 11a closed
+on `main`. Advisor count for 11a: 2 (design-before-first-edit at
+01:15, before-merge at 02:51, per the DEVIATION entry above) -- 2
+times, matching the plan's stated minimum.
