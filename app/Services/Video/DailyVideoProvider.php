@@ -119,7 +119,7 @@ class DailyVideoProvider implements VideoRoomProvider
         $expected = base64_encode(hash_hmac('sha256', $timestamp.'.'.$payload, $key, true));
 
         if (! hash_equals($expected, $signature)) {
-            return $this->reject('mismatch', $timestamp, $signature, $payload, $headers, $secret);
+            return $this->reject('mismatch', $timestamp, $signature, $payload, $headers, $secret, $key);
         }
 
         return true;
@@ -129,11 +129,13 @@ class DailyVideoProvider implements VideoRoomProvider
      * Logs one diagnostic line for a rejected webhook and returns `false`, so every `verifyWebhook`
      * exit but the success one flows through here (R166(b)). Never logs the secret, the body or the
      * signature value. For `mismatch` only, adds two booleans that narrow down what Daily's real
-     * request differs on without ever putting the credential or the body in the log.
+     * request differs on without ever putting the credential or the body in the log: `$rawSecret` and
+     * `$key` are only ever the un-decoded and decoded forms `verifyWebhook` has already validated for
+     * this same request, never re-derived here.
      *
      * @param  array<string, string>  $headers
      */
-    private function reject(string $reason, string $timestamp, string $signature, string $payload, array $headers, ?string $rawSecret = null): false
+    private function reject(string $reason, string $timestamp, string $signature, string $payload, array $headers, ?string $rawSecret = null, ?string $key = null): false
     {
         $context = [
             'provider' => VideoProviderCode::Daily->value,
@@ -145,7 +147,7 @@ class DailyVideoProvider implements VideoRoomProvider
             'header_names' => array_keys($headers),
         ];
 
-        if ($reason === 'mismatch' && $rawSecret !== null) {
+        if ($reason === 'mismatch' && $rawSecret !== null && $key !== null) {
             $context['matches_with_raw_secret'] = hash_equals(
                 base64_encode(hash_hmac('sha256', $timestamp.'.'.$payload, $rawSecret, true)),
                 $signature,
@@ -155,7 +157,7 @@ class DailyVideoProvider implements VideoRoomProvider
 
             $context['matches_with_normalised_body'] = $normalisedBody !== false
                 && hash_equals(
-                    base64_encode(hash_hmac('sha256', $timestamp.'.'.$normalisedBody, base64_decode($rawSecret, true) ?: '', true)),
+                    base64_encode(hash_hmac('sha256', $timestamp.'.'.$normalisedBody, $key, true)),
                     $signature,
                 );
         }

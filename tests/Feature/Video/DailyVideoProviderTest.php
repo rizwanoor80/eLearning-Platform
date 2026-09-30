@@ -127,24 +127,42 @@ it('verifies a webhook signed with a millisecond-form timestamp', function () {
     ]))->toBeTrue();
 });
 
-it('rejects a stale millisecond-form timestamp', function () {
+it('rejects a stale millisecond-form timestamp and logs it as stale, not mismatch', function () {
     $body = '{"test":"test"}';
     $timestamp = (string) ((time() - 3600) * 1000);
+    $signature = dailySignature($timestamp, $body);
 
-    expect(daily()->verifyWebhook($body, [
-        'x-webhook-timestamp' => $timestamp,
-        'x-webhook-signature' => dailySignature($timestamp, $body),
-    ]))->toBeFalse();
+    $logged = captureLogs(function () use ($body, $timestamp, $signature) {
+        expect(daily()->verifyWebhook($body, [
+            'x-webhook-timestamp' => $timestamp,
+            'x-webhook-signature' => $signature,
+        ]))->toBeFalse();
+    });
+
+    $context = collect($logged)->firstWhere('message', 'video.webhook.rejected')->context;
+
+    expect($context['reason'])->toBe('stale')
+        ->and($context)->not->toHaveKey('matches_with_raw_secret')
+        ->and($context)->not->toHaveKey('matches_with_normalised_body');
 });
 
-it('still rejects a stale seconds-form timestamp', function () {
+it('still rejects a stale seconds-form timestamp and logs it as stale, not mismatch', function () {
     $body = '{"test":"test"}';
     $timestamp = (string) (time() - 3600);
+    $signature = dailySignature($timestamp, $body);
 
-    expect(daily()->verifyWebhook($body, [
-        'x-webhook-timestamp' => $timestamp,
-        'x-webhook-signature' => dailySignature($timestamp, $body),
-    ]))->toBeFalse();
+    $logged = captureLogs(function () use ($body, $timestamp, $signature) {
+        expect(daily()->verifyWebhook($body, [
+            'x-webhook-timestamp' => $timestamp,
+            'x-webhook-signature' => $signature,
+        ]))->toBeFalse();
+    });
+
+    $context = collect($logged)->firstWhere('message', 'video.webhook.rejected')->context;
+
+    expect($context['reason'])->toBe('stale')
+        ->and($context)->not->toHaveKey('matches_with_raw_secret')
+        ->and($context)->not->toHaveKey('matches_with_normalised_body');
 });
 
 it('logs exactly one warning with no credential, body or signature content on a mismatch', function () {
