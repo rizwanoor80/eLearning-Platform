@@ -81,10 +81,15 @@ const props = defineProps<{
     status: string;
     reviewNote: string | null;
     currentDocumentType: DocumentTypeProp | null;
-    personal: { phone: string | null; timezone: string };
+    // R171: everything but personal/CV-or-LinkedIn/agreement is optional and reachable at any
+    // time via the step picker, once the profile is still editable (draft or changes_requested).
+    canPickSteps: boolean;
+    missingForSubmission: string[];
+    personal: { country: string | null; phone: string | null; timezone: string };
     profile: {
         permit_number: string | null;
         permit_expires_at: string | null;
+        linkedin_url: string | null;
         bank_name: string | null;
         bank_account_name: string | null;
         bank_iban_masked: string | null;
@@ -121,16 +126,18 @@ defineOptions({
 
 const formatFils = (fils: number) => (fils / 100).toFixed(2);
 
-// A changes_requested tutor already has every field filled, so the server-derived
-// step is 'complete'. This picker lets them open the existing forms to fix what the
-// admin flagged; every submit redirects to /tutor/onboarding, which re-derives the
-// step and lands back on 'complete' (R31). The derived step itself is never chosen
-// from here — `viewing` only decides which already-saved form to show.
-type PickableStep = 'personal' | 'permit' | 'bank' | 'subjects' | 'rate' | 'profile' | 'availability';
+// R170/R171/R173(b): the step picker is no longer gated on `changes_requested` + the wizard
+// having already reached `complete` — it's visible from the first visit (`canPickSteps`, derived
+// server-side from status alone) so the permit, documents and every other optional step are
+// reachable before the mandatory three (personal, CV-or-LinkedIn, agreement) are done. Every
+// submit still redirects to /tutor/onboarding, which re-derives `step` server-side; `viewing` only
+// decides which already-saved form the tutor is looking at meanwhile.
+type PickableStep = 'personal' | 'permit' | 'document' | 'bank' | 'subjects' | 'rate' | 'profile' | 'availability';
 
 const pickableSteps: Array<{ key: PickableStep; label: string }> = [
     { key: 'personal', label: 'Contact details' },
     { key: 'permit', label: 'Permit' },
+    { key: 'document', label: 'CV, LinkedIn & documents' },
     { key: 'bank', label: 'Bank details' },
     { key: 'subjects', label: 'Subjects' },
     { key: 'rate', label: 'Hourly rate' },
@@ -139,8 +146,7 @@ const pickableSteps: Array<{ key: PickableStep; label: string }> = [
 ];
 
 const viewing = ref<PickableStep | null>(null);
-const canPickStep = computed(() => props.status === 'changes_requested' && props.step === 'complete');
-const shown = computed(() => (canPickStep.value && viewing.value !== null ? viewing.value : props.step));
+const shown = computed(() => (props.canPickSteps && viewing.value !== null ? viewing.value : props.step));
 const afterSubmit = { onSuccess: () => (viewing.value = null) };
 
 const lockedTitle = computed(() => {
@@ -170,6 +176,7 @@ const lockedText = computed(() => {
 });
 
 const personalForm = useForm({
+    country: props.personal.country ?? '',
     phone: props.personal.phone ?? '',
     timezone: props.personal.timezone,
 });
@@ -187,23 +194,45 @@ const submitPermit = () => {
     permitForm.post('/tutor/onboarding/permit', afterSubmit);
 };
 
-const documentForm = useForm<{ file: File | null }>({
+// R170: the permit is optional for everyone. "Skip for now" clears both fields before posting —
+// `nullable` on the server accepts the blank pair and simply leaves no permit on file.
+const skipPermit = () => {
+    permitForm.permit_number = '';
+    permitForm.permit_expires_at = '';
+    submitPermit();
+};
+
+const linkedinForm = useForm({
+    linkedin_url: props.profile.linkedin_url ?? '',
+});
+
+const submitLinkedin = () => {
+    linkedinForm.post('/tutor/onboarding/linkedin', afterSubmit);
+};
+
+// R171: a document type is now chosen by the tutor (any active type, not just whichever one
+// `currentStep()` is waiting on), so one form instance is reused across every upload row in the
+// checklist — only one upload happens at a time, which matches the per-row submit UI below.
+const documentForm = useForm<{ document_type_id: number | null; file: File | null }>({
+    document_type_id: null,
     file: null,
 });
 
-const onFileChange = (event: Event) => {
+const onFileChangeFor = (event: Event, documentTypeId: number) => {
     const target = event.target as HTMLInputElement;
+    documentForm.document_type_id = documentTypeId;
     documentForm.file = target.files?.[0] ?? null;
 };
 
-const submitDocument = () => {
+const submitDocumentFor = (documentTypeId: number) => {
+    documentForm.document_type_id = documentTypeId;
     documentForm.post('/tutor/onboarding/documents', {
         forceFormData: true,
         onSuccess: () => documentForm.reset(),
     });
 };
 
-const documentsUploadedCount = () => props.documents.length;
+const documentStatusFor = (documentTypeId: number) => props.documents.find((d) => d.document_type_id === documentTypeId)?.status ?? null;
 
 const bankForm = useForm({
     bank_name: props.profile.bank_name ?? '',
@@ -342,9 +371,6 @@ const submitComplete = () => {
     <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-4">
         <div class="flex items-center gap-2">
             <h1 class="text-xl font-semibold">Onboarding</h1>
-            <Badge v-if="step === 'document'" variant="secondary">
-                {{ documentsUploadedCount() }} of {{ documentTypes.length }} documents uploaded
-            </Badge>
         </div>
 
         <div v-if="reviewNote" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
@@ -352,10 +378,13 @@ const submitComplete = () => {
             <p class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
         </div>
 
-        <div v-if="canPickStep" class="grid max-w-md gap-3">
+        <div v-if="canPickSteps" class="grid max-w-md gap-3">
             <p class="text-muted-foreground text-sm">
-                Pick a section to update, then submit for review again. A document that is pending or accepted can only be replaced
-                after the admin rejects it and requests changes — you'll then be taken to its upload step automatically.
+                Pick a section to update. A document that is pending or accepted can only be replaced after the admin
+                rejects it and requests changes — you'll then be taken to its upload step automatically.
+            </p>
+            <p v-if="missingForSubmission.length > 0" class="text-muted-foreground text-sm">
+                Still needed before you can submit for review: {{ missingForSubmission.join(', ') }}.
             </p>
             <div class="flex flex-wrap gap-2">
                 <Button
@@ -376,8 +405,14 @@ const submitComplete = () => {
             <p class="text-muted-foreground text-sm">First, a couple of contact details.</p>
 
             <div class="grid gap-2">
-                <Label for="phone">Phone number</Label>
-                <Input id="phone" v-model="personalForm.phone" type="tel" required autofocus autocomplete="tel" />
+                <Label for="country">Country</Label>
+                <Input id="country" v-model="personalForm.country" type="text" maxlength="2" required autofocus placeholder="AE" />
+                <InputError :message="personalForm.errors.country" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="phone">Phone number (optional)</Label>
+                <Input id="phone" v-model="personalForm.phone" type="tel" autocomplete="tel" />
                 <InputError :message="personalForm.errors.phone" />
             </div>
 
@@ -394,54 +429,79 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="shown === 'permit'" @submit.prevent="submitPermit" class="grid max-w-md gap-4">
-            <p class="text-muted-foreground text-sm">Your tutoring permit keeps you bookable — we'll remind you before it expires.</p>
+            <p class="text-muted-foreground text-sm">
+                If you need a work permit to tutor in your country, add it here — we'll remind you before it expires. Not
+                every tutor needs one, so you can skip this and come back later.
+            </p>
 
             <div class="grid gap-2">
                 <Label for="permit_number">Permit number</Label>
-                <Input id="permit_number" v-model="permitForm.permit_number" type="text" required autofocus />
+                <Input id="permit_number" v-model="permitForm.permit_number" type="text" autofocus />
                 <InputError :message="permitForm.errors.permit_number" />
             </div>
 
             <div class="grid gap-2">
                 <Label for="permit_expires_at">Permit expiry date</Label>
-                <Input id="permit_expires_at" v-model="permitForm.permit_expires_at" type="date" required />
+                <Input id="permit_expires_at" v-model="permitForm.permit_expires_at" type="date" />
                 <InputError :message="permitForm.errors.permit_expires_at" />
             </div>
 
-            <Button type="submit" :disabled="permitForm.processing" class="w-fit">
-                <Spinner v-if="permitForm.processing" />
-                Continue
-            </Button>
+            <div class="flex gap-2">
+                <Button type="submit" :disabled="permitForm.processing" class="w-fit">
+                    <Spinner v-if="permitForm.processing" />
+                    Continue
+                </Button>
+                <Button type="button" variant="outline" :disabled="permitForm.processing" class="w-fit" @click="skipPermit">
+                    Skip for now
+                </Button>
+            </div>
         </form>
 
-        <form
-            v-else-if="shown === 'document' && currentDocumentType"
-            @submit.prevent="submitDocument"
-            class="grid max-w-md gap-4"
-        >
-            <div>
-                <p class="font-medium">{{ currentDocumentType.name }}</p>
-                <p class="text-muted-foreground text-sm">{{ currentDocumentType.description }}</p>
-            </div>
+        <div v-else-if="shown === 'document'" class="grid max-w-xl gap-6">
+            <p class="text-muted-foreground text-sm">
+                A CV or a LinkedIn profile is required before you can submit — either one is enough. Other documents below
+                are optional unless an admin asks for one specifically.
+            </p>
 
-            <div class="grid gap-2">
-                <Label for="file">File (PDF, JPG or PNG, up to 10MB)</Label>
-                <input
-                    id="file"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    required
-                    class="border-input file:bg-secondary rounded-md border p-2 text-sm"
-                    @change="onFileChange"
-                />
-                <InputError :message="documentForm.errors.file" />
-            </div>
+            <form @submit.prevent="submitLinkedin" class="grid gap-2 border-b pb-6">
+                <Label for="linkedin_url">LinkedIn profile URL</Label>
+                <Input id="linkedin_url" v-model="linkedinForm.linkedin_url" type="url" placeholder="https://www.linkedin.com/in/you" />
+                <InputError :message="linkedinForm.errors.linkedin_url" />
+                <Button type="submit" size="sm" :disabled="linkedinForm.processing" class="w-fit">
+                    <Spinner v-if="linkedinForm.processing" />
+                    Save LinkedIn URL
+                </Button>
+            </form>
 
-            <Button type="submit" :disabled="documentForm.processing || !documentForm.file" class="w-fit">
-                <Spinner v-if="documentForm.processing" />
-                Upload
-            </Button>
-        </form>
+            <div v-for="type in documentTypes" :key="type.id" class="grid gap-2 border-b pb-6 last:border-b-0">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <p class="font-medium">{{ type.name }}</p>
+                        <p class="text-muted-foreground text-sm">{{ type.description }}</p>
+                    </div>
+                    <Badge v-if="documentStatusFor(type.id)" variant="secondary">{{ documentStatusFor(type.id) }}</Badge>
+                </div>
+                <form @submit.prevent="submitDocumentFor(type.id)" class="flex flex-wrap items-center gap-2">
+                    <input
+                        :id="`file_${type.id}`"
+                        type="file"
+                        :accept="type.code === 'cv' ? '.pdf,.doc,.docx,.jpg,.jpeg,.png' : '.pdf,.jpg,.jpeg,.png'"
+                        class="border-input file:bg-secondary rounded-md border p-2 text-sm"
+                        @change="(event) => onFileChangeFor(event, type.id)"
+                    />
+                    <Button
+                        type="submit"
+                        size="sm"
+                        :disabled="documentForm.processing || documentForm.document_type_id !== type.id || !documentForm.file"
+                        class="w-fit"
+                    >
+                        <Spinner v-if="documentForm.processing && documentForm.document_type_id === type.id" />
+                        Upload
+                    </Button>
+                </form>
+                <InputError v-if="documentForm.document_type_id === type.id" :message="documentForm.errors.file" />
+            </div>
+        </div>
 
         <form v-else-if="shown === 'bank'" @submit.prevent="submitBank" class="grid max-w-md gap-4">
             <p class="text-muted-foreground text-sm">Payout details — your IBAN is encrypted and only ever shown to you masked.</p>

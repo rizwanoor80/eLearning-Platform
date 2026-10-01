@@ -32,6 +32,12 @@ class DocumentType extends Model
      */
     public const PERMIT_CODE = 'permit';
 
+    /**
+     * The type that satisfies R171's CV-or-LinkedIn onboarding requirement alongside
+     * `TutorProfile::$linkedin_url`. Same code-not-id rationale as `PERMIT_CODE`.
+     */
+    public const CV_CODE = 'cv';
+
     protected $fillable = ['code', 'name', 'description', 'required', 'active', 'sort'];
 
     /**

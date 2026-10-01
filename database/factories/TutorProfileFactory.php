@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\CurriculumCode;
 use App\Enums\LevelTier;
 use App\Enums\TutorProfileStatus;
+use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
 use App\Models\PriceBand;
 use App\Models\Subject;
@@ -48,10 +49,10 @@ class TutorProfileFactory extends Factory
     }
 
     /**
-     * A profile that passes the approval-time rate check (R36 f): one lower-secondary
-     * subject in a GCSE curriculum (found or created) with a current band that
-     * contains the profile's rate. Only the rate/band precondition — documents
-     * and permit are set by the test.
+     * A profile that passes every `TutorApprovalReadiness` check except permit/documents (R36 f,
+     * R171): one lower-secondary subject in a GCSE curriculum (found or created) with a current
+     * band that contains the profile's rate, plus one weekly availability window. Only the
+     * rate/band/availability preconditions — documents and permit are set by the test.
      */
     public function approvable(): static
     {
@@ -59,8 +60,8 @@ class TutorProfileFactory extends Factory
     }
 
     /**
-     * Gives an existing profile the subject and price band `approvable()` sets up,
-     * and a rate inside that band.
+     * Gives an existing profile the subject, price band and availability window
+     * `approvable()` sets up, and a rate inside that band.
      */
     public static function makeApprovable(TutorProfile $profile): void
     {
@@ -81,6 +82,11 @@ class TutorProfileFactory extends Factory
         );
 
         $profile->forceFill(['hourly_rate' => 10000])->save();
+
+        // R171: TutorApprovalReadiness now also requires a weekly availability window.
+        // Not deduplicated: a test that calls makeApprovable() twice on the same profile would
+        // get two windows, which is harmless for every current caller.
+        AvailabilityRule::factory()->create(['tutor_profile_id' => $profile->id]);
     }
 
     public function withExpiredPermit(): static

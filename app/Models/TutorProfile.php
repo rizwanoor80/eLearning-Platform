@@ -24,9 +24,11 @@ use Illuminate\Support\Facades\DB;
 /**
  * @property int $id
  * @property int $user_id
+ * @property string|null $country
  * @property string|null $headline
  * @property string|null $bio
  * @property string|null $intro_video_url
+ * @property string|null $linkedin_url
  * @property Money|null $hourly_rate
  * @property TutorProfileStatus $status
  * @property string|null $permit_number
@@ -56,7 +58,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'headline', 'bio', 'intro_video_url', 'hourly_rate',
+        'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
@@ -83,10 +85,10 @@ class TutorProfile extends Model
     }
 
     /**
-     * Bookable = approved AND the permit has not expired yet (strictly after
-     * today — a permit expiring today is not bookable) AND the owning user
-     * has not been deleted. The third condition enforces invariant #5 against
-     * R54: `AnonymizeUser` suspends an approved tutor's profile on deletion,
+     * Bookable = approved AND the permit does not block booking (R170: no permit at all is fine
+     * — a tutor need not be in the UAE; a permit that exists must not have expired, strictly
+     * after today) AND the owning user has not been deleted. The third condition enforces
+     * invariant #5 against R54: `AnonymizeUser` suspends an approved tutor's profile on deletion,
      * but `ReinstateTutor` can later take `Suspended -> Approved` again (a
      * valid edge on its own terms), so `status = Approved` alone is not
      * enough once a user can be soft-deleted — this scope must also check
@@ -102,7 +104,9 @@ class TutorProfile extends Model
     {
         return $query
             ->where('status', TutorProfileStatus::Approved)
-            ->whereDate('permit_expires_at', '>', Date::today())
+            ->where(fn (Builder $q): Builder => $q
+                ->whereNull('permit_expires_at')
+                ->orWhereDate('permit_expires_at', '>', Date::today()))
             ->whereExists(function ($query): void {
                 $query->select(DB::raw(1))
                     ->from('users')
@@ -328,6 +332,40 @@ class TutorProfile extends Model
     {
         return $this->permit_expires_at !== null
             && $this->permit_expires_at->toDateString() > Date::today()->toDateString();
+    }
+
+    /**
+     * R170: whether a permit, if the tutor has one at all, allows booking — the PHP twin of
+     * `scopeBookable()`'s permit clause. Unlike `permitIsValid()` above (present AND not expired,
+     * used by the permit-expiry reminder and the "expiring permits" widget, which only ever apply
+     * to a tutor who has a permit), a tutor with no permit at all is not a problem here: they
+     * simply never needed one (R170 — tutors may be anywhere, the UAE permit is optional for
+     * everyone). Used by `scopeBookable()` and `TutorApprovalReadiness`; never re-implement
+     * elsewhere.
+     */
+    public function permitAllowsBooking(): bool
+    {
+        return $this->permit_expires_at === null
+            || $this->permit_expires_at->toDateString() > Date::today()->toDateString();
+    }
+
+    /**
+     * R171: onboarding's CV-or-LinkedIn requirement — a LinkedIn URL on file, or a CV document
+     * that has not been rejected (pending or accepted both count; a tutor who has not heard back
+     * yet should not be asked to resubmit). Drives `TutorOnboardingController::currentStep()`'s
+     * mandatory-step gating and the tutor dashboard's "what's missing" list; never re-implement
+     * elsewhere.
+     */
+    public function hasCvOrLinkedin(): bool
+    {
+        if ($this->linkedin_url !== null) {
+            return true;
+        }
+
+        return $this->tutorDocuments()
+            ->whereHas('documentType', fn (Builder $query): Builder => $query->where('code', DocumentType::CV_CODE))
+            ->where('status', '!=', TutorDocumentStatus::Rejected)
+            ->exists();
     }
 
     /**

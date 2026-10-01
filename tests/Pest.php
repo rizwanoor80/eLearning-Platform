@@ -122,6 +122,14 @@ function agreementReadyTutor(): User
     DocumentType::query()->delete();
 
     $tutor = User::factory()->tutor()->create();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
+    ]);
+    // Cheapest way to satisfy CV-or-LinkedIn (R171): no file, no DocumentType row needed.
+    test()->actingAs($tutor)->post(route('tutor.onboarding.linkedin'), [
+        'linkedin_url' => 'https://www.linkedin.com/in/test-tutor',
+    ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
         'permit_number' => 'PMT-1',
         'permit_expires_at' => now()->addYear()->toDateString(),

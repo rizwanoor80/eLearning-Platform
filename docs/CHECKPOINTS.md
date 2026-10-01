@@ -53,6 +53,8 @@ Acceptance
 - [x] Changing `site_name` in settings changes the layout title and the next email's sender name without a deploy.
 - [x] A non-admin cannot reach the admin-users resource; creating an admin writes an audit row.
 
+_Note (cycle 12, R170, ADR-024): the permit became optional for every tutor, not just UAE ones. `bookable()` now reads `status = approved AND (permit_expires_at IS NULL OR permit_expires_at > today)` — a tutor with no permit on file is bookable; one with an expired permit is not. Acceptance boxes above are unchanged: they were written when a permit was effectively mandatory in practice, and remain true of a tutor who has one. See DATA_MODEL.md v1.8 and DECISIONS.md ADR-024._
+
 ---
 
 ## CP2 — Learners, search, tutor profile, match request — done (cycle 02 sub-cycles 2a–2c; cycle 03 added year groups as a controlled list — R33, ADR-004 — the permit cap on slots — R34 — and budget labels as content blocks — R35)

@@ -5,10 +5,12 @@ namespace App\Services\Tutors;
 use App\Models\TutorProfile;
 
 /**
- * What must hold before a tutor may be (re)approved: a valid permit, an
- * accepted copy of every required document, and a rate inside today's price
- * band (R36 f). Read at approval and at reinstatement — never cached — so an
- * expiry, a rejected document or an admin band edit since submission counts.
+ * What must hold before a tutor may be (re)approved: a permit that does not block booking, an
+ * accepted copy of every required document, at least one subject with a rate inside today's price
+ * band, and at least one availability window (R171 — these three, plus the already-enforced
+ * document check, are "the minimum to be approved and searchable", checked here rather than at
+ * onboarding). Read at approval and at reinstatement — never cached — so an expiry, a rejected
+ * document or an admin band edit since submission counts.
  */
 class TutorApprovalReadiness
 {
@@ -21,8 +23,8 @@ class TutorApprovalReadiness
     {
         $problems = [];
 
-        if (! $profile->permitIsValid()) {
-            $problems[] = 'the work permit has expired or has no expiry date';
+        if (! $profile->permitAllowsBooking()) {
+            $problems[] = 'the work permit has expired';
         }
 
         if (! $profile->hasAllRequiredDocumentsAccepted()) {
@@ -33,6 +35,10 @@ class TutorApprovalReadiness
 
         if ($rateProblem !== null) {
             $problems[] = $rateProblem;
+        }
+
+        if ($profile->availabilityRules()->doesntExist()) {
+            $problems[] = 'no weekly availability window is set';
         }
 
         return $problems;

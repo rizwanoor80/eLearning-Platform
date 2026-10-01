@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Tutor\Onboarding;
 
+use App\Models\DocumentType;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class DocumentStepRequest extends FormRequest
 {
@@ -13,16 +15,31 @@ class DocumentStepRequest extends FormRequest
     }
 
     /**
-     * No document_type_id here — the controller derives which document type
-     * is currently due from the same server-side step logic show() uses,
-     * never from client input.
+     * R171: every document type is now reachable at any time via the onboarding checklist, not
+     * derived from a server-side "current step" — so the client must say which type it is
+     * uploading against. Still constrained to an active type (`Rule::exists` with the `active`
+     * scope), never an arbitrary id, and the controller further confirms the tutor owns the
+     * profile before writing anything. The CV type additionally accepts DOC/DOCX (R171); every
+     * other type keeps the original PDF/JPG/PNG set.
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
+        $isCv = DocumentType::query()
+            ->where('id', $this->input('document_type_id'))
+            ->where('code', DocumentType::CV_CODE)
+            ->exists();
+
+        $mimes = $isCv ? 'mimes:pdf,doc,docx,jpg,jpeg,png' : 'mimes:pdf,jpg,jpeg,png';
+
         return [
-            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'document_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('document_types', 'id')->where('active', true),
+            ],
+            'file' => ['required', 'file', $mimes, 'max:10240'],
         ];
     }
 }

@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Tutor;
 
 use App\Enums\LessonStatus;
 use App\Enums\LessonType;
+use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Lesson;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Tutors\TutorSubmissionReadiness;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -30,8 +32,17 @@ class TutorDashboardController extends Controller
         // TutorOnboardingController::profileFor()); a tutor who has never
         // been there has certainly never had a bookable lesson, so there is
         // nothing to query and nothing to lazily create from a GET request.
+        // R173(a): "no row yet" still needs the banner (same fix as
+        // HandleInertiaRequests's needs_onboarding — a tutor who registered and
+        // never opened onboarding has not submitted anything either).
         if ($tutorProfile === null) {
-            return Inertia::render('tutor/Dashboard', ['reportsDue' => [], 'today' => [], 'upcoming' => [], 'slots' => []]);
+            return Inertia::render('tutor/Dashboard', [
+                'reportsDue' => [],
+                'today' => [],
+                'upcoming' => [],
+                'slots' => [],
+                'onboarding' => $this->onboardingBanner($user, null),
+            ]);
         }
 
         $localStartOfToday = CarbonImmutable::now()->setTimezone($user->timezone)->startOfDay();
@@ -76,7 +87,28 @@ class TutorDashboardController extends Controller
             'today' => $this->present($today, $user),
             'upcoming' => $this->present($upcoming, $user),
             'slots' => $this->slots($tutorProfile),
+            'onboarding' => $this->onboardingBanner($user, $tutorProfile),
         ]);
+    }
+
+    /**
+     * R173(a): the dashboard banner shown while a tutor's submission is still incomplete — same
+     * link (`/tutor/onboarding`) and the same "what's missing" list `TutorSubmissionReadiness`
+     * already derives for the onboarding wizard's own picker, never a second definition of what
+     * counts as missing.
+     *
+     * @return array{visible: bool, missing: list<string>}
+     */
+    private function onboardingBanner(User $user, ?TutorProfile $tutorProfile): array
+    {
+        if ($tutorProfile !== null && ! in_array($tutorProfile->status, [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested], true)) {
+            return ['visible' => false, 'missing' => []];
+        }
+
+        return [
+            'visible' => true,
+            'missing' => (new TutorSubmissionReadiness)->missing($user, $tutorProfile ?? new TutorProfile),
+        ];
     }
 
     /**
