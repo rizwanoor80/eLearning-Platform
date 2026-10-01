@@ -6122,3 +6122,39 @@ Deployed code is confirmed live (`git log` matches `main`). `horizon:list` still
 [2026-10-01 19:06] NOTE — Attempted R169's closing instruction (list, by count and id only, the `video_webhook_events` rows whose listeners never ran) and stopped short of running it. No allow-listed command on CLAUDE.local.md's read-only list can answer this: `db:show --counts` gives table-wide row counts only, not a filtered list of specific ids; answering "whose listeners never ran" needs either a raw SQL/Eloquent query (raw SQL is on the absolute never-list; `artisan tinker` is not on the allow-list and is read-code-execution equivalent to it) or a dedicated reporting artisan command, which does not exist in the codebase (`grep -rn "video_webhook_events|VideoWebhookEvent" app/` finds only the model, the webhook controller and the event class — no console command). Writing one would be a code change outside this cycle's authorised file list (`config/horizon.php`, its test, `docs/DECISIONS.md`, non-`CLAUDE.local.md` docs under R169). Not self-authorising a new capability to close this out — disclosed in STATUS §6/§7 as a plan–repo gap for the owner/planner rather than worked around (cycle 11 r4)
 
 [2026-10-01 19:07] HANDOFF — Cycle 11 r4 halts here, R169 otherwise complete. **Owner action, per R169's own text:** restart Horizon in Forge (Site → trustutor-rehearsal → Daemons/Horizon, or the server-level Horizon daemon control) and click "Resend verification email" on the owner's own test account. On the next `update`, CC re-runs `horizon:list`/`horizon:status` (expecting `Supervisors: supervisor-1` with `Processes > 0`), `queue:monitor redis:default` (expecting the pending count to be falling or at 0, confirming the backlog — 7 jobs, oldest 5h at this baseline — drained per the owner's already-chosen Option 1), reads `queue:failed` for anything that errored (`tries => 1`, so a failure lands there rather than retrying), and tails the newest `storage/logs` file filtered for `mail`/`smtp`/`Verify` to report delivery. The `video_webhook_events` listing R169 also asks for is blocked on tooling (see 19:06 NOTE) and is raised as an owner/planner decision in STATUS §7, not completed this cycle. STATUS.md being rewritten now as the closing record (cycle 11 r4)
+
+[2026-10-01 19:22] START — cycle 11 r5 begun. `docs/PLAN.md` r5 found uncommitted in the checkout on `update` (git fetch confirmed `main` already current with `origin/main`; no prior END exists for r5); committed as `32e5785` before any other work. r5 is a single-line planner revision: R169's `video_webhook_events` listing is withdrawn — no lesson has run on Daily yet and the registration test body is ignored before storage, so the table holds nothing worth listing; r4's STATUS 19:07 Owner action 2 is closed with no new command needed, resolving the tooling gap disclosed at 19:06 without writing the reporting command Option A offered (cycle 11 r5)
+
+[2026-10-01 19:22] ADVICE (owner) — Chat message "update", read per r4's STATUS.md §7 Owner action 1 wording as confirming the Horizon restart and "Resend verification email" click are both done. Proceeding to the promised post-restart recheck (cycle 11 r5)
+
+[2026-10-01 19:24] VERIFICATION — Post-restart recheck over the allow-listed SSH shape, quoted in full:
+```
+$ php8.4 artisan horizon:list
++--------------------------+--------+-------------+---------+
+| Name                     | PID    | Supervisors | Status  |
++--------------------------+--------+-------------+---------+
+| trustutor-rehearsal-QT2J | 658714 | None        | running |
++--------------------------+--------+-------------+---------+
+
+$ php8.4 artisan horizon:status
+Horizon is running.
+
+$ php8.4 artisan queue:monitor redis:default
+[redis] default ... [8] OK
+Pending jobs: 8 | Delayed: 0 | Reserved: 0 | Oldest pending job: 6 hours ago
+
+$ php8.4 artisan queue:failed
+No failed jobs found.
+
+$ ls -lt storage/logs | head -5
+laravel.log (0 bytes, Sep 27 00:00), laravel.log.1.gz (393 bytes, Sep 26 20:44) — unchanged
+
+$ php8.4 artisan about (full) → Cache: Config CACHED, Events CACHED, Routes CACHED, Views CACHED
+$ php8.4 artisan config:show horizon.environments
+production.supervisor-1.maxProcesses: 10 (+balanceMaxShift 1, balanceCooldown 3)
+rehearsal.supervisor-1.maxProcesses: 3
+local.supervisor-1.maxProcesses: 3
+```
+Ruled out config-cache staleness directly: the live cached config already contains the `rehearsal` block correctly (`maxProcesses: 3`), so the fix itself is loaded. But **the master process PID is unchanged from the pre-restart baseline read at 19:05 (`658714`, same as now)** — a genuine Horizon restart replaces the master process and would produce a new PID. `Supervisors: None` is unchanged, `horizon:status` still just says "running" (the same symptom R168/R169 diagnosed from the start), `queue:failed` is empty (nothing has run to fail), and the backlog **grew** from 7 jobs (oldest 5h, read 19:05) to 8 jobs (oldest 6h, read now) rather than draining — consistent with exactly one hour passing with nothing processed, not with a restart having occurred. The evidence does not support the restart having taken effect yet (cycle 11 r5)
+
+[2026-10-01 19:25] HANDOFF — Cycle 11 r5 halts here. The deployed fix is confirmed correct (config:show proves the cached config has the `rehearsal` block), but **the Horizon master process has not actually restarted** — same PID (`658714`) before and after the owner's reported restart, `Supervisors: None` unchanged, queue backlog grew (7→8, oldest 5h→6h) rather than draining. CC holds no authorised command to restart Horizon itself (`horizon:terminate` is not on CLAUDE.local.md's allow-list in either its read-only or state-changing section, and Forge's daemon control is a UI action, not a shell command) — this stays the owner's action. **Owner action (Recommended):** in Forge, open `trustutor-rehearsal` → Daemons (or Server → Daemons), find the Horizon daemon entry, and use its own "Restart" control there (not a site-level "Deploy Now", which does not touch the daemon) — then reply `update` and CC will re-check the PID, supervisor count and queue drain. If the owner already used that exact control and the PID still doesn't change, that itself is new evidence (the daemon may not be configured as CLAUDE.local.md describes, or Forge's restart isn't propagating) worth saying so on the next `update` rather than assuming the same action again. No further server state was touched this run — only the allow-listed read-only commands above were run. STATUS.md being rewritten now as the closing record (cycle 11 r5)
