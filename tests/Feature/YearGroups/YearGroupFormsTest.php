@@ -141,7 +141,7 @@ it('derives the tier from the range, ignoring a tier sent by the client (R30 #5)
     expect(TutorSubject::query()->sole()->level_tier)->toBe(LevelTier::Exam1);
 });
 
-it('sends a draft tutor with an unmapped row back to the subjects step, showing the original text (R30 #12)', function () {
+it('keeps an unmapped row visible with its original text, without moving the mandatory step (R30 #12, R171: subjects no longer gates currentStep())', function () {
     [$tutor] = ygTutorAtAgreement();
 
     test()->actingAs($tutor)->get(route('tutor.onboarding'))->assertInertia(fn ($page) => $page->where('step', 'agreement'));
@@ -149,7 +149,7 @@ it('sends a draft tutor with an unmapped row back to the subjects step, showing 
     TutorSubject::query()->update(['level_min_id' => null, 'level_min_legacy' => 'Reception']);
 
     test()->actingAs($tutor)->get(route('tutor.onboarding'))->assertInertia(fn ($page) => $page
-        ->where('step', 'subjects')
+        ->where('step', 'agreement')
         ->where('tutorSubjects.0.level_min_id', null)
         ->where('tutorSubjects.0.level_min_legacy', 'Reception')
         ->has('yearGroups', 21));

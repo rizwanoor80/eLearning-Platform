@@ -153,6 +153,7 @@ Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function
     Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');
     Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->name('tutor.onboarding.permit');
     Route::post('tutor/onboarding/documents', [TutorOnboardingController::class, 'storeDocument'])->name('tutor.onboarding.documents');
+    Route::post('tutor/onboarding/linkedin', [TutorOnboardingController::class, 'storeLinkedin'])->name('tutor.onboarding.linkedin');
     Route::post('tutor/onboarding/bank', [TutorOnboardingController::class, 'storeBank'])->name('tutor.onboarding.bank');
     Route::post('tutor/onboarding/subjects', [TutorOnboardingController::class, 'storeSubjects'])->name('tutor.onboarding.subjects');
     Route::post('tutor/onboarding/rate', [TutorOnboardingController::class, 'storeRate'])->name('tutor.onboarding.rate');

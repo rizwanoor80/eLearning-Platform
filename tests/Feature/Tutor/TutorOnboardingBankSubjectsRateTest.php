@@ -15,6 +15,14 @@ function bankReadyTutor(): User
     DocumentType::query()->delete();
 
     $tutor = User::factory()->tutor()->create();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
+    ]);
+    // Cheapest way to satisfy CV-or-LinkedIn (R171): no file, no DocumentType row needed.
+    test()->actingAs($tutor)->post(route('tutor.onboarding.linkedin'), [
+        'linkedin_url' => 'https://www.linkedin.com/in/test-tutor',
+    ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
         'permit_number' => 'PMT-1',
         'permit_expires_at' => now()->addYear()->toDateString(),
@@ -54,7 +62,7 @@ it('saves the bank step with an encrypted IBAN', function () {
     expect($profile->bank_iban)->toBe('AE070331234567890123456');
 });
 
-it('moves to the subjects step once bank details are saved', function () {
+it('does not move the mandatory step position once bank details are saved (R171: bank is optional)', function () {
     $tutor = bankReadyTutor();
     test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
         'bank_name' => 'Emirates NBD',
@@ -64,7 +72,9 @@ it('moves to the subjects step once bank details are saved', function () {
 
     $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
 
-    $response->assertInertia(fn ($page) => $page->where('step', 'subjects'));
+    // bankReadyTutor() already satisfies the three mandatory steps (personal, CV-or-LinkedIn via
+    // storeLinkedin) except agreement — bank, an optional step, must not move that position.
+    $response->assertInertia(fn ($page) => $page->where('step', 'agreement'));
 });
 
 it('saves a subjects row and derives no tier mismatch when the tier is valid for the curriculum', function () {
@@ -306,9 +316,10 @@ it('rejects every rate when two curricula have non-overlapping bands, naming bot
 
 /**
  * R27: hourly_rate must never survive a subjects change that moves it
- * out of band — invalidateRateIfOutOfBand() clears it so the wizard sends
- * the tutor back through the rate step instead of letting a stale value
- * reach completion.
+ * out of band — SaveTutorSubjects::invalidateRateIfOutOfBand() clears it.
+ * Rate is optional under R171 and no longer gates currentStep(), so the
+ * wizard does not send the tutor back through a 'rate' step; the only
+ * observable effect is that the stale hourly_rate is cleared.
  */
 it('clears a stale rate when a later subjects change no longer fits its band', function () {
     [$tutor, $curriculum, $subject] = subjectsReadyTutor();
@@ -337,7 +348,7 @@ it('clears a stale rate when a later subjects change no longer fits its band', f
     expect($profile->hourly_rate)->toBeNull();
 
     $response = test()->actingAs($tutor)->get(route('tutor.onboarding'));
-    $response->assertInertia(fn ($page) => $page->where('step', 'rate'));
+    $response->assertInertia(fn ($page) => $page->where('profile.hourly_rate', null));
 });
 
 it('keeps the rate when a later subjects change still fits its band', function () {

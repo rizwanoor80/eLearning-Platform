@@ -13,15 +13,29 @@ use Database\Factories\TutorProfileFactory;
 use Livewire\Livewire;
 
 /**
- * CP1 box 6: adding a required document type in Filament adds a wizard step
- * and blocks approval until it is accepted; setting it inactive removes both
- * — no code change.
+ * CP1 box 6: adding a required document type in Filament makes it visible to
+ * upload and blocks approval until it is accepted; setting it inactive removes
+ * both — no code change.
+ *
+ * R171: a non-CV required type never becomes the wizard's mandatory 'document'
+ * step — that gate only ever looks at CV-or-LinkedIn (`currentStep()` always
+ * resolves the CV_CODE type specifically). So this proves the Filament-added
+ * type shows up in `documentTypes` for the tutor to act on, and still blocks
+ * `hasAllRequiredDocumentsAccepted()` / `ApproveTutor`, while the wizard's own
+ * step position is driven by CV-or-LinkedIn as usual.
  */
-it('adds and removes a wizard step and the approval block purely through the Filament resource', function () {
+it('adds and removes an approval requirement purely through the Filament resource', function () {
     Event::fake();
     DocumentType::query()->delete();
     $admin = User::factory()->admin()->create();
     $tutor = User::factory()->tutor()->create();
+    test()->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
+    ]);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.linkedin'), [
+        'linkedin_url' => 'https://www.linkedin.com/in/test-tutor',
+    ]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
         'permit_number' => 'PMT-1',
         'permit_expires_at' => now()->addYear()->toDateString(),
@@ -33,7 +47,7 @@ it('adds and removes a wizard step and the approval block purely through the Fil
     expect($profile->hasAllRequiredDocumentsAccepted())->toBeTrue();
     $profile->forceFill(['status' => TutorProfileStatus::Draft])->save();
     test()->actingAs($tutor)->get(route('tutor.onboarding'))
-        ->assertInertia(fn ($page) => $page->where('step', 'bank'));
+        ->assertInertia(fn ($page) => $page->where('step', 'agreement')->has('documentTypes', 0));
 
     // Admin adds a required, active type through Filament.
     Livewire::actingAs($admin)->test(CreateDocumentType::class)
@@ -49,9 +63,11 @@ it('adds and removes a wizard step and the approval block purely through the Fil
         ->assertHasNoFormErrors();
     $type = DocumentType::query()->where('code', 'reference_letter')->firstOrFail();
 
-    // The wizard now has a step for it, and approval is blocked.
+    // The tutor can now see it to upload, and approval is blocked — but the
+    // wizard's mandatory step position is unaffected (CV-or-LinkedIn is still
+    // satisfied, so it stays at 'agreement').
     test()->actingAs($tutor)->get(route('tutor.onboarding'))
-        ->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType.id', $type->id));
+        ->assertInertia(fn ($page) => $page->where('step', 'agreement')->has('documentTypes', 1)->where('documentTypes.0.id', $type->id));
     $profile->forceFill(['status' => TutorProfileStatus::PendingReview])->save();
     expect($profile->fresh()->hasAllRequiredDocumentsAccepted())->toBeFalse()
         ->and(fn () => (new ApproveTutor(app(RecordAuditLog::class)))($admin, $profile->fresh()))
@@ -65,7 +81,7 @@ it('adds and removes a wizard step and the approval block purely through the Fil
 
     $profile->forceFill(['status' => TutorProfileStatus::Draft])->save();
     test()->actingAs($tutor)->get(route('tutor.onboarding'))
-        ->assertInertia(fn ($page) => $page->where('step', 'bank'));
+        ->assertInertia(fn ($page) => $page->where('step', 'agreement')->has('documentTypes', 0));
     $profile->forceFill(['status' => TutorProfileStatus::PendingReview])->save();
     TutorProfileFactory::makeApprovable($profile);
     (new ApproveTutor(app(RecordAuditLog::class)))($admin, $profile->fresh());

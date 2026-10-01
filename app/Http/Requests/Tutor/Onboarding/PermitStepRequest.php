@@ -13,13 +13,18 @@ class PermitStepRequest extends FormRequest
     }
 
     /**
+     * R170: the permit is optional for everyone — "Skip for now" posts this step empty. Both
+     * fields are nullable, but a tutor who does fill one in still gets the existing format/future
+     * date checks (`required_with` keeps them paired: a number with no expiry, or an expiry with
+     * no number, is still rejected).
+     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'permit_number' => ['required', 'string', 'max:64'],
-            'permit_expires_at' => ['required', 'date', 'after:today'],
+            'permit_number' => ['nullable', 'required_with:permit_expires_at', 'string', 'max:64'],
+            'permit_expires_at' => ['nullable', 'required_with:permit_number', 'date', 'after:today'],
         ];
     }
 }

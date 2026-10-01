@@ -30,8 +30,12 @@ use Livewire\Livewire;
 
 function lcApproved(array $attributes = []): TutorProfile
 {
+    // R171: country is a mandatory currentStep() gate, so a tutor moved out of
+    // the 'submitted' status group (e.g. back to changes_requested) needs one
+    // set, or the wizard sends them to 'personal' instead of the real step.
     return TutorProfile::factory()->approvable()->approved()->create(array_merge([
         'permit_expires_at' => now()->addYear()->toDateString(),
+        'country' => 'AE',
     ], $attributes));
 }
 
@@ -230,15 +234,26 @@ it('moves tutors when an existing type is switched to active, and a second save 
     expect(AuditLog::query()->where('action', 'tutor.changes_requested')->count())->toBe($changesBefore);
 });
 
-it('sends a moved tutor to the document step in the wizard', function () {
+it('sends a moved tutor back into the wizard with the new document type available to upload', function () {
     Mail::fake();
+    // The R171 migration seeds a permanent 'cv' type onto every fresh test database
+    // (same reason `agreementReadyTutor()` and the Filament wizard-integration test
+    // both clear it first) — this test cares about the exact optional-types count,
+    // so it must not count that baseline row.
+    DocumentType::query()->delete();
     $admin = User::factory()->admin()->create();
     $tutor = lcApproved();
     $type = DocumentType::factory()->create(['required' => true, 'active' => true, 'name' => 'Reference letter']);
     (new RequireDocumentTypeFromApprovedTutors(app(RequestTutorChanges::class)))($admin, $type);
 
+    expect($tutor->fresh()->status)->toBe(TutorProfileStatus::ChangesRequested);
+
+    // R171: a non-CV required type never becomes the wizard's mandatory 'document'
+    // step (that gate only ever looks at CV-or-LinkedIn) — it joins the optional
+    // types the tutor can upload at any time, while still blocking admin approval
+    // separately via hasAllRequiredDocumentsAccepted().
     $this->actingAs($tutor->user)->get(route('tutor.onboarding'))
-        ->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType.id', $type->id));
+        ->assertInertia(fn ($page) => $page->has('documentTypes', 1)->where('documentTypes.0.id', $type->id));
 });
 
 // ---- (c) resubmit ---------------------------------------------------------------------

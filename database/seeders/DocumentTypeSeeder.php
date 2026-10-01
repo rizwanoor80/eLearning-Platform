@@ -8,9 +8,10 @@ use Illuminate\Database\Seeder;
 class DocumentTypeSeeder extends Seeder
 {
     /**
-     * The four CP1 defaults. Managed afterwards in Filament — adding or
-     * deactivating a row here changes the onboarding wizard and approval
-     * rule with no code change (CP1 acceptance).
+     * CP1's four defaults plus `cv` (R171). None are `required` any more: the permit and every
+     * document type became optional at onboarding (R170/R171) — the admin can flip one back to
+     * required in Filament later. Managed afterwards in Filament — adding or deactivating a row
+     * here changes the onboarding wizard and approval rule with no code change (CP1 acceptance).
      *
      * @var array<int, array{code: string, name: string, description: string}>
      */
@@ -35,6 +36,11 @@ class DocumentTypeSeeder extends Seeder
             'name' => 'Police clearance',
             'description' => 'A recent police clearance / good conduct certificate.',
         ],
+        [
+            'code' => 'cv',
+            'name' => 'CV / resume',
+            'description' => 'A CV or resume, used for vetting instead of a tutoring permit.',
+        ],
     ];
 
     public function run(): void
@@ -45,7 +51,7 @@ class DocumentTypeSeeder extends Seeder
                 [
                     'name' => $type['name'],
                     'description' => $type['description'],
-                    'required' => true,
+                    'required' => false,
                     'active' => true,
                     'sort' => $sort,
                 ],

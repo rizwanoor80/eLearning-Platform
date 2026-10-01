@@ -24,11 +24,11 @@ Internally, "Parent" and "Adult student" are the same role (`account_owner`); th
 
 ## 2. Core journeys
 
-### 2.1 Tutor onboarding
-1. Tutor registers (email + password, email verification).
-2. Onboarding wizard: personal details → UAE private-tutor permit number + expiry → document uploads, one step per **required document type** configured in the admin (defaults: Emirates ID / passport, qualifications, police clearance / good-conduct certificate; admin can add, drop or make optional without code) → bank details for payouts (bank name, account name, IBAN, optional SWIFT — stored encrypted, shown masked) → subjects (curriculum × subject × year-group range) → hourly rate (must fall within the platform band for the highest level they teach) → bio, headline, optional intro video link → weekly availability → accept the tutor agreement (the current published version of the admin-edited page; the version number accepted is recorded on the profile).
-3. Status `pending_review`. Admin reviews documents in the approval queue, can request changes (note to tutor), approve, or reject.
-4. On approval: profile becomes searchable. On permit expiry: profile auto-hidden until a new permit is uploaded and re-approved.
+### 2.1 Tutor onboarding (R170/R171 — 2026-10)
+1. Tutor registers (email + password, email verification) — tutors from anywhere, not UAE-only.
+2. Onboarding wizard's only mandatory steps, in order: personal details (name, country, timezone) → a CV **or** a LinkedIn profile URL (at least one of the two; neither is required if the other is on file) → accept the tutor agreement (the current published version of the admin-edited page; the version number accepted is recorded on the profile). Every other step — permit number + expiry, document uploads (one per **required document type** configured in the admin; none are required by default any more, the admin can flip one back to required without code), bank details for payouts (bank name, account name, IBAN, optional SWIFT — stored encrypted, shown masked), subjects (curriculum × subject × year-group range), hourly rate (must fall within the platform band for the highest level they teach), bio/headline/intro video, weekly availability — is reachable at any time from a step checklist, not sequence-gated, and can be left blank at submission.
+3. Status `pending_review`. The tutor may submit with only the three mandatory steps done; subjects, a rate, and availability are **not** required to submit, only to be approved (see point 4). Admin reviews in the approval queue, can request changes (note to tutor), approve, or reject — and, for a `pending_review` or `changes_requested` tutor, can also edit that tutor's subjects or hourly rate directly from the review page (an audited action, same effect as the tutor making the edit themselves) to unblock approval without bouncing the tutor back through the wizard for a small fix.
+4. Approval's own minimum, enforced by the system at approval time regardless of what onboarding allowed at submission: at least one subject (curriculum + year-group range) with an hourly rate inside today's price band for it, at least one weekly availability window, every currently-required document type accepted, and — if a permit is on file — it must not be expired. A tutor with no permit at all is not blocked by this: the permit is optional for every tutor, not just non-UAE ones. On approval: profile becomes searchable. If a permit is on file and later expires, the profile is auto-hidden until a new permit is uploaded and re-approved; a tutor who never had a permit is unaffected.
 
 ### 2.2 Parent finds a tutor (browse path)
 1. Register → add learner (name, year group, curriculum, school optional, notes).
@@ -171,9 +171,9 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 
 ## 9. Compliance and safety (not legal advice — verify)
 
-- Tutors must hold the UAE private-tutor permit (MoHRE/MoE). Permit number and expiry captured, verified by admin, enforced by the system.
+- The UAE private-tutor permit (MoHRE/MoE) is optional for every tutor as of R170 (2026-10), not UAE-tutor-specific: permit number and expiry can be captured and verified by admin when a tutor has one, but a tutor with no permit on file is approvable and bookable on the same terms as one with a current permit. A permit that is on file and expires still auto-hides the profile until re-approved.
 - Minors have no login; parents own all communication. Contact details masked until first completed lesson. Admin can audit conversations. Report button everywhere a tutor and family interact.
-- Police clearance / good-conduct certificate required for approval (a required document type in the admin; the requirement is data, the enforcement — no approval while a required document is missing or rejected — is code).
+- Every onboarding document type, including police clearance / good-conduct certificate, is admin-configurable and **not required by default** as of R170/R171 (2026-10) — the admin can mark any one required again without code, and while a type is required no approval proceeds with that type missing or rejected (the requirement is data, the enforcement is code). The one document-adjacent requirement that is not admin-configurable: a tutor must have either a CV document on file or a LinkedIn profile URL before they can submit for review (R171).
 - Saved cards are tokenised at the gateway; the platform stores only brand, last four, and expiry.
 - UAE PDPL: documents stored in private storage with expiring signed URLs; data-export and account-deletion request handled by admin in v1 (manual).
 - VAT: platform commission is the taxable supply. Receipts show VAT line where applicable (setting: VAT %).

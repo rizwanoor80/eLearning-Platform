@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Enums\Role;
+use App\Enums\TutorProfileStatus;
+use App\Models\TutorProfile;
 use App\Models\User;
 use App\Providers\PaymentGatewayServiceProvider;
 use App\Support\Facades\Settings;
@@ -52,6 +54,15 @@ class HandleInertiaRequests extends Middleware
                 'home' => $this->homeRouteFor($request->user()),
                 // R133: the Messages nav item shows for the two portals when the feature is on, so no `.vue` file branches on the role.
                 'can_message' => EnsureFeatureEnabled::enabled('messaging') && $request->user()?->hasVerifiedEmail() === true && in_array($request->user()->role, [Role::AccountOwner, Role::Tutor], true),
+                // R173(a): the tutor nav's "Complete your profile" entry, shown only while there is
+                // still something to finish — never for an approved/pending/rejected/suspended
+                // tutor. A tutor with no `tutor_profiles` row yet (registered, never opened
+                // onboarding) still needs it: `profileFor()` only creates the row on first visit,
+                // so "no row" must count as draft here, not as "nothing to do".
+                'needs_onboarding' => $request->user()?->role === Role::Tutor && ! TutorProfile::query()
+                    ->where('user_id', $request->user()->id)
+                    ->whereNotIn('status', [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested])
+                    ->exists(),
             ],
             // Read from the pages table when a page renders, so a new page or a
             // renamed one shows in the footer at once.
