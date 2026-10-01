@@ -6158,3 +6158,34 @@ local.supervisor-1.maxProcesses: 3
 Ruled out config-cache staleness directly: the live cached config already contains the `rehearsal` block correctly (`maxProcesses: 3`), so the fix itself is loaded. But **the master process PID is unchanged from the pre-restart baseline read at 19:05 (`658714`, same as now)** — a genuine Horizon restart replaces the master process and would produce a new PID. `Supervisors: None` is unchanged, `horizon:status` still just says "running" (the same symptom R168/R169 diagnosed from the start), `queue:failed` is empty (nothing has run to fail), and the backlog **grew** from 7 jobs (oldest 5h, read 19:05) to 8 jobs (oldest 6h, read now) rather than draining — consistent with exactly one hour passing with nothing processed, not with a restart having occurred. The evidence does not support the restart having taken effect yet (cycle 11 r5)
 
 [2026-10-01 19:25] HANDOFF — Cycle 11 r5 halts here. The deployed fix is confirmed correct (config:show proves the cached config has the `rehearsal` block), but **the Horizon master process has not actually restarted** — same PID (`658714`) before and after the owner's reported restart, `Supervisors: None` unchanged, queue backlog grew (7→8, oldest 5h→6h) rather than draining. CC holds no authorised command to restart Horizon itself (`horizon:terminate` is not on CLAUDE.local.md's allow-list in either its read-only or state-changing section, and Forge's daemon control is a UI action, not a shell command) — this stays the owner's action. **Owner action (Recommended):** in Forge, open `trustutor-rehearsal` → Daemons (or Server → Daemons), find the Horizon daemon entry, and use its own "Restart" control there (not a site-level "Deploy Now", which does not touch the daemon) — then reply `update` and CC will re-check the PID, supervisor count and queue drain. If the owner already used that exact control and the PID still doesn't change, that itself is new evidence (the daemon may not be configured as CLAUDE.local.md describes, or Forge's restart isn't propagating) worth saying so on the next `update` rather than assuming the same action again. No further server state was touched this run — only the allow-listed read-only commands above were run. STATUS.md being rewritten now as the closing record (cycle 11 r5)
+
+[2026-10-01 19:45] ADVICE (owner) — Chat message "update — mail arrived", reporting the verification email was actually received — external confirmation from the owner's own inbox that this restart attempt (using the daemon's own Restart control, per 19:25's HANDOFF) worked. Proceeding to the promised recheck (cycle 11 r5)
+
+[2026-10-01 19:46] VERIFICATION — Post-restart recheck (second attempt) over the allow-listed SSH shape, quoted in full:
+```
+$ php8.4 artisan horizon:list
++--------------------------+--------+-------------+---------+
+| Name                     | PID    | Supervisors | Status  |
++--------------------------+--------+-------------+---------+
+| trustutor-rehearsal-13gK | 678569 | supervisor-1| running |
++--------------------------+--------+-------------+---------+
+
+$ php8.4 artisan horizon:status
+Horizon is running.
+
+$ php8.4 artisan queue:monitor redis:default
+[redis] default ... [0] OK
+Pending jobs: 0 | Delayed: 0 | Reserved: 0 | Oldest pending job: N/A
+
+$ php8.4 artisan queue:failed
+No failed jobs found.
+
+$ ls -lt storage/logs | head -5
+laravel.log (0 bytes, Sep 27 00:00), laravel.log.1.gz (393 bytes, Sep 26 20:44) — unchanged
+
+$ tail -n 300 storage/logs/laravel.log | grep -iE 'mail|smtp|Swift|Symfony.Component.Mailer|Verify'
+(no output; command chain exited 1 — grep's own no-match exit status, not a failure of any prior command)
+```
+**This is the first confirmed-successful restart.** Both the server name suffix (`13gK`, previously `QT2J`) and the PID (`678569`, previously stuck at `658714` across the 19:05 and 19:24 reads) changed — a genuine new master process. `Supervisors: None` is now `supervisor-1`, matching R169's provisioning fix. The Redis backlog that grew from 7→8 pending jobs (oldest 5h→6h) across the first failed restart attempt has now **fully drained to 0 pending/0 delayed/0 reserved**, including the queued `VerifyEmailNotification` dispatches now pointed at live SendPulse SMTP. `queue:failed` shows zero failures — the entire backlog processed cleanly, nothing died on the one-try (`tries => 1`) policy. The log-tail grep found no mail-related lines, but `laravel.log` remains 0 bytes (same as every prior read) — Laravel does not log a successful mail send to the default channel without an explicit logging hook, so an empty grep is consistent with success, not evidence against it. The owner's own report of "mail arrived" is the authoritative delivery signal here, external to anything CC can observe over SSH, and it corroborates the zero-failed-jobs/full-drain evidence exactly (cycle 11 r5)
+
+[2026-10-01 19:47] END — R169 (Horizon provisions on rehearsal) is complete. All of R169's stated completion criteria are now met: `config/horizon.php` carries a `rehearsal` environment entry (merged PR #41, `c8cad19`); the regression test asserting every environment has a Horizon supervisor is in the green 2053/2053 suite; ADR-023 is recorded; deployed to `trustutor-rehearsal` under R111 (`rehearsal` fast-forwarded to `2cd8cb1`); R91 checklist re-run post-restart shows `supervisor-1` provisioned with a running process (not "None"); the Redis backlog queued during the window with no worker provisioned has fully drained with zero failed jobs; and the owner independently confirmed mail delivery. One process lesson surfaced this cycle, disclosed in STATUS §6 for the planner: a code deploy alone does not cycle the Horizon master process (`ProvisioningPlan::deploy()` only re-matches `environments` when the master restarts) — the owner's first attempt likely used a site-level "Deploy Now" or equivalent, which redeployed code but left the old master (and its empty supervisor list) running; the second attempt, using Forge's Horizon daemon's own "Restart" control, produced a new PID and fixed it immediately. No advisor consultation this run: the closing recheck was a continuation of an already-advised judgment call (the Option-1 backlog-drain decision, consulted twice in r4) with no new architectural or production-affecting decision to make — the evidence was unambiguous (new PID, new supervisor, zero failures, owner-confirmed delivery). STATUS.md being rewritten now as the closing record for cycle 11 (cycle 11 r5)
