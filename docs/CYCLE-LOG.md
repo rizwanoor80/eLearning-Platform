@@ -6088,3 +6088,37 @@ $ ./vendor/bin/pest tests/Unit/HorizonProvisioningTest.php
 [2026-10-01 18:40] VERIFICATION — Re-checked CI via `get_status` on PR #41's actual head `8e8b0ee` per the advisor's point 1: `checks: {passing: 1, failing: 0, pending: 0}`, `mergeable: MERGEABLE`, `mergeStateStatus: CLEAN`. Green, on the correct SHA. Merged PR #41 under R167/R147 (self-merge; CI green on the head; diff confined to R169's three named files plus the two in-cycle doc-only touch-ups already in that diff) via `gh pr merge 41 --merge` (ordinary merge commit, matching the precedent set by PR #40's `6adc4e0`, not a squash) — merge commit `c8cad19`. `git checkout main && git fetch && git merge --ff-only origin/main` confirmed the fast-forward and that the merge diff touched exactly `config/horizon.php`, `tests/Unit/HorizonProvisioningTest.php` and `docs/DECISIONS.md` (3 files, 39 insertions, 0 deletions) — nothing outside R169's authorised list (cycle 11 r4)
 
 [2026-10-01 18:41] NOTE — Per the advisor's point 1 caveat (`main` had advanced to `86d8c47` with its own docs-only commits since the branch was cut; let `main`'s own CI finish on the merge commit before pushing to `rehearsal`), checked `gh run list --branch main --limit 3`: the merge commit `c8cad19`'s CI run is `in_progress` (the two prior `main` runs, `6adc4e0` and an earlier commit, both `success`). Not polling further this turn — the binding instruction is never to schedule or poll CI checks (CronCreate, ScheduleWakeup, /loop, Monitor, `gh` polling); deploying under R111 and the rest of R169's sequence (R91 checklist verification, HANDOFF with the two-option queue-backlog disclosure) resume on the next `update`, by which point `c8cad19`'s CI will have settled one way or the other. STATUS.md being rewritten now as the closing record for this halt (cycle 11 r4)
+
+[2026-10-01 19:02] ADVICE (owner) — Chat message "update — option 1", read as both authorising CC to resume (re-check `main`'s CI once, deploy, run R91) and deciding r4's STATUS §7 Owner action 2: let the Redis queue backlog drain naturally on Horizon's restart rather than have the owner clear it first. Logged before being acted on (cycle 11 r4)
+
+[2026-10-01 19:02] VERIFICATION — Re-checked `gh run list --branch main --limit 3`: `c8cad19`'s CI run is now `completed`/`success` (the merge commit). Deploying under R111 (cycle 11 r4)
+
+[2026-10-01 19:03] NOTE — Deployed `trustutor-rehearsal` under R111 by fast-forwarding `rehearsal` to the green `main` commit: `git checkout rehearsal; git fetch; git merge --ff-only origin/main; git push origin rehearsal` — `c4c6d75` → `2cd8cb1`, fast-forward, pushed, Forge's push-to-deploy triggered. Confirmed the deploy landed by polling the allow-listed read-only `git log -1` over SSH in a bounded background loop (15s interval, 5-minute cap) rather than a foreground sleep; it reported the new commit hash after roughly a minute. `main` was then checked back out locally (cycle 11 r4)
+
+[2026-10-01 19:05] VERIFICATION — R91 checklist, run over the allow-listed SSH shape, quoted in full:
+```
+$ php8.4 artisan about --only=environment,drivers
+Environment: rehearsal | Debug: OFF | Queue: redis | Mail: smtp | Broadcasting: reverb
+
+$ php8.4 artisan horizon:list
++--------------------------+--------+-------------+---------+
+| Name                     | PID    | Supervisors | Status  |
++--------------------------+--------+-------------+---------+
+| trustutor-rehearsal-QT2J | 658714 | None        | running |
++--------------------------+--------+-------------+---------+
+
+$ php8.4 artisan horizon:status
+Horizon is running.
+
+$ php8.4 artisan queue:monitor redis:default
+[redis] default ... [7] OK
+Pending jobs: 7 | Delayed: 0 | Reserved: 0 | Oldest pending job: 5 hours ago
+
+$ git log -1 --format='%H %s'
+2cd8cb175eb99e33fa9fdafb709abe9c44d8e85e Cycle 11 r4: PR #41 merged (c8cad19)...
+```
+Deployed code is confirmed live (`git log` matches `main`). `horizon:list` still shows `Supervisors: None` — this is the **expected pre-restart baseline**, not a failed deploy: the Horizon master process (PID 658714) has not been restarted since the config change landed, so it has not re-run `ProvisioningPlan::deploy('rehearsal')` against the new `environments` block yet (R169's own HANDOFF step — asking the owner to restart Horizon in Forge — is what applies the fix). `queue:monitor` empirically confirms the advisor's 18:35 queue-backlog warning: **7 real jobs are sitting in `redis:default`, the oldest 5 hours old** — this is the backlog that will be replayed the moment the owner restarts Horizon. R91's two permanent additions (supervisors with processes > 0; the default queue draining) cannot both be shown true in the same read by construction — the first requires a restart, which immediately starts draining the second — so this baseline read (confirming the pre-fix symptom still present pre-restart, and sizing the backlog) is what this HANDOFF reports, with the full post-restart recheck promised on the next `update` (cycle 11 r4)
+
+[2026-10-01 19:06] NOTE — Attempted R169's closing instruction (list, by count and id only, the `video_webhook_events` rows whose listeners never ran) and stopped short of running it. No allow-listed command on CLAUDE.local.md's read-only list can answer this: `db:show --counts` gives table-wide row counts only, not a filtered list of specific ids; answering "whose listeners never ran" needs either a raw SQL/Eloquent query (raw SQL is on the absolute never-list; `artisan tinker` is not on the allow-list and is read-code-execution equivalent to it) or a dedicated reporting artisan command, which does not exist in the codebase (`grep -rn "video_webhook_events|VideoWebhookEvent" app/` finds only the model, the webhook controller and the event class — no console command). Writing one would be a code change outside this cycle's authorised file list (`config/horizon.php`, its test, `docs/DECISIONS.md`, non-`CLAUDE.local.md` docs under R169). Not self-authorising a new capability to close this out — disclosed in STATUS §6/§7 as a plan–repo gap for the owner/planner rather than worked around (cycle 11 r4)
+
+[2026-10-01 19:07] HANDOFF — Cycle 11 r4 halts here, R169 otherwise complete. **Owner action, per R169's own text:** restart Horizon in Forge (Site → trustutor-rehearsal → Daemons/Horizon, or the server-level Horizon daemon control) and click "Resend verification email" on the owner's own test account. On the next `update`, CC re-runs `horizon:list`/`horizon:status` (expecting `Supervisors: supervisor-1` with `Processes > 0`), `queue:monitor redis:default` (expecting the pending count to be falling or at 0, confirming the backlog — 7 jobs, oldest 5h at this baseline — drained per the owner's already-chosen Option 1), reads `queue:failed` for anything that errored (`tries => 1`, so a failure lands there rather than retrying), and tails the newest `storage/logs` file filtered for `mail`/`smtp`/`Verify` to report delivery. The `video_webhook_events` listing R169 also asks for is blocked on tooling (see 19:06 NOTE) and is raised as an owner/planner decision in STATUS §7, not completed this cycle. STATUS.md being rewritten now as the closing record (cycle 11 r4)
