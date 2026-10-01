@@ -5951,3 +5951,43 @@ cycle (Step 2's mandatory HANDOFF, this END) are the kinds of stops
 that don't count against it. Nothing further authorised this cycle;
 STATUS.md being rewritten now as the closing record, carrying Owner
 actions 4, 8, 9, 12 forward per R165/PLAN step 3's own instruction.
+
+[2026-10-01 16:36] START — cycle 11 r2 begun. PLAN.md r2 committed as `2243fce` before any other work (git fetch confirmed `main` already current with `origin/main`; no prior END exists for r2). r2 adds R168 (D-09 changed to SendPulse SMTP; read-only mail diagnosis) on top of r1's now-closed programme "daily-webhook"; everything else in r1 stands unchanged (cycle 11 r2)
+
+[2026-10-01 16:36] ADVICE (owner) — Chat message "update -- mail not arriving". Matches R168's trigger exactly ("On the owner's `update` that mentions mail, CC runs only these read-only commands..."). Proceeding to run R168's fixed read-only command list over the allow-listed SSH shape and name the cause (cycle 11 r2)
+
+[2026-10-01 16:43] VERIFICATION — R168's fixed read-only command list, run over the allow-listed SSH shape against `trustutor-rehearsal` (current deploy unchanged, `c4c6d75`). Literal output:
+```
+$ php8.4 artisan config:show mail.default
+  mail.default .......................................................... smtp
+
+$ php8.4 artisan config:show mail.mailers.smtp.host
+  mail.mailers.smtp.host ...................................... smtp-pulse.com
+
+$ php8.4 artisan config:show mail.mailers.smtp.port
+  mail.mailers.smtp.port ................................................. 587
+
+$ php8.4 artisan config:show mail.mailers.smtp.scheme
+  mail.mailers.smtp.scheme .............................................. null
+
+$ php8.4 artisan config:show mail.from
+  mail.from ..................................................................
+  address .............................................. support@trustutor.com
+  name ................................................... TrusTutor (Support)
+
+$ php8.4 artisan queue:failed
+   INFO  No failed jobs found.
+
+$ php8.4 artisan horizon:status
+   INFO  Horizon is running.
+
+$ tail -n 200 storage/logs/laravel.log | grep -iE 'mail|smtp|Swift|Symfony.Component.Mailer|Verify'
+(no output — grep exit 1, zero matching lines in the last 200 lines of storage/logs/laravel.log)
+```
+No credential, password or `.env` value requested or read; `mail.mailers.smtp.username`/`.password` and unfiltered `config:show mail` were not run, per R168 (cycle 11 r2)
+
+[2026-10-01 16:48] ADVISOR — Question: does the shell evidence above support naming "nothing queued" as R168's cause, and is the ADR-018 amendment the right place for the diagnostic narrative? Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5.1 — configured, not measured (R63's fixed phrase). Flagged: "'nothing queued' is the wrong reading... that's equally consistent with [a Horizon worker still holding the old mailer config at boot, or SendPulse accepting the send and failing silently server-side]... only one of R168's four causes is actually excluded: config-cache stale." Also flagged that r1's own STATUS.md recorded `laravel.log` as entirely empty over ~10 days of Horizon and scheduler activity, which means the active log channel is probably not `storage/logs/laravel.log` (likely a `daily` channel writing a dated filename) — so the zero-match grep proves nothing about whether a send was attempted, and should be disclosed as a mismatch rather than read as evidence. Adopted in full: withdrew the "nothing queued" conclusion, narrowed the named-excluded cause to config-cache-stale only, left Horizon-staleness and SendPulse-side silent failure as the two undetermined candidates, trimmed the ADR-018 amendment back to the decision only (diagnosis moved here and to STATUS.md), and added the log-channel mismatch to this cycle's §6 disclosure. What changed: the ADR-018 edit was rewritten before this entry was logged (cycle 11 r2)
+
+[2026-10-01 16:49] DECISION — CC, following the advisor's read above. Config-cache-stale is ruled out by direct evidence: `config:show mail.default` returns `smtp` on a fresh CLI process, not `log`, so the Forge env edit has taken effect for newly-booted processes. The cause is otherwise undetermined between two candidates R168 did not let CC distinguish with its fixed command list: (a) Horizon's worker process was started before the Forge env edit and, unlike `VerifyEmailNotification`'s `from`/`reply_to` (deliberately read fresh per send via `App\Support\Mail\UsesSettingsSender`, CP1 box 8), the mailer *transport* config (`mail.mailers.smtp.*`) is resolved once per worker boot — a stale worker would still be running against the old mailer config though a fresh `config:show` reads the new one, since they are separate process lifecycles; (b) the job ran and SendPulse accepted the SMTP handshake (which logs nothing on success and leaves no failed job), then dropped the message server-side (e.g. `support@trustutor.com` not yet a verified sender in SendPulse) — zero trace in `queue:failed` and `laravel.log` is exactly what both a never-attempted send and a silently-dropped-after-acceptance send look like from this command list alone. `mail.mailers.smtp.scheme=null` with port 587 is correct (opportunistic STARTTLS), not a misconfiguration, so this is not flagged to the owner as a thing to fix. Mismatch disclosed for §6: r1's STATUS.md (2026-10-01 15:44) recorded the *same file*, `storage/logs/laravel.log`, as entirely empty after ~10 days of Horizon and a per-minute scheduler running — strong circumstantial evidence the active log channel on rehearsal is not plain `laravel.log` (most likely a `daily` channel writing a dated filename), which would make every "zero matching lines" reading in this entry and the previous one unreliable; `config:show logging.default` would resolve this (no secret) but is outside R168's fixed list for this revision and was not run (cycle 11 r2)
+
+[2026-10-01 16:50] HANDOFF — Cycle 11 r2 halts here per PLAN step 3's mail-report branch ("apply R168 first and HANDOFF with its one owner action, then continue here on the next update"). R168's fixed command list ruled out config-cache-stale only; it cannot distinguish a stale Horizon worker from a SendPulse-side silent drop (both leave zero trace in `queue:failed` and the log tail read). No server state was changed — R168's own instruction ("it does not change the server") was followed throughout; this entry and the VERIFICATION/ADVISOR/DECISION entries above are the full record. STATUS.md being rewritten now as the closing record, carrying Owner action 1 verbatim: Forge Horizon restart on `trustutor-rehearsal` (the one R168-named cause the shell evidence does not exclude, and the cheapest to try), then trigger a fresh registration/verification send and reply `update -- mail arrived` or `update -- mail still not arriving`. Owner actions 2 (Daily webhook proof lessons) and 3/4/5 (UI reviews, D-04, production authorisation) carry unchanged from r1's STATUS.md §7 (cycle 11 r2)
