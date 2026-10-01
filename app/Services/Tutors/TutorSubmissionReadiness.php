@@ -17,7 +17,7 @@ use App\Models\User;
 class TutorSubmissionReadiness
 {
     /**
-     * @return array<int, string>
+     * @return list<string>
      */
     public function missing(User $user, TutorProfile $profile): array
     {
@@ -31,10 +31,8 @@ class TutorSubmissionReadiness
             $missing[] = 'your country';
         }
 
-        if ($user->timezone === null) {
-            $missing[] = 'your timezone';
-        }
-
+        // `users.timezone` is never null (non-nullable column, defaults to 'Asia/Dubai'), so it
+        // cannot be "missing" — no check here, unlike the other submission-minimum fields.
         if (! $profile->hasCvOrLinkedin()) {
             $missing[] = 'a CV or LinkedIn profile';
         }

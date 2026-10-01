@@ -189,7 +189,7 @@ class TutorOnboardingController extends Controller
         // left is that the profile must still be editable.
         abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409);
 
-        $documentType = DocumentType::query()->active()->findOrFail($request->validated('document_type_id'));
+        $documentType = DocumentType::query()->active()->where('id', $request->validated('document_type_id'))->firstOrFail();
 
         /** @var UploadedFile $file */
         $file = $request->file('file');
@@ -423,7 +423,9 @@ class TutorOnboardingController extends Controller
             return ['name' => 'submitted'];
         }
 
-        if ($profile->country === null || $user->timezone === null) {
+        // `users.timezone` is never null (non-nullable column, defaults to 'Asia/Dubai'), so only
+        // `country` can actually gate this step.
+        if ($profile->country === null) {
             return ['name' => 'personal'];
         }
 
@@ -479,5 +481,4 @@ class TutorOnboardingController extends Controller
     {
         return app(TutorRateBands::class)->bandFor($profile);
     }
-
 }
