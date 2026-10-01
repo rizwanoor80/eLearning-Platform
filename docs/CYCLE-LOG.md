@@ -5905,3 +5905,49 @@ STATUS.md being rewritten now as the closing handoff, with the single
 Owner action verbatim from PLAN step 2: re-run the two PowerShell
 webhook-registration lines and reply `update` with whether Daily
 printed a `uuid` or a 401.
+
+[2026-10-01 15:43] ADVICE (owner)
+Chat message "update -- uuid" -- answers PLAN step 2's Owner action 1
+exactly: the owner re-ran the two PowerShell webhook-registration
+lines against `trustutor-rehearsal` and Daily printed a `uuid`, not
+a 401. Per PLAN step 3, this selects the END branch, not the R166(c)
+fix-loop branch.
+
+[2026-10-01 15:43] VERIFICATION
+Step 3: `tail -n 200 storage/logs/laravel.log` on `trustutor-rehearsal`
+(current deploy `c4c6d75`, unchanged since the Step 2 deploy -- no
+redeploy was needed for the owner's re-run) via the allow-listed SSH
+shape. Output: empty -- zero lines, zero `video.webhook.rejected`
+entries. Consistent with the owner's report: Daily's real
+verification request was accepted outright under R166(a)'s
+millisecond-timestamp tolerance, so `verifyWebhook()` never took a
+rejection branch and the diagnostic logger in R166(b) never fired.
+No further diagnosis needed -- R166(c) (the bounded fix for "a
+further difference after the owner's re-run") does not apply.
+
+[2026-10-01 15:44] END
+Cycle 11 r1, programme "daily-webhook" (R165-R167), complete. All
+three PLAN.md steps done: Step 1 (`cp/11a-daily-webhook` merged as
+`6adc4e0`, PR #40, DEVIATION/ADVISOR/REVIEW/DECISION logged,
+post-merge VERIFICATION green), Step 2 (`main` at `c4c6d75` deployed
+to `trustutor-rehearsal` under R111, full R91 verification green,
+HANDOFF logged), Step 3 (owner re-ran Daily's webhook registration,
+got a `uuid`; rehearsal's `laravel.log` read and quoted above --
+empty, confirming a clean accept with no rejection ever logged).
+Owner action 3 (Daily account, keys, webhook registration) is now
+closed outright. Advisor summary for this cycle: 2 raw `advisor()`
+calls, both counting toward 11a's stated minimum of 2 -- 01:15
+(design-before-first-edit) and 02:51 (before-merge, run after a
+disclosed sequencing slip logged as a DEVIATION at the same
+timestamp -- see that entry for the gap between "before the PR" as
+stated in the plan and what actually happened). Suite never shrank
+this cycle (2043 -> 2052 tests, 10276 -> 10311 assertions, matching
+the 9 new tests from 11a's implementation plus 2 rewritten
+assertions from the fix loop). No frozen file touched
+(`LedgerService.php`, `LessonStateMachine.php`, `app/Services/
+Payments/*` all confirmed untouched by every diff this cycle).
+Resume cap: 0 of 8 (R167) -- not consumed, since both halts this
+cycle (Step 2's mandatory HANDOFF, this END) are the kinds of stops
+that don't count against it. Nothing further authorised this cycle;
+STATUS.md being rewritten now as the closing record, carrying Owner
+actions 4, 8, 9, 12 forward per R165/PLAN step 3's own instruction.
