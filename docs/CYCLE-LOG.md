@@ -6445,3 +6445,27 @@ R169 lines: `horizon:list` shows a supervisor with processes (`supervisor-1`, ru
 
 ### 2026-10-07 15:25 — END
 Cycle 12 r2 (programme "tutor-onboarding", 4 steps) is complete. 1 PLAN commit `8b38277` (r2 revision `3370497`); 2 `cp/12a-onboarding` merged `3f2dbdc`; 3 `cp/12b-email-polish` merged `3a175f9`; 4 rehearsal deployed at `421cb3f`, R91 and R169 checks green (above). Final suite on the 12b head: 2096/2096, 10529 assertions; `ledger:verify` OK on rehearsal. Reviews: PR #42 6 PASS / 0 FAIL; PR #43 PASS WITH NOTE, 2 Low fixed, fix loop 1 of 2. Resume cap 0 of 8 used. Advisor summary: consulted 5 times with verified answers (3 in 12a, 2 in 12b), plus 1 entry retracted (13:00, quote not reproducible); the model is named in each entry as configured, not measured. R177 (CI wait) and R178 (CC may start Herd's Postgres and Redis) arrived in r2 after the DB halt; neither was needed after the halt, as the owner had already restarted the services, so neither was exercised. Halt: yes, per the plan. Owner actions are in STATUS §7 (cycle 12 r2)
+
+### 2026-10-07 16:05 — START (cycle 12 r3)
+`update` received. `git fetch` showed `docs/PLAN.md` modified and uncommitted; no END for r3 in this log. Committed as `ab48d26` ("PLAN.md cycle 12 r3 [skip ci]") and pushed. r3 is a no-code follow-up: read the Daily webhook evidence, confirm TEST RABIA, log the owner's three outcomes, rewrite STATUS §7 with only the carried items, END again (cycle 12 r3)
+
+### 2026-10-07 16:08 — ADVICE (owner, via the planner's record in PLAN r3, `ab48d26`)
+Standing rule (owner, 2026-10-07): the owner replies a bare `update`; the planner records what he did in PLAN.md; CC reads it there. PLAN r3 reports three walkthroughs done on rehearsal: (1) Owner action 1 — the branded email looks right and the sender name is resolved; (2) Owner action 2 — TEST RABIA onboarded with only a LinkedIn URL, approved with subjects and rate filled by the admin, and she appears in search; (3) Owner action 3 — one fresh lesson booked and joined as the parent on Daily. These are the planner's record of the owner's report; CC did not observe any of the three (PLAN forbids CC a browser and real email). Not scope-widening; acted on as stated (cycle 12 r3)
+
+### 2026-10-07 16:15 — VERIFICATION (item 4: Daily webhook evidence, allow-listed read-only)
+```
+$ ssh … "php8.4 artisan db:show --counts"
+  video_webhook_events 0 · lessons 2 · payments 2 · tutor_profiles 9 · jobs 0 · failed_jobs 0
+$ ssh … "tail -n 200 storage/logs/laravel.log | grep -i 'webhook\|daily\|participant'"   → no output
+$ ssh … "ls -l storage/logs/"   → laravel.log 0 bytes (Oct 4 00:00); laravel.log.1.gz (Oct 2), .2.gz (Sep 26)
+$ ssh … "php8.4 artisan route:list --path=webhooks"   → POST webhooks/video/{code}  webhooks.video › Webhooks\VideoWebhookController
+$ curl -X POST -d '{}' https://rehearsal.trustutor.com/webhooks/video/daily      → 401
+$ curl -X POST -d '{}' https://rehearsal.trustutor.com/webhooks/video/nonesuch   → 404
+```
+Reading: the table is still empty, so no `participant.joined` row exists and PLAN item 4 and ADR-017's "to be confirmed" note stay open. The endpoint is live on rehearsal and the Daily row holds a `webhook_secret` (an unsigned POST gets 401, not 404: `VideoWebhookController.php:39-41` returns 404 when the row has no secret, `:61-62` 401 on a failed signature). The controller writes no log line on any rejection (`:39-63` return JSON only), so the empty log cannot distinguish "Daily never called" from "Daily called and was rejected as 401/stale". Only Daily's side can: its delivery log. The 401 test is an unsigned request I made myself; it is not evidence about Daily's calls. The rotated gzips are not readable by CC and the Oct 4 rotation means a log from the join day, if there was one, would sit in `laravel.log.1.gz`; the controller logs nothing either way, so this costs nothing (cycle 12 r3)
+
+### 2026-10-07 16:18 — NOTE (TEST RABIA row confirmation not verifiable by CC)
+PLAN r3 asks for a read-only confirmation that her row is `approved` with subjects and a rate. The allow-list has no row-level read: `db:show --counts` gives table counts only, and raw SQL and tinker are on the never-list. Indirect evidence only: `tutor_profiles` count is 9 (unchanged from the R91 read at 15:20; she was onboarded before that, so the count cannot show her approval). Disclosed as unverified by CC; the owner saw her in search (ADVICE 16:08), which is the stronger test of `bookable()` than a row read. If the planner wants a CC-readable proof, it needs a sanctioned read command (for example a `tutors:report`-style artisan command) authorised in a later plan (cycle 12 r3)
+
+### 2026-10-07 16:25 — END (cycle 12 r3)
+No code. Done: PLAN r3 committed `ab48d26`; owner's three outcomes logged as ADVICE; webhook table read (0 rows), so the "still empty" branch applies: the join produced no stored webhook event, PLAN item 4 and ADR-017's note stay open. Not done: the TEST RABIA row read (no allow-listed command; NOTE 16:18). Advisor: consulted 0 times (docs-only cycle, no auth/money/frozen-file/production judgment). Halt: yes, for the planner, with the Daily-side checks in STATUS §7 (cycle 12 r3)
