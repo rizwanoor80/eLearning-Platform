@@ -6418,3 +6418,30 @@ Owner reply `update`. Evidence before acting: `gh run list --branch main` → th
 
 ### 2026-10-07 15:11 — VERIFICATION (main CI on the 12b merge commit)
 `gh run list --branch main --limit 3 --json status,conclusion,headSha`: `3a175f9c07e1af6f7b9a9995573580e5d6fdf1ce` → `completed`, `success`; the two before it (`3f2dbdc`, `c8cad19`) also `success`. R111's condition (deploy only a green `main` commit) is met (cycle 12 r2)
+
+### 2026-10-07 15:15 — NOTE (rehearsal deploy under R111)
+Pre-deploy read-only: rehearsal at `2cd8cb1`, `config:show app.url` → `https://rehearsal.trustutor.com`, 0 pending migrations. Deployed by `git checkout rehearsal; git fetch; git merge --ff-only origin/main; git push origin rehearsal` → `2cd8cb1..421cb3f`, fast-forward. `421cb3f` is `main` after the green 12b merge commit `3a175f9` (the commits on top are docs only). Forge push-to-deploy landed in under 30 s of polling (bounded loop, 15 s interval): server `git log -1` read `421cb3f` on the second check. `main` checked back out locally (cycle 12 r2)
+
+### 2026-10-07 15:20 — VERIFICATION (R91 checks plus R169 Horizon lines, allow-listed read-only SSH)
+```
+$ php8.4 artisan about --only=environment   → Environment: rehearsal | Debug Mode: OFF | Laravel 13.32.0 | PHP 8.4.25
+  drivers: Broadcasting reverb | Cache database | Database pgsql | Mail smtp | Queue redis | Session database
+$ php8.4 artisan horizon:list
+| trustutor-rehearsal-V6qI | 1068635 | supervisor-1 | running |
+$ php8.4 artisan horizon:status   → Horizon is running.
+$ php8.4 artisan migrate:status | grep -ci pending   → 0
+  2026_10_06_100000_add_country_and_linkedin_to_tutor_profiles ... [7] Ran
+$ php8.4 artisan queue:failed   → No failed jobs found.
+$ php8.4 artisan ledger:verify   → Ledger OK: every lesson sums to zero.
+$ php8.4 artisan schedule:list   → 9 entries incl. recurring:generate (daily 05:00), recurring:charge (hourly), tutors:check-permits (daily 06:00), lessons:* each-minute jobs
+$ git log -1 --format='%H %s'   → 421cb3fe52231908d75b52c4cef6c9fca042cd10 Cycle 12 r2: log PLAN r2 acceptance and main CI green [skip ci]
+$ php8.4 artisan config:show app.url   → https://rehearsal.trustutor.com
+$ db:show --counts: jobs 0, failed_jobs 0, lessons 2, settings 41, tutor_profiles 9, users 17
+$ tail -n 200 storage/logs/laravel.log → no dated entries in the last 200 lines
+$ curl -s -o /dev/null -w '%{http_code} %{content_type} %{size_download}' …/brand/trustutor-wordmark-colour-600.png → 200 image/png 98096
+$ curl … https://rehearsal.trustutor.com/ → 200
+```
+R169 lines: `horizon:list` shows a supervisor with processes (`supervisor-1`, running, new master PID 1068635); the `jobs` table holds 0 rows and `failed_jobs` 0, so the queue is drained. Not verifiable by CC: a real email with the new layout (PLAN forbids sending real email), and the sender name in a delivered message; both are in the owner actions (cycle 12 r2)
+
+### 2026-10-07 15:25 — END
+Cycle 12 r2 (programme "tutor-onboarding", 4 steps) is complete. 1 PLAN commit `8b38277` (r2 revision `3370497`); 2 `cp/12a-onboarding` merged `3f2dbdc`; 3 `cp/12b-email-polish` merged `3a175f9`; 4 rehearsal deployed at `421cb3f`, R91 and R169 checks green (above). Final suite on the 12b head: 2096/2096, 10529 assertions; `ledger:verify` OK on rehearsal. Reviews: PR #42 6 PASS / 0 FAIL; PR #43 PASS WITH NOTE, 2 Low fixed, fix loop 1 of 2. Resume cap 0 of 8 used. Advisor summary: consulted 5 times with verified answers (3 in 12a, 2 in 12b), plus 1 entry retracted (13:00, quote not reproducible); the model is named in each entry as configured, not measured. R177 (CI wait) and R178 (CC may start Herd's Postgres and Redis) arrived in r2 after the DB halt; neither was needed after the halt, as the owner had already restarted the services, so neither was exercised. Halt: yes, per the plan. Owner actions are in STATUS §7 (cycle 12 r2)
