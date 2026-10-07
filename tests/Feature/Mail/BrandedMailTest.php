@@ -103,26 +103,35 @@ it('has no mailable view outside the branded layout', function () {
 
     expect($views)->not->toBeEmpty();
 
-    foreach ($views as $view) {
-        expect(file_get_contents($view->getRealPath()))
-            ->toContain("@extends('emails.layout')", $view->getRelativePathname());
-    }
+    $unbranded = $views
+        ->reject(fn ($view) => str_contains(file_get_contents($view->getRealPath()), "@extends('emails.layout')"))
+        ->map(fn ($view) => $view->getRelativePathname())
+        ->values()
+        ->all();
+
+    expect($unbranded)->toBe([]);
 });
 
 it('has every mailable take its sender from the settings, and every mail-channel notification use the brand', function () {
+    $offenders = [];
+
     foreach (File::allFiles(app_path('Mail')) as $file) {
-        expect(file_get_contents($file->getRealPath()))
-            ->toContain('UsesSettingsSender', $file->getRelativePathname())
-            ->toContain('settingsFromAddress()', $file->getRelativePathname());
+        $source = file_get_contents($file->getRealPath());
+
+        if (! str_contains($source, 'UsesSettingsSender') || ! str_contains($source, 'settingsFromAddress()')) {
+            $offenders[] = $file->getRelativePathname();
+        }
     }
 
     foreach (File::allFiles(app_path('Notifications')) as $file) {
         $source = file_get_contents($file->getRealPath());
 
-        if (str_contains($source, 'toMail(')) {
-            expect($source)->toContain('MailBrand::brandNotification(', $file->getRelativePathname());
+        if (str_contains($source, 'toMail(') && ! str_contains($source, 'MailBrand::brandNotification(')) {
+            $offenders[] = $file->getRelativePathname();
         }
     }
+
+    expect($offenders)->toBe([]);
 });
 
 it('does not use the published Laravel theme colours any more', function () {
