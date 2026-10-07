@@ -110,7 +110,7 @@ class ManageSettings extends Page implements HasSchemas
                             Textarea::make('legal_entity_address'),
                         ])->columns(2),
                         Tab::make('Mail')->schema([
-                            TextInput::make('from_name')->helperText('Falls back to the site name when empty.'),
+                            TextInput::make('from_name')->helperText('Shown as the sender of every email. Defaults to TrusTutor when empty.'),
                             TextInput::make('from_address')->email(),
                             TextInput::make('reply_to')->email(),
                             TextInput::make('support_address')->email(),

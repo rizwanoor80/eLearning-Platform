@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         {{ $skips->count() === 1 ? 'One lesson' : 'Some lessons' }} in the weekly slot for {{ $slot->learner->display_name }}
         with {{ $slot->tutorProfile->displayName() }} on {{ $slot->subject->name }} could not be scheduled.

@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $dispute->lesson->tutorProfile->user->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($dispute->lesson->tutorProfile->user->name) }}</p>
     <p>
         A dispute has been opened on your lesson with {{ $dispute->lesson->learner->display_name }}
         on {{ $dispute->lesson->subject->name }}, scheduled for

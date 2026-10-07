@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         Your weekly lesson for {{ $lesson->learner->display_name }} with {{ $lesson->tutorProfile->displayName() }}
         on {{ $lesson->subject->name }} is paid and confirmed for

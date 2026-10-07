@@ -2,6 +2,7 @@
 
 namespace App\Notifications\Auth;
 
+use App\Support\Mail\MailBrand;
 use App\Support\Mail\UsesSettingsSender;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Bus\Queueable;
@@ -20,7 +21,7 @@ class VerifyEmailNotification extends VerifyEmail implements ShouldQueue
     public function toMail($notifiable): MailMessage
     {
         $from = $this->settingsFromAddress();
-        $message = parent::toMail($notifiable)->from($from->address, $from->name);
+        $message = MailBrand::brandNotification(parent::toMail($notifiable), $notifiable)->from($from->address, $from->name);
 
         if ($replyTo = $this->settingsReplyToAddress()) {
             $message->replyTo($replyTo->address);

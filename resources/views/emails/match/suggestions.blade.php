@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $matchRequest->account->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($matchRequest->account->name) }}</p>
     <p>Thanks for your request. Here {{ count($cards) === 1 ? 'is a tutor' : 'are '.count($cards).' tutors' }} we think could be a good fit:</p>
     @foreach ($cards as $card)
         <p>

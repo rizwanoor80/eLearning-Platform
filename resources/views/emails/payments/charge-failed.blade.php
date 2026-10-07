@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         We could not charge your saved card for the weekly lesson for {{ $lesson->learner->display_name }}
         with {{ $lesson->tutorProfile->displayName() }} on {{ $lesson->subject->name }}, scheduled for

@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         You have a new message from {{ $senderName }}.
     </p>

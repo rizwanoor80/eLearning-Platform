@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         The weekly lesson slot for {{ $slot->learner->display_name }} with {{ $slot->tutorProfile->displayName() }}
         on {{ $slot->subject->name }} ({{ $slot->scheduleLabel() }}) has been paused.
