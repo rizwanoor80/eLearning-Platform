@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Tutor;
 
 use App\Actions\Tutor\CompleteTutorOnboarding;
 use App\Actions\Tutor\ResetPermitScanOnPermitChange;
-use App\Enums\TutorDocumentStatus;
+use App\Actions\Tutor\SaveTutorSubjects;
+use App\Actions\Tutor\SetTutorRate;
 use App\Enums\TutorProfileStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tutor\Onboarding\AgreementStepRequest;
 use App\Http\Requests\Tutor\Onboarding\AvailabilityStepRequest;
 use App\Http\Requests\Tutor\Onboarding\BankStepRequest;
 use App\Http\Requests\Tutor\Onboarding\DocumentStepRequest;
+use App\Http\Requests\Tutor\Onboarding\LinkedinStepRequest;
 use App\Http\Requests\Tutor\Onboarding\PermitStepRequest;
 use App\Http\Requests\Tutor\Onboarding\PersonalStepRequest;
 use App\Http\Requests\Tutor\Onboarding\ProfileStepRequest;
@@ -23,11 +25,10 @@ use App\Models\Subject;
 use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
-use App\Models\YearGroup;
 use App\Services\Tutors\TutorRateBands;
+use App\Services\Tutors\TutorSubmissionReadiness;
 use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
-use App\Support\YearGroups\YearGroupTiers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -41,15 +42,20 @@ use Throwable;
 class TutorOnboardingController extends Controller
 {
     /**
-     * The order steps unlock in. Used only to refuse a request for a step
-     * later than the wizard's own derived position (never to derive the
-     * step itself, which always comes from saved state).
+     * R171: only these three gate the wizard's derived position (name/country/timezone,
+     * CV-or-LinkedIn, the agreement) — submission needs nothing else. Permit, other documents,
+     * bank, subjects, rate, profile and availability are all optional at submission and reachable
+     * at any time once the profile is editable; `guardStepNotAhead()` never refuses them. Used
+     * only to refuse a request for a mandatory step later than the wizard's own derived position
+     * (never to derive the step itself, which always comes from saved state). `storeDocument()`
+     * (for the `cv` type) and `storeLinkedin()` are the one case that *is* listed here (`document`)
+     * but never call `guardStepNotAhead()`: both jointly satisfy the same gate, so either must be
+     * reachable regardless of the wizard's derived position, same as the other optional steps —
+     * only the `submitted` lock-out applies to them.
      *
      * @var array<int, string>
      */
-    private const STEP_ORDER = [
-        'personal', 'permit', 'document', 'bank', 'subjects', 'rate', 'profile', 'availability', 'agreement',
-    ];
+    private const MANDATORY_STEPS = ['personal', 'document', 'agreement'];
 
     public function show(Request $request): Response
     {
@@ -69,13 +75,22 @@ class TutorOnboardingController extends Controller
             'reviewNote' => in_array($profile->status, [TutorProfileStatus::ChangesRequested, TutorProfileStatus::Suspended], true)
                 ? $profile->review_note
                 : null,
+            // R171: everything but the three mandatory steps is reachable at any time once the
+            // profile is still editable — the picker UI already built for changes_requested
+            // extends to draft too (12a). Not gated on `step === 'complete'`: R170's UAE permit
+            // note and R173(b)'s "Skip for now" both need to be visible from the start, not only
+            // after every mandatory step is already done.
+            'canPickSteps' => in_array($profile->status, [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested], true),
+            'missingForSubmission' => app(TutorSubmissionReadiness::class)->missing($user, $profile),
             'personal' => [
+                'country' => $profile->country,
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,
             ],
             'profile' => [
                 'permit_number' => $profile->permit_number,
                 'permit_expires_at' => $profile->permit_expires_at?->toDateString(),
+                'linkedin_url' => $profile->linkedin_url,
                 'bank_name' => $profile->bank_name,
                 'bank_account_name' => $profile->bank_account_name,
                 'bank_iban_masked' => $profile->bankIbanMasked(),
@@ -121,7 +136,15 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'personal');
 
-        $user->update($request->validated());
+        $validated = $request->validated();
+
+        // `country` lives on the tutor profile (R170), not the user — phone and timezone stay on
+        // the user as before.
+        $user->update([
+            'phone' => $validated['phone'] ?? null,
+            'timezone' => $validated['timezone'],
+        ]);
+        $profile->update(['country' => strtoupper((string) $validated['country'])]);
 
         return redirect()->route('tutor.onboarding');
     }
@@ -160,9 +183,13 @@ class TutorOnboardingController extends Controller
         $user = $request->user();
         $profile = $this->profileFor($user);
 
-        $step = $this->currentStep($user, $profile);
-        $documentType = $step['documentType'] ?? null;
-        abort_unless($documentType !== null, 409);
+        // R171: every active document type is reachable at any time (not just the one
+        // `currentStep()` is currently waiting on), so the client says which type it means —
+        // validated against `active` types only (`DocumentStepRequest`); the only ordering rule
+        // left is that the profile must still be editable.
+        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409);
+
+        $documentType = DocumentType::query()->active()->where('id', $request->validated('document_type_id'))->firstOrFail();
 
         /** @var UploadedFile $file */
         $file = $request->file('file');
@@ -190,6 +217,18 @@ class TutorOnboardingController extends Controller
         return redirect()->route('tutor.onboarding');
     }
 
+    public function storeLinkedin(LinkedinStepRequest $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $profile = $this->profileFor($user);
+        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409);
+
+        $profile->update(['linkedin_url' => $request->validated('linkedin_url')]);
+
+        return redirect()->route('tutor.onboarding');
+    }
+
     public function storeBank(BankStepRequest $request): RedirectResponse
     {
         /** @var User $user */
@@ -202,7 +241,7 @@ class TutorOnboardingController extends Controller
         return redirect()->route('tutor.onboarding');
     }
 
-    public function storeSubjects(SubjectsStepRequest $request): RedirectResponse
+    public function storeSubjects(SubjectsStepRequest $request, SaveTutorSubjects $saveTutorSubjects): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
@@ -211,103 +250,22 @@ class TutorOnboardingController extends Controller
 
         /** @var array<int, array{curriculum_id: int, subject_id: int, level_min_id: int, level_max_id: int}> $subjectsInput */
         $subjectsInput = $request->validated('subjects');
-        $rows = collect($subjectsInput);
 
-        $curricula = Curriculum::query()->whereIn('id', $rows->pluck('curriculum_id')->unique())->get()->keyBy('id');
-        $groups = YearGroup::query()->whereIn('id', $rows->pluck('level_min_id')->merge($rows->pluck('level_max_id'))->unique())->get()->keyBy('id');
-
-        $seen = [];
-        $tiers = [];
-        foreach ($rows as $index => $row) {
-            /** @var Curriculum|null $curriculum */
-            $curriculum = $curricula->get($row['curriculum_id']);
-            abort_if($curriculum === null, 422);
-
-            $min = $groups->get($row['level_min_id']);
-            $max = $groups->get($row['level_max_id']);
-
-            // Both year groups must belong to this row's curriculum and run low to high.
-            if ($min?->curriculum_id !== $curriculum->id || $max?->curriculum_id !== $curriculum->id) {
-                throw ValidationException::withMessages([
-                    'subjects' => "Choose year groups that belong to {$curriculum->name}.",
-                ]);
-            }
-
-            if ($min->sort > $max->sort) {
-                throw ValidationException::withMessages([
-                    'subjects' => "The lowest year group must not come after the highest for {$curriculum->name}.",
-                ]);
-            }
-
-            // The tier is derived from the year groups, never typed (R33).
-            $tier = YearGroupTiers::derive($min, $max);
-            if ($tier === null || ! in_array($tier, $curriculum->code->tiers(), true)) {
-                throw ValidationException::withMessages([
-                    'subjects' => "The level range does not exist for {$curriculum->code->value}.",
-                ]);
-            }
-            $tiers[$index] = $tier;
-
-            $key = $row['curriculum_id'].':'.$row['subject_id'];
-            if (isset($seen[$key])) {
-                throw ValidationException::withMessages([
-                    'subjects' => 'Each subject may only be listed once per curriculum.',
-                ]);
-            }
-            $seen[$key] = true;
-        }
-
-        DB::transaction(function () use ($profile, $rows, $tiers): void {
-            $profile->tutorSubjects()->delete();
-
-            foreach ($rows as $index => $row) {
-                $profile->tutorSubjects()->create([
-                    'curriculum_id' => $row['curriculum_id'],
-                    'subject_id' => $row['subject_id'],
-                    'level_min_id' => $row['level_min_id'],
-                    'level_max_id' => $row['level_max_id'],
-                    'level_tier' => $tiers[$index],
-                ]);
-            }
-        });
-
-        $this->invalidateRateIfOutOfBand($profile);
+        $saveTutorSubjects($profile, $subjectsInput);
 
         return redirect()->route('tutor.onboarding');
     }
 
-    public function storeRate(RateStepRequest $request): RedirectResponse
+    public function storeRate(RateStepRequest $request, SetTutorRate $setTutorRate): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'rate');
 
-        $band = $this->rateBandFor($profile);
-        abort_if($band === null, 409);
-
-        if ($band['conflicting'] !== []) {
-            throw ValidationException::withMessages([
-                'hourly_rate' => sprintf(
-                    'No single rate satisfies every curriculum you teach at this level — %s have non-overlapping bands. Adjust your subjects or contact support.',
-                    implode(' and ', $band['conflicting']),
-                ),
-            ]);
-        }
-
         $rate = Money::fromDecimalString((string) $request->validated('hourly_rate'));
 
-        if ($rate->toFils() < $band['min'] || $rate->toFils() > $band['max']) {
-            throw ValidationException::withMessages([
-                'hourly_rate' => sprintf(
-                    'Your rate must be between %s and %s for the highest level you teach.',
-                    Money::fils($band['min'])->format(),
-                    Money::fils($band['max'])->format(),
-                ),
-            ]);
-        }
-
-        $profile->update(['hourly_rate' => $rate]);
+        $setTutorRate($profile, $rate);
 
         return redirect()->route('tutor.onboarding');
     }
@@ -398,17 +356,22 @@ class TutorOnboardingController extends Controller
 
         // Defence in depth (R27): completion re-checks the stored rate
         // against the *current* band rather than trusting that it was
-        // still valid when saved — invalidateRateIfOutOfBand() already
-        // clears a stale rate on every subjects change, so this should
+        // still valid when saved — SaveTutorSubjects::invalidateRateIfOutOfBand()
+        // already clears a stale rate on every subjects change, so this should
         // never actually fire, but a 409 here is cheap insurance against
-        // any other path that could leave hourly_rate stale.
-        $band = $this->rateBandFor($profile);
-        $rateFils = $profile->hourly_rate?->toFils();
-        abort_if(
-            $band === null || $band['conflicting'] !== [] || $rateFils === null
-                || $rateFils < $band['min'] || $rateFils > $band['max'],
-            409,
-        );
+        // any other path that could leave hourly_rate stale. R171 moved
+        // subjects/rate to the approval minimum, not the submission one, so
+        // a tutor with no rate yet (CV-or-LinkedIn-only) must still be able
+        // to submit — only a rate that *is* set gets re-validated here.
+        if ($profile->hourly_rate !== null) {
+            $band = $this->rateBandFor($profile);
+            $rateFils = $profile->hourly_rate->toFils();
+            abort_if(
+                $band === null || $band['conflicting'] !== []
+                    || $rateFils < $band['min'] || $rateFils > $band['max'],
+                409,
+            );
+        }
 
         $action($profile);
 
@@ -432,13 +395,16 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * The current step is derived server-side from what's actually saved —
-     * never from client input — so the wizard is resumable from a refresh or
-     * a new device. Each active document type is its own step (in `sort`
-     * order): adding one in Filament inserts a step, deactivating one
-     * removes it, with no code change (CP1 acceptance box 6).
+     * The current step is derived server-side from what's actually saved — never from client
+     * input — so the wizard is resumable from a refresh or a new device. R171 shrank what gates
+     * this derivation to the three steps submission actually requires (`MANDATORY_STEPS`):
+     * personal (country + timezone — not phone, dropped to optional per the advisor ruling),
+     * CV-or-LinkedIn, and the agreement. Everything else (permit, other documents, bank, subjects,
+     * rate, profile, availability) is optional at submission and reachable at any time, once
+     * `complete` is first reached, through the same picker UI already built for
+     * `changes_requested` (`canPickSteps` in `show()`).
      *
-     * @return array{name: string, documentType?: DocumentType}
+     * @return array{name: string, documentType?: DocumentType|null}
      */
     private function currentStep(User $user, TutorProfile $profile): array
     {
@@ -457,52 +423,20 @@ class TutorOnboardingController extends Controller
             return ['name' => 'submitted'];
         }
 
-        if ($user->phone === null) {
+        // `users.timezone` is never null (non-nullable column, defaults to 'Asia/Dubai'), so only
+        // `country` can actually gate this step.
+        if ($profile->country === null) {
             return ['name' => 'personal'];
         }
 
-        if ($profile->permit_number === null || $profile->permit_expires_at === null) {
-            return ['name' => 'permit'];
-        }
+        // A rejected CV does not count (R28, same convention as every other document type): it
+        // returns a draft or changes_requested tutor to this step, where storeDocument()
+        // soft-deletes the rejected row and creates a fresh pending one — unless a LinkedIn URL
+        // already satisfies the requirement on its own.
+        if (! $profile->hasCvOrLinkedin()) {
+            $cvType = DocumentType::query()->active()->where('code', DocumentType::CV_CODE)->first();
 
-        // A rejected document does not count as uploaded (R28): it returns a
-        // changes_requested tutor to that type's step, where storeDocument()
-        // soft-deletes the rejected row and creates a fresh pending one.
-        $uploadedTypeIds = $profile->tutorDocuments()
-            ->where('status', '!=', TutorDocumentStatus::Rejected)
-            ->pluck('document_type_id');
-
-        $nextType = DocumentType::query()->active()->orderBy('sort')
-            ->whereNotIn('id', $uploadedTypeIds)
-            ->first();
-
-        if ($nextType !== null) {
-            return ['name' => 'document', 'documentType' => $nextType];
-        }
-
-        if ($profile->bank_name === null || $profile->bank_account_name === null || $profile->bank_iban === null) {
-            return ['name' => 'bank'];
-        }
-
-        // Every subject row needs both ends of its year-group range. A row left
-        // unmapped by the R33 data migration (its old free text matched no year
-        // group) sends a draft or changes_requested tutor back here to choose.
-        if ($profile->tutorSubjects()->doesntExist() || $profile->tutorSubjects()->where(
-            fn ($row) => $row->whereNull('level_min_id')->orWhereNull('level_max_id'),
-        )->exists()) {
-            return ['name' => 'subjects'];
-        }
-
-        if ($profile->hourly_rate === null) {
-            return ['name' => 'rate'];
-        }
-
-        if ($profile->headline === null || $profile->bio === null) {
-            return ['name' => 'profile'];
-        }
-
-        if ($profile->availabilityRules()->doesntExist()) {
-            return ['name' => 'availability'];
+            return ['name' => 'document', 'documentType' => $cvType];
         }
 
         if ($profile->agreement_accepted_at === null) {
@@ -513,11 +447,12 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * Refuses a step handler unless the step it's for is at or before the
-     * wizard's own derived position, so a request can't skip ahead. Once the
-     * profile has left `draft` (submitted for review), every step is
-     * refused outright — re-entry via `changes_requested` is 1c's scope.
-     * Closes cycle 01 review note #8.
+     * Refuses a mandatory-step handler unless the step it's for is at or before the wizard's own
+     * derived position, so a request can't skip ahead of `personal` -> `document` -> `agreement`.
+     * Every other step name is optional (R171) and always allowed while the profile is still
+     * editable — only the `submitted` lock-out applies to them. Once the profile has left `draft`
+     * (submitted for review), every step is refused outright — re-entry via `changes_requested` is
+     * 1c's scope. Closes cycle 01 review note #8.
      */
     private function guardStepNotAhead(User $user, TutorProfile $profile, string $step): void
     {
@@ -525,8 +460,12 @@ class TutorOnboardingController extends Controller
 
         abort_if($current === 'submitted', 409);
 
-        $currentIndex = array_search($current, self::STEP_ORDER, true);
-        $stepIndex = array_search($step, self::STEP_ORDER, true);
+        if (! in_array($step, self::MANDATORY_STEPS, true)) {
+            return;
+        }
+
+        $currentIndex = array_search($current, self::MANDATORY_STEPS, true);
+        $stepIndex = array_search($step, self::MANDATORY_STEPS, true);
 
         if ($currentIndex === false || $stepIndex === false) {
             return;
@@ -541,26 +480,5 @@ class TutorOnboardingController extends Controller
     private function rateBandFor(TutorProfile $profile): ?array
     {
         return app(TutorRateBands::class)->bandFor($profile);
-    }
-
-    /**
-     * R27: a subjects change can move the tutor's highest tier or
-     * curriculum set, so a previously valid `hourly_rate` may no longer
-     * fit. Rather than leaving a stale rate in place — which let a tutor
-     * reach `complete` with a rate outside their real band — clear it so
-     * `currentStep()` sends them back through `rate` with the correct band.
-     */
-    private function invalidateRateIfOutOfBand(TutorProfile $profile): void
-    {
-        if ($profile->hourly_rate === null) {
-            return;
-        }
-
-        $band = $this->rateBandFor($profile);
-        $rateFils = $profile->hourly_rate->toFils();
-
-        if ($band === null || $band['conflicting'] !== [] || $rateFils < $band['min'] || $rateFils > $band['max']) {
-            $profile->update(['hourly_rate' => null]);
-        }
     }
 }

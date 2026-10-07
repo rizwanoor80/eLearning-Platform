@@ -111,8 +111,10 @@ class AdminDashboardMetrics
      * 30, exclusive of today). Mirrors `CheckTutorPermits`'s own bucketing exactly:
      * `$daysRemaining <= 0` (expiring today or already past) is its separate `permit_expired`
      * bucket, not a "warning" — a permit expiring today is already unbookable
-     * (`TutorProfile::bookable()`/`permitIsValid()` both use a strict `>` on today, invariant #5),
-     * so this dashboard count stays consistent with what search already hides.
+     * (`TutorProfile::bookable()`/`permitAllowsBooking()` both use a strict `>` on today, invariant
+     * #5), so this dashboard count stays consistent with what search already hides. This method's
+     * own `whereNotNull('permit_expires_at')` is unaffected by R170: a tutor with no permit at all
+     * has nothing to expire and was never meant to appear in this widget.
      *
      * CYCLE-LOG 2026-09-29 11:11 ADVISOR: this docblock previously (in-session, never committed —
      * `app/Services/Reporting/` was untracked at the time) claimed today (day 0) was included in

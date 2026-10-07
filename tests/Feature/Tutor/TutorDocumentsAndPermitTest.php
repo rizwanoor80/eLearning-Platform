@@ -80,7 +80,7 @@ it('does not fail when a replaced file is already gone from the disk (R36 d)', f
 it('removes an uploaded file that no row points to when saving the document row fails (R36 d)', function () {
     Storage::fake('local');
     DocumentType::query()->delete();
-    DocumentType::factory()->create(['required' => true, 'active' => true]);
+    $type = DocumentType::factory()->create(['required' => true, 'active' => true]);
     $tutor = User::factory()->tutor()->create();
     $this->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
         'permit_number' => 'PMT-1',
@@ -89,8 +89,10 @@ it('removes an uploaded file that no row points to when saving the document row 
     TutorDocument::creating(fn () => throw new RuntimeException('disk full'));
 
     $this->withoutExceptionHandling();
-    expect(fn () => $this->post(route('tutor.onboarding.documents'), ['file' => UploadedFile::fake()->create('permit.pdf', 10, 'application/pdf')]))
-        ->toThrow(RuntimeException::class, 'disk full');
+    expect(fn () => $this->post(route('tutor.onboarding.documents'), [
+        'document_type_id' => $type->id,
+        'file' => UploadedFile::fake()->create('permit.pdf', 10, 'application/pdf'),
+    ]))->toThrow(RuntimeException::class, 'disk full');
 
     expect(Storage::disk('local')->allFiles())->toBe([])
         ->and(TutorDocument::query()->count())->toBe(0);

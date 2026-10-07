@@ -23,10 +23,16 @@ class TutorProfilesTable
                 TextColumn::make('permit_expires_at')
                     ->date()
                     ->sortable(),
-                IconColumn::make('documents_complete')
-                    ->label('Docs')
+                // R171: no document type is `required` any more (CV included — it's satisfied by
+                // either a CV upload or a LinkedIn URL), so `hasAllRequiredDocumentsAccepted()` is
+                // now vacuously true for every tutor and would show a meaningless green check here.
+                // `hasCvOrLinkedin()` is the one document-adjacent fact still worth a reviewer's
+                // attention, though by `pending_review` it is already guaranteed true (`complete()`
+                // requires it) — kept visible for at-a-glance confirmation during review.
+                IconColumn::make('has_cv_or_linkedin')
+                    ->label('CV/LinkedIn')
                     ->boolean()
-                    ->getStateUsing(fn ($record) => $record->hasAllRequiredDocumentsAccepted()),
+                    ->getStateUsing(fn ($record) => $record->hasCvOrLinkedin()),
                 TextColumn::make('submitted_at')
                     ->label('Submitted')
                     ->dateTime()

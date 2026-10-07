@@ -14,6 +14,7 @@ export type Auth = {
     user: User;
     home: string;
     can_message: boolean;
+    needs_onboarding: boolean;
 };
 
 export type Passkey = {

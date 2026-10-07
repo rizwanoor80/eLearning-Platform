@@ -24,12 +24,13 @@ it('saves the personal step and creates a draft profile', function () {
 
     $response = $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
         'phone' => '+971500000000',
+        'country' => 'AE',
         'timezone' => 'Asia/Dubai',
     ]);
 
     $response->assertRedirect(route('tutor.onboarding'));
     expect($tutor->fresh()->phone)->toBe('+971500000000')
-        ->and(TutorProfile::query()->where('user_id', $tutor->id)->exists())->toBeTrue();
+        ->and(TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail()->country)->toBe('AE');
 });
 
 it('rejects an invalid timezone on the personal step', function () {
@@ -37,18 +38,24 @@ it('rejects an invalid timezone on the personal step', function () {
 
     $response = $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
         'phone' => '+971500000000',
+        'country' => 'AE',
         'timezone' => 'Not/ATimezone',
     ]);
 
     $response->assertSessionHasErrors('timezone');
 });
 
-it('moves to the permit step once personal is done', function () {
+it('moves to the document step once personal is done (R171: document/CV is the next mandatory step)', function () {
     $tutor = User::factory()->tutor()->create();
+
+    $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
+    ]);
 
     $response = $this->actingAs($tutor)->get(route('tutor.onboarding'));
 
-    $response->assertInertia(fn ($page) => $page->component('tutor/Onboarding')->where('step', 'permit'));
+    $response->assertInertia(fn ($page) => $page->component('tutor/Onboarding')->where('step', 'document'));
 });
 
 it('rejects a permit expiry date that is not in the future', function () {
@@ -62,82 +69,88 @@ it('rejects a permit expiry date that is not in the future', function () {
     $response->assertSessionHasErrors('permit_expires_at');
 });
 
-it('moves to the first active document type once permit is saved', function () {
+it('moves to the document step with the CV document type once personal is done', function () {
     DocumentType::query()->delete();
-    $first = DocumentType::factory()->create(['sort' => 0]);
+    $cv = DocumentType::factory()->create(['code' => DocumentType::CV_CODE, 'sort' => 0]);
     DocumentType::factory()->create(['sort' => 1]);
 
     $tutor = User::factory()->tutor()->create();
-    $this->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
-        'permit_number' => 'PMT-1',
-        'permit_expires_at' => now()->addYear()->toDateString(),
+    $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
     ]);
 
     $response = $this->actingAs($tutor)->get(route('tutor.onboarding'));
 
     $response->assertInertia(fn ($page) => $page->component('tutor/Onboarding')
         ->where('step', 'document')
-        ->where('currentDocumentType.id', $first->id));
+        ->where('currentDocumentType.id', $cv->id));
 });
 
-it('skips inactive document types entirely', function () {
+it('offers no current document type when the CV type itself is inactive (R171: the document step is always the CV type, never a fallback)', function () {
     DocumentType::query()->delete();
-    DocumentType::factory()->inactive()->create(['sort' => 0]);
-    $active = DocumentType::factory()->create(['sort' => 1]);
+    DocumentType::factory()->inactive()->create(['code' => DocumentType::CV_CODE, 'sort' => 0]);
+    DocumentType::factory()->create(['sort' => 1]);
 
     $tutor = User::factory()->tutor()->create();
-    $this->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
-        'permit_number' => 'PMT-1',
-        'permit_expires_at' => now()->addYear()->toDateString(),
+    $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
     ]);
 
     $response = $this->actingAs($tutor)->get(route('tutor.onboarding'));
 
-    $response->assertInertia(fn ($page) => $page->where('currentDocumentType.id', $active->id));
+    $response->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType', null));
 });
 
-it('uploads a document and advances to the next document type', function () {
+it('uploads the CV document and satisfies the document mandatory step', function () {
     DocumentType::query()->delete();
-    $first = DocumentType::factory()->create(['sort' => 0]);
-    $second = DocumentType::factory()->create(['sort' => 1]);
+    $cv = DocumentType::factory()->create(['code' => DocumentType::CV_CODE, 'sort' => 0]);
 
     $tutor = User::factory()->tutor()->create();
-    $this->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
-        'permit_number' => 'PMT-1',
-        'permit_expires_at' => now()->addYear()->toDateString(),
+    $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
     ]);
 
     $response = $this->actingAs($tutor)->post(route('tutor.onboarding.documents'), [
-        'file' => UploadedFile::fake()->create('permit.pdf', 100, 'application/pdf'),
+        'document_type_id' => $cv->id,
+        'file' => UploadedFile::fake()->create('cv.pdf', 100, 'application/pdf'),
     ]);
 
     $response->assertRedirect(route('tutor.onboarding'));
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
-    expect(TutorDocument::query()->where('tutor_profile_id', $profile->id)->where('document_type_id', $first->id)->exists())->toBeTrue();
+    expect(TutorDocument::query()->where('tutor_profile_id', $profile->id)->where('document_type_id', $cv->id)->exists())->toBeTrue();
 
+    // CV-or-LinkedIn is now satisfied, so the mandatory position advances straight
+    // to 'agreement' (R171: document types other than CV never gate currentStep()).
     $next = $this->actingAs($tutor)->get(route('tutor.onboarding'));
-    $next->assertInertia(fn ($page) => $page->where('step', 'document')->where('currentDocumentType.id', $second->id));
+    $next->assertInertia(fn ($page) => $page->where('step', 'agreement'));
 });
 
-it('moves to the bank step once every active document type has an upload', function () {
+it('does not move the mandatory step position once a non-CV document type has an upload (R171: other documents are optional)', function () {
     // Sub-cycle 1b adds the bank/subjects/rate/profile/availability/agreement
     // steps after documents and before 'complete' — see TutorOnboardingBankSubjectsRateTest.php
     // and TutorOnboardingAvailabilityAgreementTest.php for the rest of the chain.
     DocumentType::query()->delete();
-    $only = DocumentType::factory()->create(['sort' => 0]);
+    DocumentType::factory()->create(['code' => DocumentType::CV_CODE, 'sort' => 0]);
+    $other = DocumentType::factory()->create(['sort' => 1]);
 
     $tutor = User::factory()->tutor()->create();
-    $this->actingAs($tutor)->post(route('tutor.onboarding.permit'), [
-        'permit_number' => 'PMT-1',
-        'permit_expires_at' => now()->addYear()->toDateString(),
+    $this->actingAs($tutor)->post(route('tutor.onboarding.personal'), [
+        'country' => 'AE',
+        'timezone' => 'Asia/Dubai',
     ]);
     $this->actingAs($tutor)->post(route('tutor.onboarding.documents'), [
+        'document_type_id' => $other->id,
         'file' => UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf'),
     ]);
 
     $response = $this->actingAs($tutor)->get(route('tutor.onboarding'));
 
-    $response->assertInertia(fn ($page) => $page->where('step', 'bank'));
+    // CV-or-LinkedIn is still missing — uploading an unrelated document type does not
+    // satisfy it, so the mandatory position stays at 'document', never 'bank'.
+    $response->assertInertia(fn ($page) => $page->where('step', 'document'));
 });
 
 it('lets a soft-deleted document be replaced without a unique-constraint collision', function () {
@@ -158,12 +171,15 @@ it('lets a soft-deleted document be replaced without a unique-constraint collisi
         ->and(TutorDocument::withTrashed()->where('tutor_profile_id', $profile->id)->where('document_type_id', $type->id)->count())->toBe(2);
 });
 
-it('refuses to accept a document upload before the permit step is done', function () {
+it('accepts a document upload before the permit (or even personal) step is done (R171: documents are reachable independent of the mandatory position)', function () {
+    DocumentType::query()->delete();
+    $cv = DocumentType::factory()->create(['code' => DocumentType::CV_CODE, 'sort' => 0]);
     $tutor = User::factory()->tutor()->create(['phone' => null]);
 
     $response = $this->actingAs($tutor)->post(route('tutor.onboarding.documents'), [
+        'document_type_id' => $cv->id,
         'file' => UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf'),
     ]);
 
-    $response->assertStatus(409);
+    $response->assertRedirect(route('tutor.onboarding'));
 });

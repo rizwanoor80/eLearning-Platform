@@ -77,6 +77,12 @@ it('never lists a tutor who is not bookable, even with real availability (R30 #1
     'permit expiring today' => [['permit_expires_at' => '2026-09-14']],
 ]);
 
+it('lists an approved tutor with no permit on file at all (R170: the permit is optional)', function () {
+    $tutor = srchTutor(['permit_number' => null, 'permit_expires_at' => null]);
+
+    expect(srchIds())->toBe([$tutor->id]);
+});
+
 it('lists a tutor with no availability nowhere', function () {
     $twin = srchTutor();
     srchTutor(withRule: false);
@@ -365,6 +371,12 @@ it('404s a profile that is not bookable or does not exist, with real availabilit
     'expired permit' => [['permit_expires_at' => '2026-09-01']],
     'expiring today' => [['permit_expires_at' => '2026-09-14']],
 ]);
+
+it('shows the profile of an approved tutor with no permit on file at all (R170: the permit is optional)', function () {
+    $tutor = srchTutor(['permit_number' => null, 'permit_expires_at' => null]);
+
+    test()->get(route('tutors.show', $tutor->id))->assertOk();
+});
 
 it('shows the profile with the rate, the derived trial price and next slots in the viewer timezone', function () {
     $tutor = srchTutor(['hourly_rate' => 12000]);

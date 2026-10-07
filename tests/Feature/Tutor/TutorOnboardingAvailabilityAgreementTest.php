@@ -220,21 +220,30 @@ it('refuses every step handler once the profile has been submitted for review', 
 
 /**
  * R28: a rejected document does not count as uploaded, so a changes_requested
- * tutor returns to that type's step and can replace it.
+ * tutor returns to that type's step and can replace it. The CV-or-LinkedIn
+ * requirement (R171) is satisfied by `linkedin_url` on every `agreementReadyTutor()`,
+ * so this clears it and routes CV-or-LinkedIn through an actual CV document instead —
+ * otherwise rejecting any document would never move `currentStep()` off 'complete'.
  */
 function changesRequestedTutorWithDocument(TutorDocumentStatus $documentStatus): array
 {
     $tutor = agreementReadyTutor();
+    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
+    $profile->update(['linkedin_url' => null]);
+
+    $type = DocumentType::factory()->create(['code' => DocumentType::CV_CODE, 'required' => true, 'active' => true, 'sort' => 0]);
+    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')
+        ->create(['status' => TutorDocumentStatus::Accepted]);
+
     test()->actingAs($tutor)->post(route('tutor.onboarding.agreement'), ['accepted' => true, 'version' => 1]);
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
-    $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
-    $type = DocumentType::factory()->create(['required' => true, 'active' => true, 'sort' => 0]);
-    $document = TutorDocument::factory()->for($profile, 'tutorProfile')->for($type, 'documentType')
-        ->create(['status' => $documentStatus]);
+    // `status` is deliberately outside TutorDocument::$fillable (reviews go through
+    // ReviewTutorDocument, never mass assignment) — forceFill it here instead.
+    $document->forceFill(['status' => $documentStatus])->save();
     $profile->forceFill(['status' => TutorProfileStatus::ChangesRequested, 'review_note' => 'Re-upload it.'])->save();
 
-    return [$tutor, $profile, $type, $document];
+    return [$tutor, $profile, $type, $document->fresh()];
 }
 
 it('returns a changes_requested tutor to the document step when their document was rejected', function () {
@@ -258,6 +267,7 @@ it('replaces a rejected document, then resubmits and is approved only once the r
     $admin = User::factory()->admin()->create();
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.documents'), [
+        'document_type_id' => $type->id,
         'file' => UploadedFile::fake()->create('permit-clear.pdf', 100, 'application/pdf'),
     ])->assertRedirect(route('tutor.onboarding'));
 

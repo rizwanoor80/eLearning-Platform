@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { Bell, BookOpen, FolderGit2, LayoutGrid, MessageSquare } from '@lucide/vue';
+import { Bell, BookOpen, ClipboardCheck, FolderGit2, LayoutGrid, MessageSquare } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -27,12 +27,18 @@ const home = computed(() => page.props.auth.home);
 const messagingOn = computed(() => page.props.auth.can_message);
 const { messages: unreadMessages, notifications: unreadNotifications } = useUnreadCounts();
 
+// R173(a): tutors with an incomplete profile (no profile row yet, draft, or changes_requested —
+// see HandleInertiaRequests.php) get a standing nav entry back to the wizard; it disappears once
+// the profile has moved past those statuses.
+const needsOnboarding = computed(() => page.props.auth.needs_onboarding);
+
 const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'Dashboard',
         href: home.value,
         icon: LayoutGrid,
     },
+    ...(needsOnboarding.value ? [{ title: 'Complete your profile', href: '/tutor/onboarding', icon: ClipboardCheck }] : []),
     ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
     // CP7 8e (R139): the notification centre bell, always shown (not gated on `can_message`).
     { title: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications.value },

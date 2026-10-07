@@ -729,6 +729,21 @@ it('refuses to book a tutor that is not bookable', function () {
     ]))->toThrow(BookingException::class);
 });
 
+it('books a tutor with no permit on file at all (R170: the permit is optional)', function () {
+    ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup(['permit_number' => null, 'permit_expires_at' => null]);
+    ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
+
+    $book = app(BookLesson::class);
+
+    $lesson = $book($parent, $learner, $tutor, [
+        'curriculum_id' => $curriculumId,
+        'subject_id' => $subjectId,
+        'starts_at' => CarbonImmutable::parse('2026-09-15 09:00:00', 'UTC'),
+    ]);
+
+    expect($lesson)->toBeInstanceOf(Lesson::class);
+});
+
 it('refuses to book a subject the tutor does not teach', function () {
     ['tutor' => $tutor, 'curriculum_id' => $curriculumId] = bookableTutorSetup();
     $otherSubject = Subject::factory()->create();

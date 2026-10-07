@@ -17,12 +17,17 @@ class PersonalStepRequest extends FormRequest
     }
 
     /**
+     * `phone` dropped to optional (R170 advisor ruling): submission requires only name, country,
+     * timezone, CV-or-LinkedIn and agreement — phone is not in that list. `country` is new
+     * (R170): a plain ISO alpha-2 code, not validated against an exhaustive country list.
+     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'phone' => ['required', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'country' => ['required', 'string', 'regex:/^[A-Za-z]{2}$/'],
             'timezone' => ['required', 'string', 'timezone:all'],
         ];
     }

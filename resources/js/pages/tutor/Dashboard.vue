@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
+import { ClipboardCheck } from '@lucide/vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { dashboard as tutorDashboard } from '@/routes/tutor';
+
+type OnboardingBanner = {
+    visible: boolean;
+    missing: string[];
+};
 
 type ScheduledLesson = {
     id: number;
@@ -36,6 +43,7 @@ const props = defineProps<{
     today: ScheduledLesson[];
     upcoming: ScheduledLesson[];
     slots: WeeklySlot[];
+    onboarding: OnboardingBanner;
 }>();
 
 defineOptions({
@@ -54,6 +62,17 @@ defineOptions({
     <Head title="Dashboard" />
 
     <div class="flex flex-col gap-6 p-4">
+        <Alert v-if="props.onboarding.visible" data-test="onboarding-banner">
+            <ClipboardCheck class="size-4" />
+            <AlertTitle>Finish setting up your tutor profile</AlertTitle>
+            <AlertDescription>
+                <p v-if="props.onboarding.missing.length > 0" class="text-sm">
+                    Still needed: {{ props.onboarding.missing.join(', ') }}.
+                </p>
+                <Link href="/tutor/onboarding" class="text-sm underline underline-offset-4">Continue onboarding</Link>
+            </AlertDescription>
+        </Alert>
+
         <div v-if="props.reportsDue.length > 0" data-test="reports-due">
             <h1 class="mb-3 text-xl font-semibold">Reports due</h1>
             <ul class="divide-y rounded-xl border">
