@@ -6403,3 +6403,12 @@ Model: not reported by the tool; configured advisor per PROJECT_BRIEF is Fable 5
 
 ### 2026-10-07 14:30 — NOTE (rule wording tension, for the planner)
 CLAUDE.md "Owner loop" rule 6 says Low doc-only findings are fixed in-cycle and "anything in code/config/routes/migrations/tests stops and returns to the owner"; R175 says fix loop cap 2 with only a High halting (R109). Both Low findings above were code. I proceeded under R175, because the plan's merge rule governs the cycle, and disclose it in STATUS §6 so the planner can reconcile the wording. Not treated as a blocker (cycle 12 r1)
+
+### 2026-10-07 14:50 — ADVICE
+Owner reply `update`. Evidence before acting: `mcp__ccd_pr get_status` for PR #43 → 1 check passing, 0 failing, 0 pending, `mergeStateStatus` CLEAN; remote branch tip `437977d23ab6de503cf6805330bc00caa766b0a2` equals the reviewed and tested head; `docs/PLAN.md` unchanged (cycle 12 r1)
+
+### 2026-10-07 14:52 — VERIFICATION (merge of 12b)
+R175 merge rule met: branch from `main`, PR #43, fresh-subagent review PASS WITH NOTE (CYCLE-LOG 14:15), fix loop 1 of 2, CI green on the head. Merged under R175/R147 with a merge commit: `gh pr merge 43 --merge --match-head-commit 437977d23ab6de503cf6805330bc00caa766b0a2` → `3a175f9c07e1af6f7b9a9995573580e5d6fdf1ce` ("Merge pull request #43 from rizwanoor80/cp/12b-email-polish"). Local `main` fast-forwarded to it. `cp/12b-email-polish` not deleted (cycle 12 r1)
+
+### 2026-10-07 14:58 — VERIFICATION (post-merge smoke on `main` at `3a175f9`)
+`php artisan test tests/Feature/Mail` → 11/11, 37 assertions. The local dev database was one migration behind (`2026_10_06_100000_add_country_and_linkedin_to_tutor_profiles` pending, left over from the DB outage); applied it with `php artisan migrate --no-interaction` (local, forward-only, DONE in 43.52 ms) → 0 pending. `php artisan db:seed --class=DemoTutorSeeder --no-interaction` → exit 0, run twice (idempotent). `gh run list --branch main`: the CI run for `3a175f9` was `in_progress` at 14:58; deploy under R111 waits for it to be green on that commit, as in cycle 11 (19:02 VERIFICATION) (cycle 12 r1)
