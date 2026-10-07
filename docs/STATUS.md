@@ -1,54 +1,64 @@
-# STATUS — cycle 12 r3 — written 2026-10-07 16:28 (END: no code; item 4 still open, halting for the planner)
-Tests: not re-run (no code changed); last full suite 2096/2096, 10529 assertions on the 12b head `437977d`; `ledger:verify` OK on rehearsal at 15:20 · Advisor: 0 consultations this cycle (docs-only), 5 verified in r2 · Review: none (no code); r2 PR #42 6 PASS / 0 FAIL, PR #43 PASS WITH NOTE · Context: not measured by the tool this write · Resume cap 0 of 8 · Halted at END.
+# STATUS — cycle 13 r1 — written 2026-10-07 18:57 (END: 13a and 13b merged, rehearsal deployed at `2f50206`; halting for R181)
+Tests: 2181 passed / 10990 assertions on `main` at `2f50206`; `ledger:verify` OK on `main` and on rehearsal; `npm run build` exit 0; phpstan 0, pint clean, RTL green · Advisor: 4 consultations this cycle (13a 3, 13b 1), all answered, model named as "not reported by the tool" per R63 · Review: PR #44 merged under R182 after a fresh review; PR #45 11 verdicts, 1 FAIL (Medium) fixed in round 1 of 2 and re-checked PASS · Context: not measured by the tool this write · Resume cap 0 of 8 · Halted at END.
 
 ## §1 Git state
-`main` and `origin/main` at the r3 END docs commit (after `ab48d26`), working tree clean. `rehearsal` at `421cb3f` (unchanged, no deploy this cycle). No open PR. No production server exists.
+`main` and `origin/main` at the cycle-13 END docs commit (after `2f50206`), working tree clean. `rehearsal` at `2f50206` (fast-forwarded from `421cb3f`); the server head reads `2f50206`. No open PR. No production server exists.
 
 ## §2 Step map
-1. Commit PLAN r3 — done (`ab48d26`).
-2. Read the Daily webhook evidence — done: `video_webhook_events` 0 (CYCLE-LOG 16:15).
-3. Close item 4 / ADR-017 note — not done, by the plan's own rule: it needs at least one `participant.joined` row.
-4. Confirm TEST RABIA's row — not verifiable by CC (CYCLE-LOG 16:18).
-5. Log the three outcomes as ADVICE (owner) — done (16:08).
-6. Rewrite STATUS §7, END — done (16:25).
+1. Commit PLAN r1 — done (`bf4ee96`).
+2. 13a, R179 tutor-chosen booking lead time — done: PR #44 merged `0c21a93`, post-merge record `01e0108`.
+3. 13b, R180 webhook delivery visibility — done: PR #45 merged `2f50206` under R182/R147 with CI green on the head.
+4. Rehearsal deploy (R111), R91 checks with the R169 Horizon lines, `allow_immediate_booking` check, END — done (CYCLE-LOG 18:46, 18:50, 18:55).
 
 ## §3 What changed
-Docs only: PLAN r3, CYCLE-LOG entries, this STATUS. No code, no deploy, no server state change. Server commands run were allow-listed reads only (`db:show --counts`, `route:list --path=webhooks`, `ls`, `tail`), plus two unsigned `curl` POSTs to the public webhook URL, which are rejected before any storage (`VideoWebhookController.php:39-63`).
+- **13a (R179):** a tutor chooses the shortest notice they accept (`tutor_profiles.min_lead_hours`), from the admin's `lead_time_options`; unset falls back to `booking_min_lead_hours` (12). New admin settings group `booking` with `allow_immediate_booking` (default true outside production). Demo tutors set to lead 0 by migration. ADR-025, DATA_MODEL v1.9.
+- **13b (R180):** every request that reaches `POST webhooks/video/{code}` writes one metadata row to `video_webhook_deliveries` (provider, time, HTTP status, outcome, body length, and for received/duplicate/ignored only: event type, event id, key names). Never a body, header, signature or value. `php artisan video:webhooks {--since=24h} {--limit=50}` lists them; `video:prune-webhook-deliveries` deletes rows older than 30 days daily at 03:30. ADR-017 amended, DATA_MODEL v1.10.
+- **Deploy:** rehearsal fast-forwarded to `2f50206`; four new migrations (`2026_10_07_100000`, `100100`, `100200`, `110000`) ran; 0 pending.
+- Server commands were allow-listed reads only, plus the R111 deploy.
 
 ## §4 Decisions and by whom
-- Owner (via the planner's record in PLAN r3): the email looks right and the sender name resolved; TEST RABIA onboarded with only a LinkedIn URL, approved with subjects and rate by the admin, and she appears in search; one fresh lesson joined as the parent on Daily. Logged as ADVICE 16:08. CC did not observe any of these.
-- Planner (PLAN r3): the standing rule that the owner replies bare `update` and the planner records what he did in PLAN.md.
-- CC: none beyond reading the evidence as the plan instructs.
+- Planner (PLAN r1): R179, R180, R181, R182 (merge rule), the programme shape.
+- CC, logged as DECISION: lead-time fallback and rounding (ADR-025); the delivery row is written once at each exit of the controller with the final status, not literally before the events logic; an `outcome` column added beyond the plan's list; the review disposition and the merge of both PRs under R182/R147 (quoted in the log).
+- CC, logged as DEVIATION: the `booking` settings-group migration and the demo-tutor lead migration (neither was named in the plan); the Profile-page lead-time control for already-submitted tutors.
+- Advisor: pre-push consultation on 13a led to the settings-group migration test and the Profile-page fix.
 
 ## §5 Why stopping
-PLAN r3 says that if `video_webhook_events` is still empty, record that the join produced no webhook and halt with the Daily-side checks for the planner. It is empty (0 rows), so this is that halt. Only Daily's own delivery log can say whether Daily called and was rejected or never called.
+The plan ends here: R181 is an owner-run proof on Daily's side, and CC may not run it (no browser, no real identities). Offering a clear because this is a halt that needs the owner.
 
 ## §6 Mismatches
-- **The empty log tells us nothing about rejections.** The webhook controller returns JSON on a 401 or 404 and writes no log line (`app/Http/Controllers/Webhooks/VideoWebhookController.php:39-63`), so "no 401/stale lines in our log" cannot be read as "Daily never called". The r3 wording expects such lines; there are none to find in any case. A rejection log line would need a code change, which r3 does not authorise.
-- **Our side is healthy:** an unsigned POST to `/webhooks/video/daily` on rehearsal returns 401 (route live, Daily row has a `webhook_secret`); an unknown code returns 404.
-- **TEST RABIA's row cannot be read by CC.** The allow-list has counts only; raw SQL and tinker are never-list. `tutor_profiles` stays 9 (also 9 at 15:20), so the count cannot show her approval. The owner's observation that she appears in search is the stronger proof of `bookable()`. If the planner wants CC-readable proof, a read-only report command must be authorised.
-- **The 3 Oct joins and the fresh join both produced nothing stored.** Possible causes, in order of likelihood: the webhook is not registered, disabled or pointing at another URL in Daily; Daily is calling and the signature or timestamp check fails (we would answer 401); or the room event type the lesson used is not one `parseWebhook` accepts (we would answer 200 `ignored`, also storing nothing). The third cannot be told apart from the first two from our side.
-- **PRD §2.2 point 2 (~line 35)** still says a tutor needs "a valid permit" to appear in search; stale under R170. Planner to authorise the one-line fix.
-- **CLAUDE.md and HOW-WE-WORK are behind the plan** (R177, R178; and Owner loop rule 6 versus R175's fix loop). CLAUDE.md is not mine to edit.
-- Carried, non-blocking: the review follow-ups (plain-text alternative of the two notifications, `default.css` `text-align: left`, substring sweep tests, no plain-text mailable alternative); LinkedIn host-check `parse_url` disagreement; AY, AZ; the `config/app.php` allow-list; the untraceable "R91" defining text; a Horizon config change needs a daemon restart.
+- **DATA_MODEL version:** the plan assumed v1.8 at the start; it was v1.8, so 13a produced v1.9 and 13b v1.10.
+- **R181's booking time:** lead-0 slots step in whole hours, so the booking must target the next top-of-hour that falls inside the tutor's availability, not "now plus a few minutes".
+- **Reminders:** a lesson booked less than an hour ahead may send an immediate "1h" reminder mail.
+- **Profile and dashboard selects** save the effective value as the explicit choice.
+- **`allow_immediate_booking`:** `config:show` shows the config default (true, APP_ENV is `rehearsal`). A `settings` row can override it and CC cannot read rows (no raw SQL). If R181's booking is refused as too soon, check that setting in Admin first.
+- **`crontab -l`** prints "no crontab for forge" on rehearsal; the scheduler is a Forge scheduled job, proved by `/home/forge/.forge/scheduled-2138095.log` modified within the same minute.
+- **Log clock:** earlier cycle-12 entries show times up to 18:42, ahead of this machine's clock when this cycle's entries were written (18:09 to 18:40); the order in the file is the true order.
+- **ADVISOR entries** say "not reported by the tool": that is R63's fixed phrase, not a failure to consult.
+- **Same-day first-lesson generation gap** (13a review item 3): carried to the planner.
+- **Low code items from the 13a review**, carried to the owner: a deny-list env default for the flag (2a), the `resolve()` docblock (2b), a hard-coded "24 hours" (4), items 9c and 9d.
+- **Pre-existing, from the 13b review:** `DailyVideoProvider::reject()` logs the raw `X-Webhook-Timestamp` on the `no_key` and `bad_timestamp` paths (not a secret). Any Throwable in the webhook controller is recorded as 500.
+- **Unauthenticated writes:** the delivery row is written for every request that reaches the controller; the throttle is 300 a minute per IP and an unauthenticated row is a few dozen bytes, pruned at 30 days.
+- **PRD §2.2 point 2** permit text is stale (carried). **CLAUDE.md and HOW-WE-WORK** lag R177 and R178.
 
 ## §7 Next step / Owner actions
-**Owner action 1 (Recommended): ask the planner to take the item 4 evidence to Daily, then bring back what Daily shows.** The planner decides the next plan; CC has no Daily access. The checks, all on Daily's side, in the order that narrows fastest:
- (a) In the Daily dashboard (Developers → Webhooks): is a webhook registered for `https://rehearsal.trustutor.com/webhooks/video/daily`, is its state active, and which event types are subscribed (`participant.joined` and `participant.left` are the ones we store)?
- (b) The webhook's delivery log or `failedCount` for the day of the fresh join: any attempts, and the HTTP status we returned (401 means a signature or stale-timestamp rejection; 200 means we accepted and ignored it; no attempts means Daily never sent).
- (c) Whether the secret stored in Admin → Video providers → Daily equals the HMAC secret Daily shows for that webhook (compare the two in the UI yourself; do not paste either into chat or any file).
-Reason: our side is proven live and an empty table with no rejection logging cannot be told from "never sent". Reply `update` when done; the planner records the outcome in PLAN.md.
+**Owner action 1 (Recommended): re-run the Daily proof (R181) on rehearsal.** Book a lesson with a demo tutor (lead 0) for the next top-of-hour inside their availability, join it as the parent on Daily, and leave. The delivery table will then show whether Daily called us and what we answered. Reply `update` when done.
 
-**Owner action 2 (optional): if you want CC to confirm TEST RABIA's status and subjects itself, tell the planner to authorise a read-only report command** (it would be a code change, so a plan cycle). If you are satisfied that she appears in search, skip it. Reply `update` when done.
+**Owner action 2: allow CC to read the deliveries.**
+ 1. (Recommended) Add `php8.4 artisan video:webhooks --since=24h` to the rehearsal read-only allow-list in `CLAUDE.local.md`. Reason: it prints statuses and key names only, never a payload, so CC can read the R181 result itself.
+ 2. Leave the list as it is and run the command yourself over ssh, pasting only the output.
+Reply `update` when done.
+
+Then `/clear` this session and reply `update — <answer>`.
 
 Carried unchanged, at the owner's pace (PLAN items 8, 9, 12): UI-developer reviews (booking screen PR #22, 7g branding, messaging/reviews/Report button walkthrough). R174(c), the SendPulse "Unsubscribe" link, owner-only, no code. Owner-blocking, carried: D-04 with counsel (then CP5); authorising `trustutor-production`. Also carried: Postmark wiring (R120). Roadmap items from 2026-10-01 stay gated on consent text with counsel.
 
 ## §8 Programme board
-Programme "tutor-onboarding" (cycle 12 r2, R175) complete. Cycle 12 r3: follow-up, no programme steps.
+Programme "lead-time" (cycle 13 r1) complete.
 | # | Item | State |
 |---|------|-------|
-| 1 | PLAN r3 commit | done `ab48d26` |
-| 2 | Item 4 (Daily webhook proof) | open: `video_webhook_events` 0; halt for planner |
-| 3 | TEST RABIA row read | not verifiable by CC |
-| 4 | Owner outcomes logged | done (ADVICE 16:08) |
+| 1 | PLAN r1 commit | done `bf4ee96` |
+| 2 | 13a R179 lead time | merged `0c21a93` (PR #44) |
+| 3 | 13b R180 webhook visibility | merged `2f50206` (PR #45) |
+| 4 | Rehearsal deploy, R91, R169, END | done at `2f50206` |
+| R181 | Daily proof re-run | open, owner |
 Resume cap 0 of 8.

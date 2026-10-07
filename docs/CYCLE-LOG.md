@@ -6514,3 +6514,41 @@ Consulted before writing code. Model: not reported by the tool (R63's fixed phra
 
 ### 2026-10-07 18:40 — REVIEW (13b, PR #45, fresh opus subagent with no prior context; head `b20f6e6`, then fix round 1)
 Numbered verdicts. (1) FAIL (Medium, `VideoWebhookController.php:46,51-52`, `RecordWebhookDelivery.php:76-93`): every response, including unauthenticated 401/404/413, stored up to 50+50 sender-chosen key names (~7 KB a request) at 300 requests a minute per IP, so one address could fill the rehearsal disk within the 30-day retention. (2) PASS: no body, header, signature or secret reaches the row, the `video.webhook.ignored` line or the command output; the action never receives headers; `clean()` leaves pure ASCII; the sentinel test is meaningful. (3) PASS WITH NOTE (Low, outside this diff): `DailyVideoProvider::reject()` logs the raw `X-Webhook-Timestamp` value on the `no_key` and `bad_timestamp` paths before `ctype_digit` — pre-existing, not a secret; carried for the owner. (4) PASS: the delivery write cannot block or change the event or response (outside the event transaction, own savepoint, all Throwable reported; real PostgreSQL error test proves the savepoint; no double row). (5) PASS WITH NOTE (Low): any Throwable is recorded as 500 even if it would render otherwise; practically unreachable. (6) PASS WITH NOTE (Low, doc): "every request" and "savepoint" wording. (7) PASS: `video:webhooks` (`--since` regex, `--limit` clamp, UTC, no payload columns). (8) PASS WITH NOTE (Low): prune had no retention floor and used the 24 h overlap lock. (9) PASS: migration. (10) PASS WITH NOTE (Low): one test name weakly vacuous on the event-count assertion. (11) PASS: model and factory. First verdict: "RECOMMENDATION: do not merge as-is." **Fix round 1 of 2** (CC, in-PR, my own new code): shape stored only for received/duplicate/ignored; 401/404/413/500 keep provider, time, status, outcome, body length; new test 'keeps no sender-chosen strings from a request that was not authenticated'; prune `max(1, retention)`; schedule `withoutOverlapping(10)`; ADR-017 and DATA_MODEL wording corrected. Same reviewer re-checked the diff: (a) PASS WITH NOTE (Low doc: the route-limited `[a-z]{2,16}` URL segment is the one sender-chosen value left — wording fixed), (b) PASS (the new test fails against the pre-fix code). Final line: "RECOMMENDATION: merge". Suite after the fix: 2181 passed / 10990 assertions (2160 baseline + 21), phpstan 0, pint clean. Not changed: finding 3 (existing driver code, a log line and not a secret), finding 5 (unreachable). (cycle 13 r1)
+
+### 2026-10-07 18:44 — VERIFICATION (13b post-merge record, `main` at `2f50206`)
+On `main`: `php artisan test --parallel --compact` **2181 passed / 10990 assertions** (2160 baseline + 21); `php artisan ledger:verify --no-interaction` "Ledger OK: every lesson sums to zero."; `npm run build` exit 0; `gh run list --branch main` → `success` on `2f50206` (the squash of PR #45). Step 3 (13b) is done under the plan's merge rule (cycle 13 r1)
+
+### 2026-10-07 18:44 — DECISION (13b review disposition, CC under R182/R147)
+Merged PR #45 as squash `2f50206` once CI was green on the head, after the review. Named authorisation quoted: PLAN cycle 13 r1 R182 ("Merge rule") and R147. Review: 11 numbered verdicts, one FAIL (Medium, unauthenticated requests stored sender key names), fixed in fix round 1 of 2 and re-checked PASS by the same reviewer; final line "RECOMMENDATION: merge". Findings 3 and 5 not changed (Low, noted in the REVIEW entry). Code, config, migration and test findings stayed inside the PR; none needed the owner (cycle 13 r1)
+
+### 2026-10-07 18:46 — NOTE (rehearsal deploy under R111)
+Pre-deploy: `rehearsal` at `421cb3f`, `app.url` https://rehearsal.trustutor.com, 0 pending migrations. Deployed by `git checkout rehearsal; git merge --ff-only origin/main; git push origin rehearsal` → `421cb3f..2f50206` (fast-forward, no other change), then `git checkout main`. Poll of `git log -1` over the allow-listed ssh shape read `2f50206` on check 3 of a 15-second loop. R111 covers the deploy and its migrations; no per-command yes was needed (cycle 13 r1)
+
+### 2026-10-07 18:50 — VERIFICATION (R91 checks plus R169 Horizon lines, allow-listed read-only SSH, rehearsal at `2f50206`)
+```
+$ php8.4 artisan about --only=environment   → Environment: rehearsal | Debug Mode: OFF | Laravel 13.32.0 | PHP 8.4.25
+$ git log -1 --format=%h                    → 2f50206
+$ php8.4 artisan config:show app.url        → https://rehearsal.trustutor.com
+$ php8.4 artisan migrate:status | grep -c Pending   → 0
+  2026_10_07_100000_add_min_lead_hours_to_tutor_profiles ......... [8] Ran
+  2026_10_07_100100_add_booking_group_to_settings ................ [8] Ran
+  2026_10_07_100200_set_demo_tutors_to_book_right_away ........... [8] Ran
+  2026_10_07_110000_create_video_webhook_deliveries_table ........ [8] Ran
+$ php8.4 artisan config:show settings.defaults.allow_immediate_booking   → true
+$ php8.4 artisan horizon:status             → Horizon is running.
+$ php8.4 artisan horizon:list               → trustutor-rehearsal-V6qI | 1068635 | supervisor-1 | running
+$ php8.4 artisan queue:failed               → No failed jobs found.
+$ php8.4 artisan ledger:verify              → Ledger OK: every lesson sums to zero.
+$ php8.4 artisan schedule:list | grep prune → 30 3 * * *  php artisan video:prune-webhook-deliveries  Next Due: 12 hours from now
+$ db:show --counts: jobs 0, failed_jobs 0, ledger_entries 8, lessons 2, settings 41, tutor_profiles 9, users 17, video_webhook_deliveries 0, video_webhook_events 0
+$ tail -n 200 storage/logs/laravel.log      → 0 lines matching ERROR / exception / critical
+$ ls -l /home/forge/.forge/                 → scheduled-2138095.log modified 14:42 UTC (date -u 14:42:34 at the same moment): the scheduler ran in the last minute
+$ curl -s -o /dev/null -w '%{http_code}' https://rehearsal.trustutor.com/   → 200
+```
+`allow_immediate_booking` reads `true` through `config:show`, which shows the config default (`env('APP_ENV') !== 'production'`, APP_ENV is `rehearsal`). A `settings` row can override it, and CC cannot read a row (no raw SQL, no tinker); the 41 settings count is unchanged evidence only. If R181's booking is refused as too soon, that row is the first suspect. `crontab -l` printed "no crontab for forge": the scheduler is a Forge scheduled job, proved by the `.forge` log's mtime above, as the allow-list describes. R169: one supervisor running; `jobs` 0 and `failed_jobs` 0. `video_webhook_deliveries` exists and is empty, as expected before any call arrives. Not verifiable by CC: the Daily proof itself (R181, owner) (cycle 13 r1)
+
+### 2026-10-07 18:55 — END (cycle 13 r1)
+Cycle 13 r1 (programme "lead-time", 4 steps) is complete. 1 PLAN commit `bf4ee96`; 2 `cp/13a-lead-time` merged `0c21a93` (PR #44, R179); 3 `cp/13b-webhook-visibility` merged `2f50206` (PR #45, R180); 4 rehearsal deployed at `2f50206`, R91 and R169 checks green (above), `allow_immediate_booking` true by config. Final suite on `main`: 2181 passed / 10990 assertions; `ledger:verify` OK on `main` and on rehearsal. Reviews: PR #44 fresh opus review then merge under R182; PR #45 11 verdicts, 1 FAIL (Medium) fixed in fix round 1 of 2, re-checked PASS. Resume cap 0 of 8 used. Advisor summary: consulted 4 times with verified answers (3 in 13a, 1 in 13b); the responding model is named in each entry as "not reported by the tool" (R63's fixed phrase), the configured advisor being Fable 5.1, configured not measured. Halt: yes, per the plan. Owner actions are in STATUS §7 (R181 and the `video:webhooks` allow-list request) (cycle 13 r1)
+
+### 2026-10-07 18:56 — HANDOFF (cycle 13 r1)
+Session closing at END. Context size: not measured by the tool this write. Compactions this session: 1. STATUS.md carries what is done (steps 1-4), what is next (R181, then the planner reads `video:webhooks` output), and what was ruled out (running `video:webhooks` myself, which is not on the allow-list; any production action; touching the `allow_immediate_booking` setting row). PLAN.md and CYCLE-LOG.md are current (cycle 13 r1)
