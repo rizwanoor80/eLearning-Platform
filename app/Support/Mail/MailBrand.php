@@ -59,16 +59,22 @@ final class MailBrand
 
     /**
      * Gives a notification's MailMessage the TrusTutor greeting and sign-off instead of Laravel's Hello! and
-     * Regards, <app name>; the surrounding template is the vendored
-endor/mail theme.
+     * Regards, <app name>; the surrounding template is the vendored `vendor/mail` theme. The notification
+     * theme renders the greeting through Markdown, so the user-chosen name is Markdown-escaped there.
      */
     public static function brandNotification(MailMessage $message, object $notifiable): MailMessage
     {
         $name = data_get($notifiable, 'name');
 
         return $message
-            ->greeting(self::greeting(is_string($name) ? $name : null))
+            ->greeting(self::escapeMarkdown(self::greeting(is_string($name) ? $name : null)))
             ->salutation(new HtmlString('Regards,<br>'.e(self::senderName())));
+    }
+
+    /** Backslash-escapes the Markdown-significant punctuation (CommonMark treats an escaped ASCII punctuation mark as literal). */
+    private static function escapeMarkdown(string $text): string
+    {
+        return (string) preg_replace('/([\\\\`*_\[\]()<>#!~|])/', '\\\\$1', $text);
     }
 
     public static function footerText(): ?string

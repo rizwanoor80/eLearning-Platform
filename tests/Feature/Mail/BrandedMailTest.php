@@ -97,6 +97,16 @@ it('renders the password-reset email through the branded theme and keeps the res
         ->not->toContain('Hello!');
 });
 
+it('does not let a Markdown link in a display name become a link in the notification greeting', function () {
+    $user = User::factory()->create(['name' => '[Verify](https://evil.example/login) Khan']);
+
+    $html = (string) (new ResetPasswordNotification('reset-token-123'))->toMail($user)->render();
+
+    expect($html)
+        ->not->toContain('href="https://evil.example')
+        ->toContain('reset-token-123');
+});
+
 it('has no mailable view outside the branded layout', function () {
     $views = collect(File::allFiles(resource_path('views/emails')))
         ->reject(fn ($file) => $file->getRelativePathname() === 'layout.blade.php');
