@@ -6412,3 +6412,9 @@ R175 merge rule met: branch from `main`, PR #43, fresh-subagent review PASS WITH
 
 ### 2026-10-07 14:58 — VERIFICATION (post-merge smoke on `main` at `3a175f9`)
 `php artisan test tests/Feature/Mail` → 11/11, 37 assertions. The local dev database was one migration behind (`2026_10_06_100000_add_country_and_linkedin_to_tutor_profiles` pending, left over from the DB outage); applied it with `php artisan migrate --no-interaction` (local, forward-only, DONE in 43.52 ms) → 0 pending. `php artisan db:seed --class=DemoTutorSeeder --no-interaction` → exit 0, run twice (idempotent). `gh run list --branch main`: the CI run for `3a175f9` was `in_progress` at 14:58; deploy under R111 waits for it to be green on that commit, as in cycle 11 (19:02 VERIFICATION) (cycle 12 r1)
+
+### 2026-10-07 15:10 — ADVICE
+Owner reply `update`. Evidence before acting: `gh run list --branch main` → the CI run for `3a175f9` is `completed`/`success`; `docs/PLAN.md` carries an uncommitted revision, cycle 12 r2 (mid-run, R112): adds R177 (waiting for CI is not a halt; check every 2 minutes up to 20) and R178 (CC may start Herd's PostgreSQL and Redis when they refuse connections; never stop a service). No END exists for r2, so it is accepted. Committed as "PLAN.md cycle 12 r2" (`[skip ci]`, pushed) before any other work. R177 and R178 supersede the CLAUDE.md lines they name for this and later programmes, on the planner's authority; I follow them, and note that CLAUDE.md itself is not edited (cycle 12 r2)
+
+### 2026-10-07 15:11 — VERIFICATION (main CI on the 12b merge commit)
+`gh run list --branch main --limit 3 --json status,conclusion,headSha`: `3a175f9c07e1af6f7b9a9995573580e5d6fdf1ce` → `completed`, `success`; the two before it (`3f2dbdc`, `c8cad19`) also `success`. R111's condition (deploy only a green `main` commit) is met (cycle 12 r2)
