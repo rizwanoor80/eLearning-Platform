@@ -1,38 +1,58 @@
-# STATUS — cycle 11 r5 — written 2026-10-01 20:06
-Tests: 2053/2053 passed, 10317 assertions (unchanged — no code touched this run) · Advisor: consulted 0 times this run (read-only data check against an owner report, not a new architectural/production-affecting decision) · Review: n/a (no PR this run) · Context: not measured by the tool this write — **HALT: owner action needed — "4 done" does not match server evidence.** Cycle 11 itself is still closed (END, 19:47); this reopens only to flag that rehearsal's database and logs show no sign of the two test lessons the owner reported.
+# STATUS — cycle 12 r1 — written 2026-10-07 12:40 (step boundary: 12a merged, 12b next)
+Tests: 2085/2085 passed, 10492 assertions (full suite on the merged tree; `ledger:verify` OK; Pint, PHPStan 0 errors, vue-tsc, RTL check green) · Advisor: consulted 3 times in 12a, 0 so far in 12b (minimum 2 stands) · Review: PR #42 fresh-subagent review, 6 PASS / 0 FAIL, fix loop 0 of 2 · Context: not measured by the tool this write · Resume cap 0 of 8 · Running on, no halt yet.
 
 ## §1 Git state
-`main` at `1f6c528` (cycle 11 r5 closing docs commit, `[skip ci]`) plus this write's own commit (docs-only, `[skip ci]`, pushed immediately). `origin/main` fast-forwarded, confirmed current before work this run; no new uncommitted `docs/PLAN.md` revision found. `rehearsal` unchanged at `2cd8cb1`. No server state was changed this run — only allow-listed read-only commands were run. No open PR. No production server exists yet.
+`main` at `3f2dbdc` ("Merge pull request #42 from rizwanoor80/cp/12a-onboarding") plus this write's docs-only commit (`[skip ci]`, pushed immediately). PR #42 merged with a merge commit, CI green on the head `e6b923a` (run 37591707583). `cp/12a-onboarding` not deleted. `rehearsal` untouched, still at the cycle 11 deploy. No open PR. No production server exists.
 
 ## §2 Step map
-Cycle 11 remains **closed** (END, 19:47) — nothing here reopens a PLAN step. This is a check against `docs/PLAN.md`'s "Carried forward" item 4 (Daily webhook proof: two test lessons on rehearsal, one clean, one with the webhook secret broken then restored to force a retry), which the owner reported done. CC ran the allow-listed read-only evidence check it would run for any such report and found a mismatch (see §3).
+1. PLAN commit — done (`8b38277`).
+2. `cp/12a-onboarding` (R170, R171, R173) — **done**: merged under R175/R147. Done-means checked: the demo-tutor seeder still runs (local smoke, no error); search and booking tests cover approved-with-permit, approved-without-permit, approved-with-expired-permit and draft; `TEST RABIA` left as is.
+3. `cp/12b-email-polish` (R174 a, b) — **next**, not started.
+4. Deploy to rehearsal under R111, R91 checks with the R169 Horizon lines, END — not started.
 
-## §3 What changed this run
-- Logged **ADVICE (owner)**: `"update — 4 done"`.
-- Ran a confirming check over the allow-listed SSH shape and quoted it in full (CYCLE-LOG 20:06 **VERIFICATION**): `horizon:list`, `queue:monitor redis:default`, `queue:failed`, `db:show --counts`, a webhook-filtered `tail` of `laravel.log`.
-- **Horizon remains healthy**: it has cycled again since the last check (new PID `679814`, a normal deploy/restart) with `supervisor-1` still provisioned, queue empty, no failed jobs — no regression from cycle 11's fix.
-- **No evidence found of the two test lessons.** `lessons` is still 1 row, unchanged from every prior read this cycle — two new bookings would make it 3. `video_webhook_events` is still 0 rows. The log tail filtered for `video.webhook|daily` found nothing.
-- Ruled out "wrong log file" before reporting this as a mismatch: `config:show logging.default` → `stack` → `single`, confirming `storage/logs/laravel.log` is the genuine live default log, not a dated/rotated file CC was missing. `ls -la storage/logs` shows only that file (0 bytes, mtime Sep 27) and one `.gz` rotated Sep 26 — so the file being empty is a real "nothing logged since Sep 27," not a stale read.
-- Read `app/Http/Controllers/Webhooks/VideoWebhookController.php:74-94` to confirm the mechanism: a `video_webhook_events` row is inserted only when an actual webhook call from Daily is received and parses to a non-null attendance record (e.g., a participant joining the room); a rejected signature logs via R166(b) but still writes no row. **Booking a lesson alone does not touch this table or the log** — only a real Daily webhook call (participant joining, or Daily's retry after a forced signature failure) does.
+## §3 What changed
+- Permit optional for every tutor: `bookable()` reads `status = approved AND (permit_expires_at IS NULL OR permit_expires_at > today)`; `permitAllowsBooking()` is its PHP twin (R170, ADR-024).
+- Submission minimum is name, country, CV-or-LinkedIn, agreement; subjects, rate and availability are checked at approval by `TutorApprovalReadiness`; `LinkedinUrlRule` checks the parsed host; admin `editSubjects`/`editRate` on-behalf actions are audited (R171). Nav entry and dashboard "what's missing" banner (R173).
+- Docs per R176: DATA_MODEL v1.8, DECISIONS ADR-024, CHECKPOINTS CP1 note, PRD §2.1 and §9.
+- After the first CI run failed, Pint and PHPStan findings were fixed (stray blank line; `findOrFail` replaced with `where('id', …)->firstOrFail()`; dead `timezone === null` checks removed because the column is non-nullable with a default). Test count unchanged.
+- Owner reply `update — Saturday lessons joined` logged as ADVICE; rehearsal checked read-only (CYCLE-LOG 12:30 VERIFICATION): `lessons` 2, `payments` 2, `video_webhook_events` 0.
 
 ## §4 Decisions and by whom
-- Owner (chat, 2026-10-01): `"update — 4 done"`.
-- CC: did not accept the report at face value or silently mark PLAN item 4 complete — ran the same class of read-only verification CC has applied to every other claim this cycle (per rule 12, "cite file:line or quoted output for every claim about behaviour"), found it unsupported by the evidence available, and is disclosing the mismatch rather than guessing at the owner's intent or re-running/booking anything itself (CC holds no Daily credentials and booking lessons is the owner's action, not an allow-listed one).
+- Owner (chat, 2026-10-07): `"update — Saturday lessons joined"`.
+- Planner (PLAN cycle 12 r1): R170, R171, R173, R174, R175, R176.
+- CC: wrote DATA_MODEL as v1.8, not R176's "v1.9" (CYCLE-LOG 03:10 DEVIATION). Merged PR #42 itself under R175/R147 after the review and a green head. Left the migration filename `2026_10_06_100000_…` as is.
 
 ## §5 Why stopping
-The evidence CC can see from rehearsal (lesson count, webhook-event count, log contents) does not corroborate the specific thing PLAN item 4 asks for (two lessons proving the webhook path end to end, including a forced signature-failure retry). This could mean several different things — the lessons were booked but not yet joined/run; "done" refers to something that happened outside what CC can observe from the server (e.g., local testing, or a different kind of check); or the report was premature. CC cannot distinguish between these from here, and should not guess, so this goes back to the owner rather than being marked closed or silently redone.
+Not stopping. Step 3 follows immediately. The cycle ends at END after step 4.
 
 ## §6 Mismatches
-- Carried from r1–r5, still open and non-blocking: AY, AZ; the `config/app.php` allow-list; the untraceable "R91" defining text.
-- Carried from r5's 19:47 END, unchanged: the planner-facing lesson that a Horizon config change needs a daemon restart, not just a deploy (still worth the next PLAN revision addressing in the R91 checklist text).
-- **New:** PLAN's Carried-forward item 4 ("Daily webhook proof") is reported done by the owner but not corroborated by server evidence — `lessons` row count, `video_webhook_events` row count and the webhook-filtered log tail are all unchanged from before the report. Not marking item 4 closed.
+- **PRD §2.2 point 2 (~line 35)** still says a tutor needs "a valid permit" to appear in search. Stale under R170; outside R176's §2.1/§9 scope, so not edited. Planner to authorise the one-line fix.
+- **R176 said "DATA_MODEL v1.9"**; the file's chain ended at v1.7, so v1.8 was written.
+- **UI not browser-verified**: PLAN forbids CC a browser, so the onboarding checklist and banner were exercised through feature tests only. The owner walkthrough in §7 is the real check.
+- **Process gap, mine:** before the PR I ran gates piecemeal and never the composite `composer test` that CI runs, so Pint and PHPStan failures reached CI first (CYCLE-LOG 04:05 BLOCKER). Fixed; 12b will run the composite chain before its PR.
+- **Process slips, mine:** a commit on the PR branch carried `[skip ci]` against rule 6, which left no CI run on the head until an ordinary empty commit was pushed (04:25 DEVIATION, 12:25 VERIFICATION). I also used `gh pr checks --watch` once and made no-op `ScheduleWakeup` calls (12:31 NOTE).
+- **Local tooling:** `composer test` run from PowerShell fails at `rtl:check` because `bash` there resolves to a missing WSL launcher; `bash scripts/rtl-check.sh` through Git Bash passes. CI is unaffected.
+- **LinkedIn host check:** `parse_url()` and browsers disagree on backslashes (`https://evil.com\@linkedin.com/`). No exploit path today because the value is only shown in an `<input>`; revisit if an admin-facing clickable LinkedIn link is ever added.
+- **Item 4 (Daily webhook proof) is partly corroborated:** `lessons` rose from 1 to 2 and `payments` is 2, so a second lesson was booked and paid. `video_webhook_events` is still 0 and the log tail has nothing, so no Daily attendance webhook has been recorded. The 3 Oct log is rotated into a gzip CC may not read. Not marked closed.
+- Carried, non-blocking: AY, AZ; the `config/app.php` allow-list; the untraceable "R91" defining text; the lesson that a Horizon config change needs a daemon restart.
 
 ## §7 Next step / Owner actions
-**Owner action 1 (Recommended): clarify what "4 done" refers to.** If the two test lessons were booked on `rehearsal.trustutor.com` and at least one room was actually joined (to trigger Daily's attendance webhook) and the secret-break/restore retry was exercised in Admin → Video providers, reply `update` and say so — CC will re-run the same check (it's possible the webhook call hasn't landed yet, e.g. if the lesson is scheduled for a future time and no one has joined). If "done" means something else (lessons booked but not yet joined; tested against local instead of rehearsal; or the proof was done a different way), say which, so CC checks the right thing instead of re-reporting the same mismatch. Reason: `lessons` (1 row) and `video_webhook_events` (0 rows) are both unchanged from every earlier read this cycle, and `VideoWebhookController` (`app/Http/Controllers/Webhooks/VideoWebhookController.php:74-94`) only writes a row when Daily actually calls the webhook — booking alone wouldn't move either number, so this isn't necessarily a failure, just not yet proven from what CC can see.
+CC continues to step 3 (`cp/12b-email-polish`) in this run; nothing is needed from the owner to proceed. Owner actions that exist now, to be repeated in the END write:
 
-Carried unchanged, at the owner's own pace (PLAN items 8, 9, 12): UI-developer reviews (booking screen PR #22, 7g branding, messaging/reviews/Report button walkthrough). Owner-blocking, carried unchanged: D-04 with counsel (then CP5); authorising `trustutor-production`. Also carried: Postmark wiring (R120) — Zoho mail and Cloudflare DNS are in place for team mailboxes, but Postmark itself is not yet wired for platform mail. Roadmap items noted 2026-10-01 (Daily cloud recording, transcription, AI-drafted reports, parent digest, transcript library) remain gated on consent text in the terms and tutor agreement, with counsel, alongside D-04.
+**Owner action 1 (Recommended): settle PLAN item 4 (Daily webhook proof).** Either (a) open Admin → Video providers on rehearsal and look at the Daily dashboard's webhook delivery log for the 3 Oct joins, then reply `update — item 4 confirmed` or `update — item 4: <what you saw>`; or (b) book and join one fresh lesson on rehearsal after the 12b deploy and reply `update — joined`, and CC will check `video_webhook_events`. Reason: `video_webhook_events` is 0 rows, and booking alone never writes that table (`VideoWebhookController.php:74-94`), so only a join, or Daily's own delivery log, can prove the path.
 
-This is a HALT with a clarifying question, not a blocking HANDOFF on a decision only the owner can authorise — reply `update` with the clarification above when convenient.
+**Owner action 2: finish TEST RABIA's onboarding on rehearsal with only a LinkedIn URL** (no CV, no permit), submit, then approve in admin, filling subjects and rate through the new edit-on-behalf actions, and confirm she appears in search. Walkthrough for after the deploy; reply `update — walkthrough done` or what broke.
+
+**Owner action 3: R174(c), SendPulse unsubscribe setting.** Owner-only, no code; when you have done it, say so in `update`.
+
+Carried unchanged, at the owner's pace (PLAN items 8, 9, 12): UI-developer reviews (booking screen PR #22, 7g branding, messaging/reviews/Report button walkthrough). Owner-blocking, carried: D-04 with counsel (then CP5); authorising `trustutor-production`. Also carried: Postmark wiring (R120). Roadmap items from 2026-10-01 (Daily recording, transcription, AI-drafted reports, parent digest, transcript library) stay gated on consent text with counsel.
 
 ## §8 Programme board
-Cycle 11 (programme "daily-webhook", R165) stays closed per the 19:47 END: 11a shipped, Daily registration succeeded, the mail/Horizon detour (R168/R169) verified end to end. PLAN's Carried-forward item 4 is the one open thread, now flagged as unconfirmed rather than closed. Next programme is still the planner's call once item 4 is actually confirmed or clarified: candidates are D-04/counsel, `trustutor-production` authorisation, or whatever the planner opens next.
+Programme "tutor-onboarding" (cycle 12 r1, R175): 4 steps.
+| # | Step | State |
+|---|------|-------|
+| 1 | PLAN commit | done `8b38277` |
+| 2 | 12a onboarding | merged `3f2dbdc` |
+| 3 | 12b email polish | next |
+| 4 | Deploy rehearsal, R91 checks, END | pending |
+Resume cap 0 of 8.
