@@ -18,6 +18,7 @@ const props = defineProps<{
     starts_at: string;
     slot_label: string;
     slot_available: boolean;
+    cancel_notice: string | null;
     alternatives: Array<{ starts_at: string; label: string }>;
     timezone: string;
     can_pay: boolean;
@@ -127,6 +128,8 @@ function submit() {
                     <template v-else>Charged at the tutor's hourly rate.</template>
                 </p>
             </div>
+
+            <p v-if="slot_available && cancel_notice" class="rounded-md border p-3 text-sm" data-testid="cancel-notice">{{ cancel_notice }}</p>
 
             <InputError :message="slotError" />
             <InputError :message="form.errors.starts_at" />

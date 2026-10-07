@@ -16,9 +16,9 @@ use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Scheduling\SlotCalculator;
 use App\Services\Tutors\TutorRateBands;
-use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -112,10 +112,13 @@ class CreateRecurringSlot
             throw new RecurringSlotException('The end date falls before the first lesson of this weekly slot.');
         }
 
-        $lead = (int) Settings::get('booking_min_lead_hours');
+        $leadTime = app(BookingLeadTime::class);
+        $lead = $leadTime->for($freshTutor);
 
-        if ($first->lessThan(now()->addHours($lead))) {
-            throw new RecurringSlotException("The first lesson must be at least {$lead} hours from now.");
+        if (! $leadTime->accepts($first, now(), $lead)) {
+            throw new RecurringSlotException($lead === 0
+                ? 'The first lesson must be in the future.'
+                : "The first lesson must be at least {$lead} ".($lead === 1 ? 'hour' : 'hours').' from now.');
         }
 
         if ($this->collides($freshTutor, $first, $weekday, $time, $timezone, $endsOn)) {

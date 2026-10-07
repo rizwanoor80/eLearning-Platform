@@ -30,7 +30,9 @@ use Illuminate\Support\Facades\Date;
  *   timezone (so DST is right); hourly slots step from the rule's start time.
  * - An exception has no timezone column, so it is read in `$exceptionTimezone`
  *   (the tutor's current user timezone; `forTutors()` passes it).
- * - A slot is offered when `starts_at >= now + lead` and `starts_at <= now + max_days`.
+ * - A slot is offered when `starts_at >= now + lead`, `starts_at > now` (which only matters at
+ *   lead 0, "book right away") and `starts_at <= now + max_days`. The lead is the tutor's own
+ *   (`BookingLeadTime`, R179).
  * - Blocking is interval overlap: a lesson at 10:30 removes both 10:00 and 11:00.
  * - An active or paused recurring slot blocks its weekday/time on every date from
  *   `starts_on` up to its effective end (`ends_on` or a tutor's `end_effective_on`),
@@ -133,7 +135,7 @@ class SlotCalculator
         $length = self::SLOT_MINUTES * 60;
 
         foreach ($candidates as $timestamp => $start) {
-            if ($start < $windowStart || $start > $windowEnd || ($permitCutoff !== null && $start >= $permitCutoff)) {
+            if ($start < $windowStart || $start <= $now || $start > $windowEnd || ($permitCutoff !== null && $start >= $permitCutoff)) {
                 continue;
             }
 
@@ -185,14 +187,15 @@ class SlotCalculator
         $timezones = $unloaded === [] ? [] : User::query()->whereIn('id', $unloaded)->pluck('timezone', 'id')->all();
 
         $now = CarbonImmutable::instance($now ?? Date::now())->utc();
-        $lead = (int) Settings::get('booking_min_lead_hours');
+        $leadTime = app(BookingLeadTime::class);
+        $leads = $tutors->map(fn (TutorProfile $tutor): int => $leadTime->for($tutor));
         $maxDays = min((int) Settings::get('booking_max_days'), self::MAX_HORIZON_DAYS);
 
         if ($withinDays !== null) {
             $maxDays = min($maxDays, $withinDays);
         }
 
-        $from = $now->addHours($lead)->subDays(2);
+        $from = $now->addHours((int) $leads->min())->subDays(2);
         $to = $now->addDays($maxDays)->addDays(2);
         $ids = $tutors->keys()->all();
 
@@ -221,7 +224,7 @@ class SlotCalculator
                 $lessons->get($id, []),
                 $weekly->get($id, []),
                 $now,
-                $lead,
+                $leads[$id],
                 $maxDays,
                 $tutor->relationLoaded('user') ? $tutor->user->timezone : (string) $timezones[$tutor->user_id],
                 $timezone,

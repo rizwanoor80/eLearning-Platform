@@ -325,13 +325,13 @@ it('exposes exactly the allow-listed keys on each search row and on the profile'
 
     test()->get(route('tutors.index'))->assertInertia(function ($page) {
         $row = $page->toArray()['props']['tutors'][0];
-        expect(array_keys($row))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'subjects', 'next_slot']);
+        expect(array_keys($row))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'lead_hours', 'lead_label', 'subjects', 'next_slot']);
         expect(array_keys($row['subjects'][0]))->toEqualCanonicalizing(['curriculum', 'subject', 'level_min', 'level_max']);
     });
 
     test()->get(route('tutors.show', $tutor->id))->assertInertia(function ($page) {
         $tutorProps = $page->toArray()['props']['tutor'];
-        expect(array_keys($tutorProps))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'bio', 'intro_video_url', 'subjects', 'next_slots', 'reviews']);
+        expect(array_keys($tutorProps))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'lead_hours', 'lead_label', 'bio', 'intro_video_url', 'subjects', 'next_slots', 'reviews']);
     });
 });
 

@@ -255,3 +255,25 @@ it('sorts slots chronologically across several rules', function () {
 
     expect(scStarts($result, 'Asia/Dubai'))->toBe(['2026-09-15 09:00', '2026-09-16 09:00']);
 });
+
+// R179: the tutor's lead is a parameter — whole hours from 0 up, to the second, in any tutor timezone.
+it('respects a tutor lead of 0, 4 and 24 at the boundary (Dubai, Tuesday 09:00 = 05:00 UTC)', function (int $lead, string $now, int $count) {
+    // A 7-day horizon holds exactly one occurrence of the weekly rule.
+    expect(scSlots(['rules' => [scRule(2, '09:00', '10:00')], 'lead' => $lead, 'now' => $now, 'max' => 7]))->toHaveCount($count);
+})->with([
+    'lead 0, one second before the slot' => [0, '2026-09-15 04:59:59', 1],
+    'lead 4, exactly now + 4h' => [4, '2026-09-15 01:00:00', 1],
+    'lead 4, one second short' => [4, '2026-09-15 01:00:01', 0],
+    'lead 24, exactly now + 24h' => [24, '2026-09-14 05:00:00', 1],
+    'lead 24, one second short' => [24, '2026-09-14 05:00:01', 0],
+]);
+
+it('steps whole hours from the rule start, so the first lead-0 slot is the next hour inside availability', function () {
+    // 09:00-12:00 Dubai (05:00-08:00 UTC), now 05:20 UTC: 06:00, 07:00 UTC remain.
+    expect(scStarts(scSlots(['rules' => [scRule(2, '09:00', '12:00')], 'lead' => 0, 'now' => '2026-09-15 05:20:00', 'max' => 6])))
+        ->toBe(['2026-09-15 06:00', '2026-09-15 07:00']);
+});
+
+it('never offers a slot that starts at now, even at lead 0', function () {
+    expect(scStarts(scSlots(['rules' => [scRule(2, '09:00', '10:00')], 'lead' => 0, 'now' => '2026-09-15 05:00:00', 'max' => 6])))->toBe([]);
+});

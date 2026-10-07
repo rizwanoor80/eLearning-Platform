@@ -113,7 +113,7 @@ Account owner can open a dispute within 48h of a lesson's scheduled end (reason 
 
 | Event | Rule |
 |---|---|
-| Single booking window | ≥ 12h before start, ≤ 30 days ahead |
+| Single booking window | ≥ the tutor's own lead time before start (0, 4, 8, 12 or 24 h; default 12 h; 0 = book right away, offered only where the admin allows it), ≤ 30 days ahead _(amended cycle 13a, R179, ADR-025)_ |
 | Slot | Must sit inside tutor availability, on the hour, not overlapping another lesson or an active weekly slot |
 | Skip a `reserved` (unpaid) lesson | Free, either party, no strike unless tutor does it < 24h before |
 | Parent cancels `confirmed` ≥ 24h before | Full refund to original payment method |

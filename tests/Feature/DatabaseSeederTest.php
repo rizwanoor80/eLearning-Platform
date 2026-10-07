@@ -33,7 +33,7 @@ it('seeds curricula, subjects, price bands, settings, document types, the six pu
     expect(Curriculum::query()->count())->toBe(5)
         ->and(Subject::query()->count())->toBe(25)
         ->and(PriceBand::query()->count())->toBe(9)
-        ->and(DB::table('settings')->count())->toBe(41)
+        ->and(DB::table('settings')->count())->toBe(43)
         // R171: the CV document type joins CP1's original four.
         ->and(DocumentType::query()->count())->toBe(5)
         ->and(ContentBlock::query()->count())->toBe(7)
@@ -50,7 +50,7 @@ it('is idempotent — seeding twice does not change the row counts', function ()
     expect(Curriculum::query()->count())->toBe(5)
         ->and(Subject::query()->count())->toBe(25)
         ->and(PriceBand::query()->count())->toBe(9)
-        ->and(DB::table('settings')->count())->toBe(41)
+        ->and(DB::table('settings')->count())->toBe(43)
         // R171: the CV document type joins CP1's original four.
         ->and(DocumentType::query()->count())->toBe(5)
         ->and(ContentBlock::query()->count())->toBe(7)

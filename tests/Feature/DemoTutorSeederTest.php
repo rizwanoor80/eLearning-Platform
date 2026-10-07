@@ -252,3 +252,11 @@ it('pins the weekday convention: a Sunday rule yields Sunday slots in the tutor 
     expect($sundays)->not->toBeEmpty()
         ->and($sundays->every(fn ($slot) => $slot->startsAt->hour >= 10 && $slot->startsAt->hour < 13))->toBeTrue();
 });
+
+it('gives every demo tutor lead time 0 so rehearsal can book same-day (R179)', function () {
+    $this->seed(DemoTutorSeeder::class);
+
+    $leads = TutorProfile::query()->whereIn('user_id', User::query()->where('email', 'like', 'demo.%@example.test')->select('id'))->pluck('min_lead_hours')->unique()->values()->all();
+
+    expect($leads)->toBe([0]);
+});

@@ -16,6 +16,7 @@ const props = defineProps<{
         trial_price: string | null;
         rating_avg: string | null;
         rating_count: number;
+        lead_label: string;
         subjects: Array<{ curriculum: string | null; subject: string | null; level_min: string; level_max: string }>;
         next_slots: Array<{ starts_at: string; label: string }>;
         reviews?: {
@@ -94,7 +95,7 @@ function goToReviewsPage(targetPage: number) {
 
         <section class="grid gap-2">
             <h2 class="font-medium">Next available slots</h2>
-            <p class="text-muted-foreground text-xs">Times shown in {{ timezone }}.</p>
+            <p class="text-muted-foreground text-xs">Times shown in {{ timezone }}. {{ tutor.lead_label }}.</p>
             <ul v-if="tutor.next_slots.length" class="flex flex-wrap gap-2 text-sm">
                 <li v-for="slot in tutor.next_slots" :key="slot.starts_at" class="rounded-md border px-3 py-1">
                     <Link v-if="canBook" :href="bookHref(slot.starts_at)" class="underline-offset-4 hover:underline">{{ slot.label }}</Link>

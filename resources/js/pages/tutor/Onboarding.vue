@@ -98,7 +98,9 @@ const props = defineProps<{
         bio: string | null;
         intro_video_url: string | null;
         hourly_rate: number | null;
+        min_lead_hours: number;
     };
+    leadTimeOptions: Array<{ value: number; label: string }>;
     documentTypes: DocumentTypeProp[];
     documents: DocumentProp[];
     curricula: CurriculumProp[];
@@ -309,6 +311,7 @@ const profileForm = useForm({
     headline: props.profile.headline ?? '',
     bio: props.profile.bio ?? '',
     intro_video_url: props.profile.intro_video_url ?? '',
+    min_lead_hours: props.profile.min_lead_hours,
 });
 
 const submitProfile = () => {
@@ -627,6 +630,17 @@ const submitComplete = () => {
                 <Label for="intro_video_url">Intro video URL (optional)</Label>
                 <Input id="intro_video_url" v-model="profileForm.intro_video_url" type="url" />
                 <InputError :message="profileForm.errors.intro_video_url" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="min_lead_hours">How soon can a parent book you?</Label>
+                <select id="min_lead_hours" v-model="profileForm.min_lead_hours" class="border-input rounded-md border p-2 text-sm">
+                    <option v-for="option in leadTimeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <p class="text-muted-foreground text-xs">
+                    A lesson that starts within 24 hours cannot be cancelled by the parent for a refund, so a shorter lead time means shorter-notice bookings.
+                </p>
+                <InputError :message="profileForm.errors.min_lead_hours" />
             </div>
 
             <Button type="submit" :disabled="profileForm.processing" class="w-fit">

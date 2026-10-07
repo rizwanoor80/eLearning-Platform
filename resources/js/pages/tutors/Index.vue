@@ -15,6 +15,7 @@ type Card = {
     trial_price: string | null;
     rating_avg: string | null;
     rating_count: number;
+    lead_label: string;
     subjects: Array<{ curriculum: string | null; subject: string | null; level_min: string; level_max: string }>;
     next_slot: { starts_at: string; label: string } | null;
 };
@@ -199,6 +200,7 @@ function search(page = 1) {
                     <template v-if="tutor.rating_avg">★ {{ tutor.rating_avg }} ({{ tutor.rating_count }})</template>
                     <template v-else>No ratings yet</template>
                     <template v-if="tutor.next_slot"> · Next: {{ tutor.next_slot.label }}</template>
+                    · {{ tutor.lead_label }}
                 </p>
                 <p class="text-muted-foreground text-xs">
                     {{ tutor.subjects.map((s) => [s.subject, s.curriculum].filter(Boolean).join(' · ')).join(', ') }}
