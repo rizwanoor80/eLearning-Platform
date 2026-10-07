@@ -2,7 +2,7 @@
 
 @section('content')
     @php($lesson = $report->lesson)
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         {{ $lesson->tutorProfile->displayName() }} has written a report on {{ $lesson->learner->display_name }}'s
         {{ $lesson->subject->name }} lesson on

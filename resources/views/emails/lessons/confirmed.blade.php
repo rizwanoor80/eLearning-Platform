@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         A lesson between {{ $lesson->tutorProfile->displayName() }} and {{ $lesson->learner->display_name }}
         on {{ $lesson->subject->name }} is confirmed for

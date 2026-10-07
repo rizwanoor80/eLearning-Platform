@@ -101,14 +101,15 @@ it('changes the next email\'s sender name without a deploy (CP1 box 8, email hal
 
     // Sender is read at envelope() time, so a Mailable built (or queued)
     // before the change still sends with the new name.
-    expect($mail->envelope()->from->name)->toBe('project-elearning');
+    // R174(a): the sender name defaults to TrusTutor and no longer follows the site name.
+    expect($mail->envelope()->from->name)->toBe('TrusTutor');
 
     Livewire::actingAs($this->admin)
         ->test(ManageSettings::class)
         ->fillForm(['site_name' => 'Brand New Name'])
         ->call('save');
 
-    expect($mail->envelope()->from->name)->toBe('Brand New Name');
+    expect($mail->envelope()->from->name)->toBe('TrusTutor');
 
     Settings::set('from_name', 'Support Team', SettingGroup::Mail);
     Settings::set('from_address', 'hello@example.test', SettingGroup::Mail);

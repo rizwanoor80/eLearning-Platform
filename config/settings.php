@@ -50,7 +50,7 @@ return [
         'legal_entity_trn' => null,
         'legal_entity_address' => null,
 
-        'from_name' => null,
+        'from_name' => 'TrusTutor',
         'from_address' => null,
         'reply_to' => null,
         'support_address' => null,

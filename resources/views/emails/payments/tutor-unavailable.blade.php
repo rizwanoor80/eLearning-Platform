@@ -1,7 +1,7 @@
 @extends('emails.layout')
 
 @section('content')
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     @if ($isParent)
         <p>
             The weekly lesson with {{ $lesson->tutorProfile->displayName() }} for {{ $lesson->learner->display_name }}

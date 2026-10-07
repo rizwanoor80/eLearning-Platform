@@ -2,7 +2,7 @@
 
 @section('content')
     @php($next = $slot->nextOccurrenceAfter(now()))
-    <p>Hi {{ $recipient->name }},</p>
+    <p>{{ \App\Support\Mail\MailBrand::greeting($recipient->name) }}</p>
     <p>
         A weekly lesson slot was set up for {{ $slot->learner->display_name }} with {{ $slot->tutorProfile->displayName() }}
         on {{ $slot->subject->name }}: every {{ $slot->scheduleLabel() }}, starting from {{ $slot->starts_on->format('j M Y') }}{{ $slot->ends_on ? ' until '.$slot->ends_on->format('j M Y') : '' }}.
