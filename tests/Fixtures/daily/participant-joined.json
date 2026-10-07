@@ -1,0 +1,22 @@
+{
+    "version": "1.0.0",
+    "type": "participant.joined",
+    "id": "ptcpt-joined-6497c79b-f326-4942-aef8-c36a29140ad1-1708972279961",
+    "payload": {
+        "room": "lesson-42",
+        "user_id": "tutor",
+        "user_name": "Placeholder Name",
+        "session_id": "0c0d2dda-f21d-4cf9-ab56-86bf3c407ffa",
+        "joined_at": 1708972279.96,
+        "will_eject_at": 1708972299.541,
+        "owner": false,
+        "networkQualityState": "unknown",
+        "permissions": {
+            "hasPresence": true,
+            "canSend": true,
+            "canReceive": {"base": true},
+            "canAdmin": false
+        }
+    },
+    "event_ts": 1708972279.961
+}

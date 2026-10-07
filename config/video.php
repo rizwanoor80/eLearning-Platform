@@ -9,6 +9,12 @@ return [
     'webhook_tolerance_seconds' => 900,
 
     /*
+    | How long the per-request delivery records (R180, `video_webhook_deliveries`) are kept. They are a
+    | diagnostic window — metadata only — pruned daily; the attendance events themselves are not pruned.
+    */
+    'webhook_delivery_retention_days' => 30,
+
+    /*
     | The lesson-room clock (PRD §9, CP6). The room is created this long before the lesson starts,
     | either party may join this long before it starts, and the room closes this long after the
     | scheduled end. Fixed by the PRD, not admin settings.
