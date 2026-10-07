@@ -10,6 +10,7 @@ use App\Models\Lesson;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -42,6 +43,7 @@ class TutorDashboardController extends Controller
                 'upcoming' => [],
                 'slots' => [],
                 'onboarding' => $this->onboardingBanner($user, null),
+                'leadTime' => null,
             ]);
         }
 
@@ -88,7 +90,32 @@ class TutorDashboardController extends Controller
             'upcoming' => $this->present($upcoming, $user),
             'slots' => $this->slots($tutorProfile),
             'onboarding' => $this->onboardingBanner($user, $tutorProfile),
+            'leadTime' => $this->leadTime($tutorProfile),
         ]);
+    }
+
+    /**
+     * R179: an approved tutor changes their booking lead time here, since the onboarding wizard is
+     * locked once submitted. `current` is the effective value, so the select never shows a choice
+     * the platform would not honour.
+     *
+     * @return array{current: int, options: list<array{value: int, label: string}>}|null
+     */
+    private function leadTime(TutorProfile $tutorProfile): ?array
+    {
+        if ($tutorProfile->status !== TutorProfileStatus::Approved) {
+            return null;
+        }
+
+        $leadTime = app(BookingLeadTime::class);
+
+        return [
+            'current' => $leadTime->for($tutorProfile),
+            'options' => array_map(
+                fn (int $hours): array => ['value' => $hours, 'label' => $leadTime->label($hours)],
+                $leadTime->options(),
+            ),
+        ];
     }
 
     /**

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SettingGroup;
+use App\Enums\TutorProfileStatus;
 use App\Filament\Pages\ManageSettings;
 use App\Models\AvailabilityRule;
 use App\Models\Setting;
@@ -260,4 +261,78 @@ it('has a settings group constraint that accepts the booking group and still ref
 
     expect(fn () => DB::table('settings')->insert(['key' => 'lead_probe2', 'group' => 'nonsense', 'value' => json_encode(1)]))
         ->toThrow(QueryException::class);
+});
+
+it('migrates a settings table whose group constraint predates the booking group', function () {
+    // Rehearsal's constraint was frozen before `booking` existed; a fresh test database already has it.
+    DB::unprepared('ALTER TABLE settings DROP CONSTRAINT settings_group_check');
+    DB::unprepared("ALTER TABLE settings ADD CONSTRAINT settings_group_check CHECK (\"group\" IN ('platform', 'site', 'mail', 'features'))");
+    Setting::query()->where('key', 'booking_min_lead_hours')->delete();
+    Setting::query()->where('key', 'booking_max_days')->delete();
+    DB::table('settings')->insert([
+        ['key' => 'booking_min_lead_hours', 'group' => 'platform', 'value' => json_encode(12)],
+        ['key' => 'booking_max_days', 'group' => 'platform', 'value' => json_encode(30)],
+    ]);
+
+    expect(fn () => DB::transaction(fn () => DB::table('settings')->insert(['key' => 'lead_old', 'group' => 'booking', 'value' => json_encode(1)])))
+        ->toThrow(QueryException::class);
+
+    (require database_path('migrations/2026_10_07_100100_add_booking_group_to_settings.php'))->up();
+
+    expect(DB::table('settings')->whereIn('key', ['booking_min_lead_hours', 'booking_max_days'])->pluck('group')->unique()->all())->toBe(['booking']);
+
+    DB::table('settings')->insert(['key' => 'lead_new', 'group' => 'booking', 'value' => json_encode(1)]);
+    expect(DB::table('settings')->where('key', 'lead_new')->exists())->toBeTrue();
+    expect(fn () => DB::transaction(fn () => DB::table('settings')->insert(['key' => 'lead_bad', 'group' => 'nonsense', 'value' => json_encode(1)])))
+        ->toThrow(QueryException::class);
+});
+
+// --- An approved tutor changes it from the dashboard -----------------------------------------
+
+it('lets an approved tutor change their lead time from the dashboard, and shows the effective value', function () {
+    $user = User::factory()->tutor()->create();
+    $tutor = TutorProfile::factory()->approved()->create(['user_id' => $user->id, 'min_lead_hours' => null]);
+
+    test()->actingAs($user)->get(route('tutor.dashboard'))
+        ->assertInertia(fn ($page) => $page->where('leadTime.current', 12)
+            ->where('leadTime.options.0', ['value' => 0, 'label' => 'Book right away']));
+
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])
+        ->assertRedirect(route('tutor.dashboard'));
+
+    expect($tutor->fresh()->min_lead_hours)->toBe(4);
+    test()->actingAs($user)->get(route('tutor.dashboard'))
+        ->assertInertia(fn ($page) => $page->where('leadTime.current', 4));
+});
+
+it('refuses a lead time outside the admin list, including 0 while immediate booking is off', function () {
+    $user = User::factory()->tutor()->create();
+    $tutor = TutorProfile::factory()->approved()->create(['user_id' => $user->id, 'min_lead_hours' => 24]);
+
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 5])
+        ->assertSessionHasErrors('min_lead_hours');
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), [])
+        ->assertSessionHasErrors('min_lead_hours');
+
+    Settings::set('allow_immediate_booking', false);
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 0])
+        ->assertSessionHasErrors('min_lead_hours');
+
+    expect($tutor->fresh()->min_lead_hours)->toBe(24);
+});
+
+it('does not offer the dashboard control to, or accept it from, a tutor who is not approved', function () {
+    $user = User::factory()->tutor()->create();
+    $profile = TutorProfile::factory()->create(['user_id' => $user->id, 'status' => TutorProfileStatus::PendingReview, 'min_lead_hours' => null]);
+
+    test()->actingAs($user)->get(route('tutor.dashboard'))->assertInertia(fn ($page) => $page->where('leadTime', null));
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])->assertForbidden();
+
+    expect($profile->fresh()->min_lead_hours)->toBeNull();
+});
+
+it('keeps the dashboard lead-time endpoint to tutors', function () {
+    $parent = User::factory()->create();
+
+    test()->actingAs($parent)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])->assertForbidden();
 });
