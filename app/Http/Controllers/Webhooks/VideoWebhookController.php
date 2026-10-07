@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Webhooks;
 
+use App\Actions\Video\RecordWebhookDelivery;
 use App\Enums\VideoProviderCode;
 use App\Events\Video\VideoWebhookReceived;
 use App\Http\Controllers\Controller;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * `POST webhooks/video/{code}`: provider attendance webhooks. No session, no CSRF (the signature is
@@ -26,12 +28,33 @@ use Illuminate\Support\Facades\DB;
  * Order matters: reject before storing. An unknown code or a row without credentials is 404, a bad
  * or stale signature is 401, a verified event is stored once (unique on provider + event id) and
  * only then dispatched, both inside one transaction — a replay answers 200 and does nothing.
+ *
+ * The one deliberate exception to "reject before storing" is the delivery record (R180): metadata only
+ * — status, sizes, key names, never a body or header — left for every request on every path,
+ * including the rejections and a 500, by `RecordWebhookDelivery`, which cannot change the response or
+ * block the event above. It is written outside the event's transaction and never coupled to it.
  */
 class VideoWebhookController extends Controller
 {
     private const MAX_BODY_BYTES = 65536;
 
-    public function __invoke(Request $request, string $code, VideoProviderManager $manager): JsonResponse
+    public function __invoke(Request $request, string $code, VideoProviderManager $manager, RecordWebhookDelivery $record): JsonResponse
+    {
+        try {
+            $response = $this->handle($request, $code, $manager, $record);
+        } catch (Throwable $e) {
+            $record($code, $request->getContent(), 500, 'error');
+
+            throw $e;
+        }
+
+        $status = $response->getData(true)['status'] ?? '';
+        $record($code, $request->getContent(), $response->getStatusCode(), is_string($status) ? $status : '');
+
+        return $response;
+    }
+
+    private function handle(Request $request, string $code, VideoProviderManager $manager, RecordWebhookDelivery $record): JsonResponse
     {
         $providerCode = VideoProviderCode::tryFrom($code);
         $row = $providerCode === null ? null : VideoProvider::query()->where('code', $providerCode->value)->first();
@@ -65,6 +88,8 @@ class VideoWebhookController extends Controller
         $attendance = $driver->parseWebhook($payload);
 
         if ($attendance === null) {
+            $record->logIgnored($code, $payload);
+
             return response()->json(['status' => 'ignored']);
         }
 
