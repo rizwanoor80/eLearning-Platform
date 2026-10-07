@@ -162,6 +162,20 @@ it('records a row for a received event, a replay, an ignored event, a bad signat
         ->and([$big->event_type, $big->event_id, $big->top_level_keys, $big->payload_keys])->toBe([null, null, null, null]);
 });
 
+it('keeps no sender-chosen strings from a request that was not authenticated', function () {
+    $body = webhookBody('evt-unsigned');
+    $signed = signedHeaders($body, null, 'some-other-secret');
+
+    postWebhook('fake', $body, $signed)->assertStatus(401);
+    postWebhook('nope', $body, [])->assertStatus(404);
+
+    $rows = VideoWebhookDelivery::query()->orderBy('id')->get();
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows->pluck('body_length')->all())->toBe([strlen($body), strlen($body)])
+        ->and($rows->map(fn ($row) => [$row->event_type, $row->event_id, $row->top_level_keys, $row->payload_keys])->flatten()->filter()->all())->toBe([]);
+});
+
 it('records unparseable and non-object bodies by length alone', function () {
     postWebhook('fake', 'not json at all', [])->assertStatus(401);
     postWebhook('fake', '[1,2,3]', [])->assertStatus(401);
@@ -180,7 +194,7 @@ it('cleans and caps what the sender controls', function () {
         ...array_combine(array_map(fn ($i) => "key-{$i}-\x07", range(1, 60)), array_fill(0, 60, 1)),
     ]);
 
-    postWebhook('fake', $body, [])->assertStatus(401);
+    postWebhook('fake', $body, signedHeaders($body))->assertJson(['status' => 'ignored']);
 
     $row = VideoWebhookDelivery::query()->sole();
 

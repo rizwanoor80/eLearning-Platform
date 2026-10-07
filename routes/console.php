@@ -50,4 +50,4 @@ Schedule::command('lessons:auto-release-reports')->everyFiveMinutes()->onOneServ
 
 // Delivery records of the video webhook endpoint (R180) are kept 30 days. Idempotent by itself (a second
 // run finds nothing to delete); onOneServer + withoutOverlapping only stop a second worker starting.
-Schedule::command('video:prune-webhook-deliveries')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
+Schedule::command('video:prune-webhook-deliveries')->dailyAt('03:30')->onOneServer()->withoutOverlapping(10);

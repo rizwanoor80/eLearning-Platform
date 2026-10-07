@@ -15,6 +15,10 @@ use Throwable;
  * sizes are kept: the event type and id as sent (cleaned, length-capped) and the *names* of the
  * top-level and `payload` keys. A value, a body or a token cannot reach the row or the log line.
  *
+ * The shape is kept only for a delivery whose signature verified. A rejected request (401, 404, 413)
+ * is unauthenticated, so anyone can send it: it leaves status, outcome and body length alone, which
+ * keeps what a stranger can make us store to a few dozen bytes per request.
+ *
  * It must never change the response or stop the real event, so the insert runs in its own
  * transaction (a savepoint when an outer one exists, so a failure here cannot abort the caller's
  * transaction on PostgreSQL) and every failure is reported and swallowed.
@@ -23,6 +27,9 @@ class RecordWebhookDelivery
 {
     /** A body this large is not decoded at all: only its length is kept. */
     private const DECODE_LIMIT_BYTES = 65536;
+
+    /** The outcomes that follow a verified signature, and so may carry the body's shape. */
+    private const SHAPED_OUTCOMES = ['received', 'duplicate', 'ignored'];
 
     private const MAX_KEYS = 50;
 
@@ -35,7 +42,7 @@ class RecordWebhookDelivery
     public function __invoke(string $providerCode, string $body, int $httpStatus, string $outcome): void
     {
         try {
-            $shape = $this->shape($body);
+            $shape = in_array($outcome, self::SHAPED_OUTCOMES, true) ? $this->shape($body) : $this->shape('');
 
             DB::transaction(fn () => VideoWebhookDelivery::query()->create([
                 'provider_code' => substr($providerCode, 0, 16),

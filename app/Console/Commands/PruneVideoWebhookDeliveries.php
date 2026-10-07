@@ -19,7 +19,7 @@ class PruneVideoWebhookDeliveries extends Command
 
     public function handle(): int
     {
-        $cutoff = Date::now()->subDays((int) config('video.webhook_delivery_retention_days'));
+        $cutoff = Date::now()->subDays(max(1, (int) config('video.webhook_delivery_retention_days')));
         $deleted = 0;
 
         do {
