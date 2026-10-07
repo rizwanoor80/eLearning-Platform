@@ -336,3 +336,19 @@ it('keeps the dashboard lead-time endpoint to tutors', function () {
 
     test()->actingAs($parent)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])->assertForbidden();
 });
+
+it('refuses the dashboard lead-time change from suspended and changes_requested tutors', function (TutorProfileStatus $status) {
+    $user = User::factory()->tutor()->create();
+    $profile = TutorProfile::factory()->create(['user_id' => $user->id, 'status' => $status, 'min_lead_hours' => null]);
+
+    test()->actingAs($user)->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])->assertForbidden();
+
+    expect($profile->fresh()->min_lead_hours)->toBeNull();
+})->with([
+    'suspended' => [TutorProfileStatus::Suspended],
+    'changes requested' => [TutorProfileStatus::ChangesRequested],
+]);
+
+it('sends a guest who posts to the lead-time endpoint to login', function () {
+    test()->post(route('tutor.lead-time.update'), ['min_lead_hours' => 4])->assertRedirect(route('login'));
+});
