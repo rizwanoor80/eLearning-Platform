@@ -19,6 +19,7 @@ use App\Http\Controllers\Reviews\ReviewController;
 use App\Http\Controllers\Safeguarding\AbuseReportController;
 use App\Http\Controllers\Tutor\TutorDashboardController;
 use App\Http\Controllers\Tutor\TutorDocumentController;
+use App\Http\Controllers\Tutor\TutorLeadTimeController;
 use App\Http\Controllers\Tutor\TutorOnboardingController;
 use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
@@ -145,6 +146,7 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function () {
     Route::get('tutor/dashboard', [TutorDashboardController::class, 'show'])->name('tutor.dashboard');
+    Route::post('tutor/booking-lead-time', [TutorLeadTimeController::class, 'update'])->name('tutor.lead-time.update');
 
     Route::get('tutor/weekly-slots/{slot}/end', [TutorWeeklySlotController::class, 'endShow'])->whereNumber('slot')->name('tutor.weekly-slots.end.show');
     Route::post('tutor/weekly-slots/{slot}/end', [TutorWeeklySlotController::class, 'end'])->whereNumber('slot')->name('tutor.weekly-slots.end');

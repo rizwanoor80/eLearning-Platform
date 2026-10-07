@@ -4,6 +4,7 @@ namespace App\Services\Search;
 
 use App\Models\Review;
 use App\Models\TutorProfile;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Scheduling\Slot;
 use App\Support\Facades\Settings;
 
@@ -105,6 +106,8 @@ class TutorPresenter
     private function identity(TutorProfile $tutor): array
     {
         $currency = (string) Settings::get('currency_code');
+        $leadTime = app(BookingLeadTime::class);
+        $leadHours = $leadTime->for($tutor);
 
         return [
             'id' => $tutor->id,
@@ -115,6 +118,9 @@ class TutorPresenter
             'trial_price' => $tutor->trialPrice()?->format($currency),
             'rating_avg' => $tutor->rating_count > 0 ? (string) $tutor->rating_avg : null,
             'rating_count' => $tutor->rating_count,
+            // R179: the tutor's effective lead time, worded on the server (search card and profile).
+            'lead_hours' => $leadHours,
+            'lead_label' => $leadTime->label($leadHours),
         ];
     }
 

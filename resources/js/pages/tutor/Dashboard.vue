@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ClipboardCheck } from '@lucide/vue';
+import InputError from '@/components/InputError.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { dashboard as tutorDashboard } from '@/routes/tutor';
 
 type OnboardingBanner = {
@@ -44,7 +47,10 @@ const props = defineProps<{
     upcoming: ScheduledLesson[];
     slots: WeeklySlot[];
     onboarding: OnboardingBanner;
+    leadTime: { current: number; options: Array<{ value: number; label: string }> } | null;
 }>();
+
+const leadTimeForm = useForm({ min_lead_hours: props.leadTime?.current ?? 12 });
 
 defineOptions({
     layout: {
@@ -73,6 +79,22 @@ defineOptions({
             </AlertDescription>
         </Alert>
 
+        <div v-if="props.leadTime" class="grid gap-2 rounded-xl border p-4" data-test="lead-time">
+            <h1 class="text-xl font-semibold">Booking notice</h1>
+            <form class="grid gap-2" @submit.prevent="leadTimeForm.post('/tutor/booking-lead-time', { preserveScroll: true })">
+                <Label for="min_lead_hours">How soon can a parent book you?</Label>
+                <select id="min_lead_hours" v-model="leadTimeForm.min_lead_hours" class="border-input rounded-md border p-2 text-sm">
+                    <option v-for="option in props.leadTime.options" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+                <p class="text-muted-foreground text-xs">
+                    A lesson that starts within 24 hours cannot be cancelled by the parent for a refund. Lessons already booked do not change.
+                </p>
+                <InputError :message="leadTimeForm.errors.min_lead_hours" />
+                <div>
+                    <Button type="submit" :disabled="leadTimeForm.processing">Save</Button>
+                </div>
+            </form>
+        </div>
         <div v-if="props.reportsDue.length > 0" data-test="reports-due">
             <h1 class="mb-3 text-xl font-semibold">Reports due</h1>
             <ul class="divide-y rounded-xl border">

@@ -82,6 +82,7 @@ class BookLessonController extends Controller
             'starts_at' => $startsAt->format(StoreLessonBookingRequest::STARTS_AT_FORMAT),
             'slot_label' => $startsAt->setTimezone($user->timezone)->format('D j M Y, H:i'),
             'slot_available' => $available,
+            'cancel_notice' => $this->cancelNotice($startsAt),
             'alternatives' => array_map(fn (Slot $slot): array => [
                 'starts_at' => $slot->startsAt->utc()->format(StoreLessonBookingRequest::STARTS_AT_FORMAT),
                 'label' => $slot->startsAt->format('D j M, H:i'),
@@ -141,6 +142,24 @@ class BookLessonController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Lesson confirmed.')]);
 
         return to_route('learners.show', $learner);
+    }
+
+    /**
+     * R179: stated before payment, only when the rule applies. The lesson does not exist yet, so the
+     * window is the current `cancel_window_hours` — the value `BookLesson` is about to freeze on it
+     * (invariant #11) — and the test is `CancelLesson`'s own, one step ahead: a parent cancelling at
+     * any moment after booking is past `starts_at - window` exactly when `starts_at <= now + window`.
+     * Nothing about the cancellation or refund rule changes.
+     */
+    private function cancelNotice(CarbonImmutable $startsAt): ?string
+    {
+        $hours = (int) Settings::get('cancel_window_hours');
+
+        if ($startsAt->greaterThan(CarbonImmutable::now()->addHours($hours))) {
+            return null;
+        }
+
+        return trans_choice('This lesson starts within :count hour, so it cannot be cancelled for a refund.|This lesson starts within :count hours, so it cannot be cancelled for a refund.', $hours);
     }
 
     /**

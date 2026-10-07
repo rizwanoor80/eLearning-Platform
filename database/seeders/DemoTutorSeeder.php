@@ -197,6 +197,8 @@ class DemoTutorSeeder extends Seeder
             'headline' => $tutor['headline'],
             'bio' => $tutor['bio'],
             'hourly_rate' => $tutor['rate'],
+            // R179: demo tutors take bookings right away, so rehearsal tests run same-day.
+            'min_lead_hours' => 0,
             'permit_number' => 'DEMO-'.strtoupper(Str::between($tutor['email'], 'demo.', '@')),
             'permit_expires_at' => Date::today()->addMonths(self::PERMIT_MONTHS),
         ]);

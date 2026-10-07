@@ -652,3 +652,113 @@ it('flashes the confirmation toast after a booking', function () {
         ->assertInertiaFlash('toast.type', 'success')
         ->assertInertiaFlash('toast.message', 'Lesson confirmed.');
 });
+
+// --- R179: the tutor's own lead time and the within-24h notice --------------------------------------
+
+it('books inside the old 12h default when the tutor chose a shorter lead, and refuses what is inside it', function (int $lead, string $startsAt, string $now, bool $accepted) {
+    Mail::fake();
+    $this->travelTo(CarbonImmutable::parse($now, 'UTC'));
+    $setup = bkTutor();
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => $lead]);
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    $response = $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, $startsAt));
+
+    if ($accepted) {
+        $response->assertSessionHasNoErrors();
+    } else {
+        $response->assertSessionHasErrors('slot');
+    }
+
+    expect(Lesson::query()->count())->toBe($accepted ? 1 : 0);
+})->with([
+    // Monday 09:00 UTC slot, tutor open Monday 09:00-12:00. Lead 0: strictly in the future.
+    'lead 0, one minute before the slot' => [0, '2026-09-14T09:00:00Z', '2026-09-14 08:59:00', true],
+    'lead 0, at the slot start' => [0, '2026-09-14T09:00:00Z', '2026-09-14 09:00:00', false],
+    // Lead 4: the slot must start at or after now + 4h, to the minute.
+    'lead 4, exactly now + 4h' => [4, '2026-09-14T10:00:00Z', '2026-09-14 06:00:00', true],
+    'lead 4, one minute short' => [4, '2026-09-14T10:00:00Z', '2026-09-14 06:01:00', false],
+    'lead 4, three hours ahead' => [4, '2026-09-14T09:00:00Z', '2026-09-14 06:00:00', false],
+    // Lead 24: Tuesday 09:00 UTC.
+    'lead 24, exactly now + 24h' => [24, '2026-09-15T09:00:00Z', '2026-09-14 09:00:00', true],
+    'lead 24, one minute short' => [24, '2026-09-15T09:00:00Z', '2026-09-14 09:01:00', false],
+]);
+
+it('applies the lead in the instant, whatever timezone the tutor keeps their hours in', function (int $lead, string $now, bool $accepted) {
+    Mail::fake();
+    $this->travelTo(CarbonImmutable::parse($now, 'UTC'));
+    $setup = bkTutor();
+    // Tuesday 09:00 Asia/Dubai (UTC+4) = 05:00 UTC.
+    AvailabilityRule::query()->where('tutor_profile_id', $setup['tutor']->id)->delete();
+    AvailabilityRule::factory()->create([
+        'tutor_profile_id' => $setup['tutor']->id, 'weekday' => 2, 'start_time' => '09:00:00', 'end_time' => '10:00:00', 'timezone' => 'Asia/Dubai',
+    ]);
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => $lead]);
+    ['parent' => $parent, 'learner' => $learner] = bkParent('Asia/Dubai');
+
+    $response = $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, '2026-09-15T05:00:00Z'));
+
+    $accepted ? $response->assertSessionHasNoErrors() : $response->assertSessionHasErrors('slot');
+    expect(Lesson::query()->count())->toBe($accepted ? 1 : 0);
+})->with([
+    'lead 4 at 01:00 UTC' => [4, '2026-09-15 01:00:00', true],
+    'lead 4 at 01:01 UTC' => [4, '2026-09-15 01:01:00', false],
+    'lead 0 at 04:59 UTC' => [0, '2026-09-15 04:59:00', true],
+    'lead 0 at 05:00 UTC' => [0, '2026-09-15 05:00:00', false],
+]);
+
+it('refuses lead 0 when immediate booking is switched off, even for a tutor who chose it', function () {
+    Mail::fake();
+    Settings::set('allow_immediate_booking', false);
+    $setup = bkTutor();
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 0]);
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    // Monday 09:00 is three hours ahead; the smallest allowed value (4) now applies.
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, '2026-09-14T09:00:00Z'))->assertSessionHasErrors('slot');
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, '2026-09-14T10:00:00Z'))->assertSessionHasNoErrors();
+
+    expect(Lesson::query()->count())->toBe(1);
+});
+
+it('does not change an already booked lesson when the tutor later raises their lead time', function () {
+    Mail::fake();
+    $setup = bkTutor();
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 0]);
+    ['parent' => $parent, 'learner' => $learner] = bkParent();
+
+    $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner, '2026-09-14T09:00:00Z'))->assertSessionHasNoErrors();
+    $lesson = Lesson::query()->sole();
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 24]);
+    Settings::set('booking_min_lead_hours', 48);
+
+    $fresh = $lesson->fresh();
+    expect($fresh->starts_at->equalTo($lesson->starts_at))->toBeTrue()
+        ->and($fresh->status)->toBe(LessonStatus::Confirmed);
+});
+
+it('states before payment that the lesson cannot be cancelled for a refund, exactly when the cancel window applies', function (int $window, string $now, string $startsAt, bool $notice) {
+    $this->travelTo(CarbonImmutable::parse($now, 'UTC'));
+    Settings::set('cancel_window_hours', $window);
+    $setup = bkTutor();
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 0]);
+    ['parent' => $parent] = bkParent();
+
+    $this->actingAs($parent)->get(bkUrl($setup['tutor'], $startsAt))->assertInertia(fn ($page) => $notice
+        ? $page->where('cancel_notice', "This lesson starts within {$window} hours, so it cannot be cancelled for a refund.")
+        : $page->where('cancel_notice', null));
+})->with([
+    'starts in 3h' => [24, '2026-09-14 06:00:00', '2026-09-14T09:00:00Z', true],
+    'starts in exactly 24h' => [24, '2026-09-14 09:00:00', '2026-09-15T09:00:00Z', true],
+    'starts in 24h and one second' => [24, '2026-09-14 08:59:59', '2026-09-15T09:00:00Z', false],
+    'starts in 27h' => [24, '2026-09-14 06:00:00', '2026-09-15T09:00:00Z', false],
+    'a 12h window, starts in exactly 12h' => [12, '2026-09-14 21:00:00', '2026-09-15T09:00:00Z', true],
+    'a 12h window, starts in 13h' => [12, '2026-09-14 20:00:00', '2026-09-15T09:00:00Z', false],
+]);
+
+it('shows the notice paragraph on the booking page and leaves the cancellation rule itself alone', function () {
+    $page = file_get_contents(resource_path('js/pages/lessons/Book.vue'));
+
+    expect($page)->toContain('data-testid="cancel-notice"')->toContain('slot_available && cancel_notice');
+});

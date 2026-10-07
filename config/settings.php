@@ -26,6 +26,11 @@ return [
         'payout_min' => 20000,
         'booking_min_lead_hours' => 12,
         'booking_max_days' => 30,
+        // R179: the values a tutor may choose as their lead time, and whether "0 = right away" is
+        // among them. On unless this is production; the admin can change it either way. A config
+        // default (not only a seeded row) so a database that is never re-seeded still has it.
+        'lead_time_options' => [0, 4, 8, 12, 24],
+        'allow_immediate_booking' => env('APP_ENV', 'production') !== 'production',
         'recurring_horizon_weeks' => 4,
         'recurring_charge_lead_hours' => 48,
         'recurring_retry_hours' => [36, 24],
@@ -77,9 +82,12 @@ return [
         'platform' => [
             'commission_pct', 'trial_discount_pct', 'cancel_window_hours', 'student_grace_min',
             'tutor_grace_min', 'report_due_hours', 'auto_release_hours', 'payout_weekday', 'payout_min',
-            'booking_min_lead_hours', 'booking_max_days', 'recurring_horizon_weeks',
+            'recurring_horizon_weeks',
             'recurring_charge_lead_hours', 'recurring_retry_hours', 'recurring_pause_after_failures',
             'recurring_tutor_end_notice_days', 'vat_pct', 'currency_code', 'currency_symbol', 'default_timezone',
+        ],
+        'booking' => [
+            'booking_min_lead_hours', 'booking_max_days', 'lead_time_options', 'allow_immediate_booking',
         ],
         'site' => [
             'site_name', 'tagline', 'logo_path', 'favicon_path', 'contact_email', 'contact_phone',

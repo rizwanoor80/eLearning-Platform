@@ -299,7 +299,7 @@ it('builds the email from the public card only: no surname, contact, permit or g
         expect($html)->toContain('Layla')->toContain('AED 100.00')->toContain('AED 50.00')->toContain(route('tutors.show', $tutor->id))
             ->not->toContain('Hassan')->not->toContain('layla.private@example.test')->not->toContain('+971500000000')
             ->not->toContain('PMT-SECRET-123')->not->toContain('PRIVATE-GOALS-TEXT');
-        expect(array_keys($mail->cards[0]))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'subjects', 'next_slot']);
+        expect(array_keys($mail->cards[0]))->toEqualCanonicalizing(['id', 'name', 'headline', 'rate', 'trial_price', 'rating_avg', 'rating_count', 'lead_hours', 'lead_label', 'subjects', 'next_slot']);
 
         return true;
     });

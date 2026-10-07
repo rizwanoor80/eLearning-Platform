@@ -734,3 +734,29 @@ it('records the lesson type of the trial prerequisite as a trial only', function
     expect(fn () => app(CreateRecurringSlot::class)($parent, $learner, $setup['tutor'], rsData($setup)))
         ->toThrow(RecurringSlotException::class, 'trial');
 });
+
+// --- R179: the first lesson reads the tutor's own lead time ---------------------------------------
+
+it('takes a first lesson inside the old 12h default when the tutor chose a shorter lead, and says so plainly at lead 0', function () {
+    // Monday 07:00 UTC is one hour after "now" (06:00).
+    $setup = rsTutor('UTC', '07:00:00', '12:00:00', 1);
+    ['parent' => $parent, 'learner' => $learner] = rsParent($setup['tutor']);
+    $data = rsData($setup, ['weekday' => 1, 'start_time' => '07:00', 'starts_on' => '2026-09-14']);
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 4]);
+    expect(fn () => app(CreateRecurringSlot::class)($parent, $learner, $setup['tutor']->fresh(), $data))
+        ->toThrow(RecurringSlotException::class, 'at least 4 hour');
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 0]);
+    expect(app(CreateRecurringSlot::class)($parent, $learner, $setup['tutor']->fresh(), $data))->toBeInstanceOf(RecurringSlot::class);
+});
+
+it('refuses a first lesson that has already started at lead 0', function () {
+    $setup = rsTutor('UTC', '06:00:00', '12:00:00', 1);
+    ['parent' => $parent, 'learner' => $learner] = rsParent($setup['tutor']);
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 0]);
+
+    // 06:00 Monday is "now": not in the future.
+    expect(fn () => app(CreateRecurringSlot::class)($parent, $learner, $setup['tutor']->fresh(), rsData($setup, ['weekday' => 1, 'start_time' => '06:00', 'starts_on' => '2026-09-14'])))
+        ->toThrow(RecurringSlotException::class, 'must be in the future');
+});

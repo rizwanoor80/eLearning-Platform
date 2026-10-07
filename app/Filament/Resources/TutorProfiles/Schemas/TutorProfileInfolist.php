@@ -8,6 +8,7 @@ use App\Models\Dispute;
 use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\TutorStrike;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Support\Money;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -44,6 +45,9 @@ class TutorProfileInfolist
                 TextEntry::make('hourly_rate')
                     ->label('Hourly rate')
                     ->formatStateUsing(fn (?Money $state) => $state?->format()),
+                TextEntry::make('lead_time')
+                    ->label('Booking lead time')
+                    ->getStateUsing(fn (TutorProfile $record): string => app(BookingLeadTime::class)->label(app(BookingLeadTime::class)->for($record))),
                 TextEntry::make('agreement_version')
                     ->label('Agreement version accepted'),
                 TextEntry::make('review_note')

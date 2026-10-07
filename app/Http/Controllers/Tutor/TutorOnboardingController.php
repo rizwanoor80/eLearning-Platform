@@ -25,6 +25,7 @@ use App\Models\Subject;
 use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Tutors\TutorRateBands;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use App\Support\Money;
@@ -65,6 +66,7 @@ class TutorOnboardingController extends Controller
         $step = $this->currentStep($user, $profile);
 
         $agreementPage = Page::query()->where('slug', 'tutor_agreement')->first();
+        $leadTime = app(BookingLeadTime::class);
 
         return Inertia::render('tutor/Onboarding', [
             'step' => $step['name'],
@@ -99,7 +101,14 @@ class TutorOnboardingController extends Controller
                 'bio' => $profile->bio,
                 'intro_video_url' => $profile->intro_video_url,
                 'hourly_rate' => $profile->hourly_rate?->toFils(),
+                // The effective value (R179): what a parent is held to today, so the select never shows
+                // a choice the platform would not honour.
+                'min_lead_hours' => $leadTime->for($profile),
             ],
+            'leadTimeOptions' => array_map(
+                fn (int $hours): array => ['value' => $hours, 'label' => $leadTime->label($hours)],
+                $leadTime->options(),
+            ),
             'documentTypes' => DocumentType::query()->active()->orderBy('sort')
                 ->get(['id', 'code', 'name', 'description']),
             'documents' => $profile->tutorDocuments()

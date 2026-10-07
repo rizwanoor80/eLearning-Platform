@@ -786,3 +786,20 @@ it('words the ended email for an admin, and uses the earlier of the two end date
     $slot->forceFill(['ends_on' => '2026-10-01', 'end_effective_on' => '2026-10-05'])->save();
     expect((new RecurringSlotEndedMail($slot->fresh(), $parent, Role::Tutor, 0, 0))->render())->toContain('will end after Thursday, 1 Oct 2026');
 });
+
+it('puts the first lesson of each option behind the tutor\'s own lead time', function () {
+    Mail::fake();
+    // Monday 17:00 is 11 hours away at 06:00 Monday: inside the 12h default, outside a 4h lead.
+    $setup = wpTutor('UTC', '17:00:00', '18:00:00', 1);
+    ['parent' => $parent] = wpParent($setup['tutor']);
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 4]);
+
+    test()->actingAs($parent)->get(route('weekly-slots.create', ['tutor' => $setup['tutor']->id]))
+        ->assertInertia(fn ($page) => $page->where('options.0.first_on', '2026-09-14'));
+
+    TutorProfile::query()->whereKey($setup['tutor']->id)->update(['min_lead_hours' => 12]);
+
+    test()->actingAs($parent)->get(route('weekly-slots.create', ['tutor' => $setup['tutor']->id]))
+        ->assertInertia(fn ($page) => $page->where('options.0.first_on', '2026-09-21'));
+});

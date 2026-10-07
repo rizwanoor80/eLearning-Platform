@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Actions\RecordAuditLog;
 use App\Enums\SettingGroup;
 use App\Models\Setting;
+use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
 use BackedEnum;
@@ -24,7 +25,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 
 /**
- * Settings editor (CP1): tabs platform / site / mail / features, keys and
+ * Settings editor (CP1): tabs platform / booking / site / mail / features, keys and
  * groups from config('settings.groups') so there is one key list. Every
  * changed key writes an audit row (before/after) against its `settings` row.
  *
@@ -57,7 +58,7 @@ class ManageSettings extends Page implements HasSchemas
     ];
 
     /** @var list<string> */
-    private const BOOLEAN_KEYS = ['match_requests', 'reviews', 'messaging'];
+    private const BOOLEAN_KEYS = ['match_requests', 'reviews', 'messaging', 'allow_immediate_booking'];
 
     public function mount(): void
     {
@@ -80,8 +81,6 @@ class ManageSettings extends Page implements HasSchemas
                             TextInput::make('auto_release_hours')->numeric()->integer()->minValue(0)->required(),
                             TextInput::make('payout_weekday')->numeric()->integer()->minValue(0)->maxValue(6)->required(),
                             TextInput::make('payout_min')->label('Payout minimum (fils)')->numeric()->integer()->minValue(0)->required(),
-                            TextInput::make('booking_min_lead_hours')->numeric()->integer()->minValue(0)->required(),
-                            TextInput::make('booking_max_days')->numeric()->integer()->minValue(1)->maxValue(SlotCalculator::MAX_HORIZON_DAYS)->required(),
                             TextInput::make('recurring_horizon_weeks')->numeric()->integer()->minValue(1)->required(),
                             TextInput::make('recurring_charge_lead_hours')->numeric()->integer()->minValue(0)->required(),
                             TagsInput::make('recurring_retry_hours')->helperText('Hours before the lesson, e.g. 36 and 24'),
@@ -91,6 +90,21 @@ class ManageSettings extends Page implements HasSchemas
                             TextInput::make('currency_code')->required()->maxLength(3),
                             TextInput::make('currency_symbol')->required()->maxLength(8),
                             TextInput::make('default_timezone')->required()->rule('timezone:all'),
+                        ])->columns(2),
+                        Tab::make('Booking')->schema([
+                            TextInput::make('booking_min_lead_hours')
+                                ->label('Default lead time (hours)')
+                                ->helperText('Used for a tutor who has not chosen one, and rounded up to the nearest allowed value below.')
+                                ->numeric()->integer()->minValue(0)->maxValue(BookingLeadTime::MAX_HOURS)->required(),
+                            TextInput::make('booking_max_days')->numeric()->integer()->minValue(1)->maxValue(SlotCalculator::MAX_HORIZON_DAYS)->required(),
+                            TagsInput::make('lead_time_options')
+                                ->label('Lead times a tutor can choose (hours)')
+                                ->helperText('Whole hours, e.g. 0, 4, 8, 12, 24. 0 means "book right away" and only appears while it is switched on below.')
+                                ->required()
+                                ->nestedRecursiveRules(['integer', 'min:0', 'max:'.BookingLeadTime::MAX_HOURS]),
+                            Toggle::make('allow_immediate_booking')
+                                ->label('Allow "book right away" (lead time 0)')
+                                ->helperText('On for testing and rehearsal; off on production unless you decide otherwise. While off, a tutor who chose 0 is held to the smallest other allowed value.'),
                         ])->columns(2),
                         Tab::make('Site')->schema([
                             TextInput::make('site_name')->required()->maxLength(255),
@@ -186,6 +200,13 @@ class ManageSettings extends Page implements HasSchemas
 
         if ($key === 'recurring_retry_hours') {
             return array_map('intval', (array) $value);
+        }
+
+        if ($key === 'lead_time_options') {
+            $options = array_values(array_unique(array_map('intval', (array) $value)));
+            sort($options);
+
+            return $options;
         }
 
         if ($key === 'social_links') {

@@ -5,7 +5,6 @@ namespace App\Services\Scheduling;
 use App\Models\AvailabilityRule;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
-use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 
 /**
@@ -30,7 +29,7 @@ class WeeklySlotOptions
             ->map(fn (RecurringSlot $slot): string => $slot->weekday.'|'.substr($slot->start_time, 0, 5))
             ->all();
 
-        $after = now()->addHours((int) Settings::get('booking_min_lead_hours'));
+        $after = now()->addHours(app(BookingLeadTime::class)->for($tutor));
         $options = [];
 
         $rules = AvailabilityRule::query()

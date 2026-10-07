@@ -8,4 +8,5 @@ enum SettingGroup: string
     case Site = 'site';
     case Mail = 'mail';
     case Features = 'features';
+    case Booking = 'booking';
 }

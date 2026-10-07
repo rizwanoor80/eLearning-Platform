@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $intro_video_url
  * @property string|null $linkedin_url
  * @property Money|null $hourly_rate
+ * @property int|null $min_lead_hours The tutor's own booking lead time (R179); null = platform default. Read it only through `BookingLeadTime::for()`.
  * @property TutorProfileStatus $status
  * @property string|null $permit_number
  * @property Carbon|null $permit_expires_at
@@ -58,7 +59,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate',
+        'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
@@ -71,6 +72,7 @@ class TutorProfile extends Model
     {
         return [
             'hourly_rate' => Money::class,
+            'min_lead_hours' => 'integer',
             'status' => TutorProfileStatus::class,
             'permit_expires_at' => 'date',
             'agreement_accepted_at' => 'datetime',
