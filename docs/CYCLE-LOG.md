@@ -6552,3 +6552,23 @@ Cycle 13 r1 (programme "lead-time", 4 steps) is complete. 1 PLAN commit `bf4ee96
 
 ### 2026-10-07 18:56 — HANDOFF (cycle 13 r1)
 Session closing at END. Context size: not measured by the tool this write. Compactions this session: 1. STATUS.md carries what is done (steps 1-4), what is next (R181, then the planner reads `video:webhooks` output), and what was ruled out (running `video:webhooks` myself, which is not on the allow-list; any production action; touching the `allow_immediate_booking` setting row). PLAN.md and CYCLE-LOG.md are current (cycle 13 r1)
+
+### 2026-10-08 14:06 — START (cycle 14 r1)
+PLAN.md cycle 14 r1 committed as `bc7dc5b` (uncommitted revision found in the working tree after `f95dde7`; no END for cycle 14 exists in this log). Programme "clarity": 14a approval rule, 14b onboarding clarity, 14c lesson polish, then deploy and END. Resume cap 0 of 8. Step 1 is R184, read-only. (cycle 14 r1)
+
+### 2026-10-08 14:15 — VERIFICATION (R184, Daily proof, rehearsal, allow-listed read-only SSH)
+```
+$ php8.4 artisan video:webhooks --since=24h --limit=50
+6 deliveries since 2026-10-07 10:06:37 UTC.   daily | 200 | received | 6
+2026-10-08 10:02:06  participant.left    58459-ptcpt-left-d0d3ebda-…-1791453725394  471 bytes  keys version,type,id,payload,event_ts | payload room,user_id,user_name,session_id,joined_at,will_eject_at,owner,permissions,duration
+2026-10-08 10:01:48  participant.left    58459-ptcpt-left-d3bf9651-…-1791453707108  468
+2026-10-08 09:53:30  participant.joined  58459-ptcpt-join-d3bf9651-…-1791453209614  431  (payload keys as above without duration)
+2026-10-08 09:53:20  participant.left    58459-ptcpt-left-dd75473a-…-1791453199521  468
+2026-10-08 09:52:23  participant.joined  58459-ptcpt-join-dd75473a-…-1791453142183  431
+2026-10-08 09:51:57  participant.joined  58459-ptcpt-join-d0d3ebda-…-1791453115972  434
+$ php8.4 artisan db:show --counts   → video_webhook_deliveries 6, video_webhook_events 6, failed_jobs 0, lessons 3
+$ php8.4 artisan queue:failed       → No failed jobs found.
+$ php8.4 artisan horizon:status     → Horizon is running.
+$ grep -ciE 'ERROR|exception|critical' storage/logs/laravel.log → 0
+```
+09:51–10:02 UTC is 13:51–14:02 Asia/Dubai, the lesson-3 window. Every delivery was answered 200 with outcome `received` (verified and stored once), so nothing was "delivered but ignored" at the signature, dedupe or storage layer, and `WebhookPayload::parse` accepts the real body shape (an unparseable body would have produced outcome `ignored`). Not verifiable by CC: the values of `user_id` (key names only are kept, by design), and whether lesson 3's `tutor_joined_at` / `learner_joined_at` are set (no row reads on the allow-list); indirect evidence is six stored events, 0 failed jobs, 0 log errors, Horizon running. The log's only `video.webhook.rejected` line is the 2026-10-07 10:57 unsigned registration ping (empty timestamp, body length 2), already answered 401 by design. R184 closed: ADR-017 closure line and the CHECKPOINTS CP6 line written. (cycle 14 r1)
