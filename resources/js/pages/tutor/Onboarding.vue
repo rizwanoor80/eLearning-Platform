@@ -86,6 +86,7 @@ const props = defineProps<{
     // R171: everything but personal/CV-or-LinkedIn/agreement is optional and reachable at any
     // time via the step picker, once the profile is still editable (draft or changes_requested).
     canPickSteps: boolean;
+    canEditAvailability: boolean;
     missingForSubmission: string[];
     personal: { country: string | null; phone: string | null; timezone: string };
     profile: {
@@ -165,7 +166,13 @@ const flagged = computed(() => new Set(props.reviewSections.map((key) => reviewS
 const flaggedLabels = computed(() => pickableSteps.filter((section) => flagged.value.has(section.key)).map((section) => section.label));
 
 const viewing = ref<PickableStep | null>(null);
-const shown = computed(() => (props.canPickSteps && viewing.value !== null ? viewing.value : props.step));
+const shown = computed(() => {
+    if (props.canEditAvailability) {
+        return 'availability';
+    }
+
+    return props.canPickSteps && viewing.value !== null ? viewing.value : props.step;
+});
 const afterSubmit = { onSuccess: () => (viewing.value = null) };
 
 const lockedTitle = computed(() => {
@@ -671,6 +678,7 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="shown === 'availability'" @submit.prevent="submitAvailability" class="grid max-w-2xl gap-4">
+            <p v-if="canEditAvailability" class="font-medium">{{ lockedTitle }}</p>
             <p class="text-muted-foreground text-sm">Your weekly availability, in your own timezone.</p>
 
             <div v-for="(rule, index) in availabilityForm.rules" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">

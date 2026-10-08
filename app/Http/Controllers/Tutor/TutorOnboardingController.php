@@ -86,6 +86,8 @@ class TutorOnboardingController extends Controller
             // extends to draft too (12a). Not gated on `step === 'complete'`: R170's UAE permit
             // note and R173(b)'s "Skip for now" both need to be visible from the start, not only
             // after every mandatory step is already done.
+            // R185: an approved tutor can reach only the availability form (to become listed).
+            'canEditAvailability' => $profile->status === TutorProfileStatus::Approved,
             'canPickSteps' => in_array($profile->status, [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested], true),
             'missingForSubmission' => app(TutorSubmissionReadiness::class)->missing($user, $profile),
             'personal' => [
@@ -300,7 +302,11 @@ class TutorOnboardingController extends Controller
         /** @var User $user */
         $user = $request->user();
         $profile = $this->profileFor($user);
-        $this->guardStepNotAhead($user, $profile, 'availability');
+        // R185: an approved tutor is locked out of every other step, but may still add or change
+        // their weekly windows — that is the only way to become listed (the dashboard banner's link).
+        if ($profile->status !== TutorProfileStatus::Approved) {
+            $this->guardStepNotAhead($user, $profile, 'availability');
+        }
 
         /** @var array<int, array{weekday: int, start_time: string, end_time: string}> $rulesInput */
         $rulesInput = $request->validated('rules');

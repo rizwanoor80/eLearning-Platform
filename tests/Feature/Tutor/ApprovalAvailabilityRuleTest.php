@@ -212,3 +212,29 @@ it('names the requested sections in the changes-requested email', function () {
     expect($html)->toContain('Work permit')->toContain('Availability')->toContain('Scan was blurry.')
         ->not->toContain('Bank details');
 });
+
+it('lets an approved tutor with no window add one from the banner link, and become bookable', function () {
+    $profile = r185Approved(false);
+
+    test()->actingAs($profile->user)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('canEditAvailability', true));
+
+    test()->actingAs($profile->user)->post(route('tutor.onboarding.availability'), [
+        'rules' => [['weekday' => 2, 'start_time' => '09:00', 'end_time' => '12:00']],
+    ])->assertRedirect(route('tutor.onboarding'));
+
+    expect($profile->availabilityRules()->count())->toBe(1)
+        ->and(TutorProfile::query()->bookable()->whereKey($profile->id)->exists())->toBeTrue();
+});
+
+it('still refuses every other onboarding step for an approved tutor, and offers no availability edit to a pending one', function () {
+    $approved = r185Approved(true);
+    test()->actingAs($approved->user)->post(route('tutor.onboarding.permit'), [])->assertStatus(409);
+
+    $pending = TutorProfile::factory()->approvable()->create(['status' => TutorProfileStatus::PendingReview]);
+    test()->actingAs($pending->user)->get(route('tutor.onboarding'))
+        ->assertInertia(fn ($page) => $page->where('canEditAvailability', false));
+    test()->actingAs($pending->user)->post(route('tutor.onboarding.availability'), [
+        'rules' => [['weekday' => 3, 'start_time' => '09:00', 'end_time' => '12:00']],
+    ])->assertStatus(409);
+});
