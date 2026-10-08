@@ -36,7 +36,7 @@ it('shares the feature map with every page', function () {
 });
 
 it('drops the reviews block from the profile when the toggle is off (R30 #9)', function () {
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $tutor->user->forceFill(['name' => 'Layla Hassan'])->save();
 
     Settings::set('reviews', true, SettingGroup::Features);

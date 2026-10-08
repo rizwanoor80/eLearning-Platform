@@ -47,6 +47,7 @@ const props = defineProps<{
     upcoming: ScheduledLesson[];
     slots: WeeklySlot[];
     onboarding: OnboardingBanner;
+    needsAvailability: boolean;
     leadTime: { current: number; options: Array<{ value: number; label: string }> } | null;
 }>();
 
@@ -76,6 +77,15 @@ defineOptions({
                     Still needed: {{ props.onboarding.missing.join(', ') }}.
                 </p>
                 <Link href="/tutor/onboarding" class="text-sm underline underline-offset-4">Continue onboarding</Link>
+            </AlertDescription>
+        </Alert>
+
+        <Alert v-if="props.needsAvailability" data-test="availability-banner">
+            <ClipboardCheck class="size-4" />
+            <AlertTitle>Add your availability to appear in search</AlertTitle>
+            <AlertDescription>
+                <p class="text-sm">You are approved, but parents cannot find or book you until you add at least one weekly window.</p>
+                <Link href="/tutor/onboarding" class="text-sm underline underline-offset-4">Add availability</Link>
             </AlertDescription>
         </Alert>
 

@@ -80,6 +80,8 @@ const props = defineProps<{
         | 'submitted';
     status: string;
     reviewNote: string | null;
+    // R185: the sections an admin ticked on "Request changes" (TutorReviewSection values).
+    reviewSections: string[];
     currentDocumentType: DocumentTypeProp | null;
     // R171: everything but personal/CV-or-LinkedIn/agreement is optional and reachable at any
     // time via the step picker, once the profile is still editable (draft or changes_requested).
@@ -146,6 +148,21 @@ const pickableSteps: Array<{ key: PickableStep; label: string }> = [
     { key: 'profile', label: 'Bio and headline' },
     { key: 'availability', label: 'Availability' },
 ];
+
+// R185: which picker button each requested review section points at.
+const reviewSectionStep: Record<string, PickableStep> = {
+    contact: 'personal',
+    permit: 'permit',
+    documents: 'document',
+    bank: 'bank',
+    subjects: 'subjects',
+    rate: 'rate',
+    bio: 'profile',
+    availability: 'availability',
+};
+
+const flagged = computed(() => new Set(props.reviewSections.map((key) => reviewSectionStep[key]).filter(Boolean)));
+const flaggedLabels = computed(() => pickableSteps.filter((section) => flagged.value.has(section.key)).map((section) => section.label));
 
 const viewing = ref<PickableStep | null>(null);
 const shown = computed(() => (props.canPickSteps && viewing.value !== null ? viewing.value : props.step));
@@ -376,9 +393,12 @@ const submitComplete = () => {
             <h1 class="text-xl font-semibold">Onboarding</h1>
         </div>
 
-        <div v-if="reviewNote" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
+        <div v-if="reviewNote || flaggedLabels.length > 0" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
             <p class="font-medium">{{ status === 'suspended' ? 'Reason given by an admin:' : 'An admin asked for some changes:' }}</p>
-            <p class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
+            <ul v-if="flaggedLabels.length > 0" class="list-disc ps-5">
+                <li v-for="label in flaggedLabels" :key="label">{{ label }}</li>
+            </ul>
+            <p v-if="reviewNote" class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
         </div>
 
         <div v-if="canPickSteps" class="grid max-w-md gap-3">
@@ -396,9 +416,10 @@ const submitComplete = () => {
                     type="button"
                     size="sm"
                     :variant="viewing === section.key ? 'default' : 'outline'"
+                    :class="flagged.has(section.key) ? 'border-amber-500 ring-1 ring-amber-400' : ''"
                     @click="viewing = section.key"
                 >
-                    {{ section.label }}
+                    {{ section.label }}<span v-if="flagged.has(section.key)" class="ms-1 text-amber-600">• needs changes</span>
                 </Button>
                 <Button v-if="viewing !== null" type="button" size="sm" variant="ghost" @click="viewing = null">Back</Button>
             </div>

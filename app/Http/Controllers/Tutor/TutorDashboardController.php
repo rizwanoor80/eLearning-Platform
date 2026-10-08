@@ -43,6 +43,7 @@ class TutorDashboardController extends Controller
                 'upcoming' => [],
                 'slots' => [],
                 'onboarding' => $this->onboardingBanner($user, null),
+                'needsAvailability' => false,
                 'leadTime' => null,
             ]);
         }
@@ -90,6 +91,7 @@ class TutorDashboardController extends Controller
             'upcoming' => $this->present($upcoming, $user),
             'slots' => $this->slots($tutorProfile),
             'onboarding' => $this->onboardingBanner($user, $tutorProfile),
+            'needsAvailability' => $this->needsAvailability($tutorProfile),
             'leadTime' => $this->leadTime($tutorProfile),
         ]);
     }
@@ -116,6 +118,16 @@ class TutorDashboardController extends Controller
                 $leadTime->options(),
             ),
         ];
+    }
+
+    /**
+     * R185: an approved tutor with no weekly window is not listed or bookable (`TutorProfile::bookable()`),
+     * so the dashboard says so and links to the availability step. Any other status has its own banner or none.
+     */
+    private function needsAvailability(TutorProfile $tutorProfile): bool
+    {
+        return $tutorProfile->status === TutorProfileStatus::Approved
+            && $tutorProfile->availabilityRules()->doesntExist();
     }
 
     /**

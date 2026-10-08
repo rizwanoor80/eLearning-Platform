@@ -128,7 +128,7 @@ it('removes a tutor from bookable() the moment an admin pulls them back, keeping
     $profile = lcApproved();
     expect(TutorProfile::bookable()->whereKey($profile->id)->exists())->toBeTrue();
 
-    (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $profile, 'Update your bio.');
+    (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $profile, ['bio'], 'Update your bio.');
     expect(TutorProfile::bookable()->whereKey($profile->id)->exists())->toBeFalse()
         ->and($profile->fresh()->approved_at)->not->toBeNull(); // kept as history
 });
@@ -157,7 +157,7 @@ it('blocks approval when the permit has expired since submission, or the rate is
 ]);
 
 it('agrees with the bookable() scope on the permit boundary: yesterday, today and tomorrow', function (int $offsetDays, bool $valid) {
-    $profile = TutorProfile::factory()->approved()->create(['permit_expires_at' => now()->addDays($offsetDays)->toDateString()]);
+    $profile = TutorProfile::factory()->bookable()->create(['permit_expires_at' => now()->addDays($offsetDays)->toDateString()]);
 
     expect($profile->fresh()->permitIsValid())->toBe($valid)
         ->and(TutorProfile::bookable()->whereKey($profile->id)->exists())->toBe($valid);
@@ -348,7 +348,7 @@ it('rolls the document decision back when the tutor cannot be moved, so the two 
     $document = TutorDocument::factory()->for($profile, 'tutorProfile')->accepted()->create();
     app()->bind(RequestTutorChanges::class, fn () => new class(app(RecordAuditLog::class)) extends RequestTutorChanges
     {
-        public function apply(User $admin, TutorProfile $profile, string $note): void
+        public function apply(User $admin, TutorProfile $profile, array $sections, ?string $note = null): void
         {
             throw new TutorStatusTransitionException('moved concurrently');
         }

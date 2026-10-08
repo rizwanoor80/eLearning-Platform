@@ -49,10 +49,22 @@ class TutorProfileFactory extends Factory
     }
 
     /**
+     * R185: approved AND with one weekly availability window — what `TutorProfile::bookable()`
+     * needs. Plain `approved()` is the approved-but-unlisted tutor (no window).
+     */
+    public function bookable(): static
+    {
+        return $this->approved()->afterCreating(
+            fn (TutorProfile $profile) => AvailabilityRule::factory()->create(['tutor_profile_id' => $profile->id]),
+        );
+    }
+
+    /**
      * A profile that passes every `TutorApprovalReadiness` check except permit/documents (R36 f,
      * R171): one lower-secondary subject in a GCSE curriculum (found or created) with a current
-     * band that contains the profile's rate, plus one weekly availability window. Only the
-     * rate/band/availability preconditions — documents and permit are set by the test.
+     * band that contains the profile's rate, plus one weekly availability window (needed to be
+     * bookable, not to be approved — R185). Only the rate/band/availability preconditions —
+     * documents and permit are set by the test.
      */
     public function approvable(): static
     {
@@ -83,7 +95,9 @@ class TutorProfileFactory extends Factory
 
         $profile->forceFill(['hourly_rate' => 10000])->save();
 
-        // R171: TutorApprovalReadiness now also requires a weekly availability window.
+        // R185: approval itself no longer needs a window, but `bookable()` does, so the window stays
+        // here to keep an approved fixture bookable; a test of the no-window case deletes it
+        // (`$profile->availabilityRules()->delete()`).
         // Not deduplicated: a test that calls makeApprovable() twice on the same profile would
         // get two windows, which is harmless for every current caller.
         AvailabilityRule::factory()->create(['tutor_profile_id' => $profile->id]);

@@ -47,6 +47,7 @@ use Illuminate\Support\Facades\DB;
  * @property int $late_report_count_90d
  * @property int $strike_count_90d
  * @property string|null $review_note
+ * @property array<int, string>|null $review_sections
  * @property int|null $approved_by
  * @property Carbon|null $approved_at
  * @property Carbon|null $submitted_at
@@ -73,6 +74,7 @@ class TutorProfile extends Model
         return [
             'hourly_rate' => Money::class,
             'min_lead_hours' => 'integer',
+            'review_sections' => 'array',
             'status' => TutorProfileStatus::class,
             'permit_expires_at' => 'date',
             'agreement_accepted_at' => 'datetime',
@@ -87,7 +89,8 @@ class TutorProfile extends Model
     }
 
     /**
-     * Bookable = approved AND the permit does not block booking (R170: no permit at all is fine
+     * Bookable = approved AND at least one weekly availability window (R185) AND the permit
+     * does not block booking (R170: no permit at all is fine
      * — a tutor need not be in the UAE; a permit that exists must not have expired, strictly
      * after today) AND the owning user has not been deleted. The third condition enforces
      * invariant #5 against R54: `AnonymizeUser` suspends an approved tutor's profile on deletion,
@@ -114,6 +117,13 @@ class TutorProfile extends Model
                     ->from('users')
                     ->whereColumn('users.id', 'tutor_profiles.user_id')
                     ->whereNull('users.deleted_at');
+            })
+            // R185: approval no longer needs availability, being listed and booked does — an
+            // approved tutor with no weekly window is not offered to anyone.
+            ->whereExists(function ($query): void {
+                $query->select(DB::raw(1))
+                    ->from('availability_rules')
+                    ->whereColumn('availability_rules.tutor_profile_id', 'tutor_profiles.id');
             });
     }
 

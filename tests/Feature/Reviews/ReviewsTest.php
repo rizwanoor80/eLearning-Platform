@@ -38,7 +38,7 @@ function reviewSetup(LessonStatus $status = LessonStatus::Completed, array $over
     static $slot = 0;
     $slot += 120;
 
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $parent = User::factory()->create();
     $learner = Learner::factory()->create([
         'account_user_id' => $parent->id,
@@ -103,7 +103,7 @@ it('lets the eligible lesson be reviewed, published at once, and recomputes the 
 it('attributes the review to the account holder, never the learner, and only they may submit it', function () {
     ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = reviewSetup();
     $stranger = User::factory()->create();
-    $otherTutor = TutorProfile::factory()->approved()->create();
+    $otherTutor = TutorProfile::factory()->bookable()->create();
 
     // The GET matches the established LessonPolicy-gated convention (lessons.show,
     // lessons.report.*): Gate::authorize denies with a 403. The POST is deliberately different —
@@ -238,7 +238,7 @@ it('takes the recompute on a locked row inside the caller\'s own transaction', f
 // ---- public display: latest first, "First L." only, contact never leaked -------------------------
 
 it('shows only published reviews on the profile, latest first, ten per page, with First L. only', function () {
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     ['lesson' => $lessonA] = reviewSetup(overrides: ['tutor_profile_id' => $tutor->id]);
     ['lesson' => $lessonB] = reviewSetup(overrides: ['tutor_profile_id' => $tutor->id]);
     $accountA = User::query()->find($lessonA->learner->account_user_id)->forceFill(['name' => 'Sara Ahmed'])->save()

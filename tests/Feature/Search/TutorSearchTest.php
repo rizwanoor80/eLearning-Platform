@@ -29,12 +29,20 @@ beforeEach(fn () => test()->travelTo(CarbonImmutable::parse('2026-09-14 06:00:00
  * @param  array<string, mixed>  $profile
  * @param  array<string, mixed>  $subject
  */
-function srchTutor(array $profile = [], array $subject = [], bool $withRule = true, string $name = 'Layla Hassan'): TutorProfile
+function srchTutor(array $profile = [], array $subject = [], bool $withRule = true, string $name = 'Layla Hassan', bool $stubWindow = false): TutorProfile
 {
     $user = User::factory()->tutor()->create(['name' => $name, 'timezone' => 'Asia/Dubai']);
     $tutor = TutorProfile::factory()->approved()->create(array_merge(['user_id' => $user->id, 'hourly_rate' => 10000], $profile));
 
     TutorSubject::factory()->create(array_merge(['tutor_profile_id' => $tutor->id, 'curriculum_id' => (Curriculum::query()->first() ?? Curriculum::factory()->create())->id], $subject));
+
+    // R185: bookable() needs a window. A stub is shorter than one lesson, so it yields no slot of its own
+    // and the test's date exceptions stay the only source of slots.
+    if ($stubWindow) {
+        AvailabilityRule::factory()->create([
+            'tutor_profile_id' => $tutor->id, 'weekday' => 2, 'start_time' => '00:00:00', 'end_time' => '00:30:00', 'timezone' => 'Asia/Dubai',
+        ]);
+    }
 
     if ($withRule) {
         AvailabilityRule::factory()->create([
@@ -117,7 +125,7 @@ it('reflects a rate or subject edit on the next search (R30 #3)', function () {
 // ---- R30 #4 #5: the 14-day slot rule --------------------------------------------------------
 
 it('drops a tutor whose only slot gets booked or blocked (R30 #4)', function () {
-    $tutor = srchTutor(withRule: false);
+    $tutor = srchTutor(withRule: false, stubWindow: true);
     AvailabilityException::factory()->create([
         'tutor_profile_id' => $tutor->id, 'date' => '2026-09-16', 'start_time' => '14:00:00', 'end_time' => '15:00:00', 'type' => AvailabilityExceptionType::Extra,
     ]);
@@ -136,8 +144,8 @@ it('drops a tutor whose only slot gets booked or blocked (R30 #4)', function () 
 });
 
 it('only counts slots in the next 14 days, narrowed by booking_max_days (R30 #5)', function () {
-    $near = srchTutor(withRule: false, name: 'Near Tutor');   // slot on day +10
-    $far = srchTutor(withRule: false, name: 'Far Tutor');     // slot on day +16
+    $near = srchTutor(withRule: false, name: 'Near Tutor', stubWindow: true);   // slot on day +10
+    $far = srchTutor(withRule: false, name: 'Far Tutor', stubWindow: true);     // slot on day +16
     foreach ([[$near, '2026-09-24'], [$far, '2026-09-30']] as [$tutor, $date]) {
         AvailabilityException::factory()->create([
             'tutor_profile_id' => $tutor->id, 'date' => $date, 'start_time' => '14:00:00', 'end_time' => '15:00:00', 'type' => AvailabilityExceptionType::Extra,

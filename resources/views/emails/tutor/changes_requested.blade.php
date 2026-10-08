@@ -3,8 +3,17 @@
 @section('content')
     <p>{{ \App\Support\Mail\MailBrand::greeting($profile->user->name) }}</p>
     <p>We've reviewed your profile and need a few changes before we can approve it:</p>
-    <blockquote style="border-left: 3px solid #ccc; margin: 1em 0; padding-left: 1em; color: #333;">
-        {{ $profile->review_note }}
-    </blockquote>
+    @if (! empty($sections))
+        <ul>
+            @foreach ($sections as $section)
+                <li>{{ $section }}</li>
+            @endforeach
+        </ul>
+    @endif
+    @if (filled($profile->review_note))
+        <blockquote style="border-left: 3px solid #ccc; margin: 1em 0; padding-left: 1em; color: #333;">
+            {{ $profile->review_note }}
+        </blockquote>
+    @endif
     <p>Please sign in and update your profile, then submit it again for review.</p>
 @endsection

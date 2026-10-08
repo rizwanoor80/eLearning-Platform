@@ -42,7 +42,7 @@ afterEach(fn () => Carbon::setTestNow());
  */
 function prSetup(LessonStatus $status = LessonStatus::Completed, bool $trial = false, bool $hold = true): array
 {
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $parent = User::factory()->create();
     $learner = Learner::factory()->create([
         'account_user_id' => $parent->id,
@@ -205,7 +205,7 @@ it('needs every one of the five fields, and an engagement between one and five',
 
 it('lets only the lesson\'s own tutor open or submit the report', function () {
     ['lesson' => $lesson, 'parent' => $parent] = prSetup();
-    $otherTutor = TutorProfile::factory()->approved()->create();
+    $otherTutor = TutorProfile::factory()->bookable()->create();
     $admin = User::factory()->admin()->create();
 
     foreach ([$parent, $otherTutor->user, $admin] as $user) {
@@ -345,7 +345,7 @@ it('cannot release a lesson a report already moved, even when asked directly', f
 // ---- the deadlines are frozen on the lesson ----------------------------------------------------------------
 
 it('freezes the report deadline and the auto-release deadline when a lesson completes', function () {
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $parent = User::factory()->create();
     $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
     $lesson = Lesson::factory()->withStatus(LessonStatus::InProgress)->create([
@@ -452,7 +452,7 @@ it('escapes the tutor\'s words in the parent email', function () {
 
 it('prompts the tutor for the report when a lesson completes, once', function () {
     Mail::fake();
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $parent = User::factory()->create();
     $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
     $lesson = Lesson::factory()->withStatus(LessonStatus::InProgress)->create([

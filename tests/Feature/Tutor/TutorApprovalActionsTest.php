@@ -86,7 +86,7 @@ it('requests changes with a note and writes an audit row', function () {
     $admin = User::factory()->admin()->create();
     $profile = TutorProfile::factory()->create(['status' => TutorProfileStatus::PendingReview]);
 
-    (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $profile, 'Please re-upload your permit scan.');
+    (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $profile, ['permit'], 'Please re-upload your permit scan.');
 
     expect($profile->fresh())
         ->status->toBe(TutorProfileStatus::ChangesRequested)
@@ -151,7 +151,7 @@ it('refuses to reject or request changes on a profile that was never submitted',
 
     expect(fn () => (new RejectTutor(app(RecordAuditLog::class)))($admin, $draft, 'x'))
         ->toThrow(TutorStatusTransitionException::class)
-        ->and(fn () => (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $suspended, 'x'))
+        ->and(fn () => (new RequestTutorChanges(app(RecordAuditLog::class)))($admin, $suspended, [], 'x'))
         ->toThrow(TutorStatusTransitionException::class);
 });
 

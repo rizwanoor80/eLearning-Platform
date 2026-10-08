@@ -70,7 +70,7 @@ function acSetup(bool $declining = false): array
 {
     $parent = User::factory()->create();
     $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $slot = RecurringSlot::factory()->create([
         'learner_id' => $learner->id,
         'tutor_profile_id' => $tutor->id,
@@ -618,7 +618,7 @@ it('is on the hourly schedule, once at a time on one server', function () {
 
 // ── a tutor who is no longer bookable (R104, invariant 5) ───────────────────────────────────
 
-dataset('unbookable tutors', ['suspended', 'permit lapsed', 'account deleted']);
+dataset('unbookable tutors', ['suspended', 'permit lapsed', 'account deleted', 'availability removed']);
 
 function acMakeUnbookable(TutorProfile $tutor, string $how): void
 {
@@ -626,6 +626,8 @@ function acMakeUnbookable(TutorProfile $tutor, string $how): void
         'suspended' => $tutor->forceFill(['status' => TutorProfileStatus::Suspended])->save(),
         'permit lapsed' => $tutor->update(['permit_expires_at' => now()->subDay()]),
         'account deleted' => $tutor->user->delete(),
+        // R185: a tutor with no weekly window is not bookable either.
+        'availability removed' => $tutor->availabilityRules()->delete(),
     };
 }
 

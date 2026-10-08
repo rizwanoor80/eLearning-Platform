@@ -98,7 +98,7 @@ function trAttempt(TutorProfileStatus $from, TutorProfileStatus $to): TutorProfi
                 $profile->forceFill(['permit_expires_at' => now()->subDay()->toDateString()])->save();
                 (new ReinstateTutor($audit))($admin, $profile);
             })()
-            : (new RequestTutorChanges($audit))($admin, $profile, 'note'),
+            : (new RequestTutorChanges($audit))($admin, $profile, ['bio'], 'note'),
         TutorProfileStatus::Rejected => (new RejectTutor($audit))($admin, $profile, 'note'),
         TutorProfileStatus::Suspended => (new SuspendTutor($audit, app(CancelSuspendedTutorLessons::class)))($admin, $profile, 'note'),
         // Nothing moves a tutor back to draft; only the table can be asked.

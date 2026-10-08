@@ -67,7 +67,7 @@ it('pauses, resumes and ends a slot from the view page, each audited', function 
 });
 
 it('sets up a slot with the trial override from the list page, audited with the reason', function () {
-    $tutor = TutorProfile::factory()->approved()->create(['hourly_rate' => 10000]);
+    $tutor = TutorProfile::factory()->bookable()->create(['hourly_rate' => 10000]);
 
     $setup = (function () use ($tutor) {
         $curriculum = Curriculum::query()->firstOrCreate(['code' => CurriculumCode::Gcse], ['name' => 'GCSE', 'sort' => 0]);
@@ -112,7 +112,7 @@ it('sets up a slot with the trial override from the list page, audited with the 
 });
 
 it('shows the domain refusal as a notice, not an error page', function () {
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $learner = Learner::factory()->create(['curriculum_id' => rsFilamentCurriculum()->id]);
 
     Livewire::actingAs($this->admin)->test(ListRecurringSlots::class)

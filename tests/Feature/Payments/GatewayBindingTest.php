@@ -102,7 +102,7 @@ it('charges through the fake gateway on rehearsal when recurring:charge runs, an
 
     $parent = User::factory()->create();
     $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
-    $tutor = TutorProfile::factory()->approved()->create();
+    $tutor = TutorProfile::factory()->bookable()->create();
     $slot = RecurringSlot::factory()->create([
         'learner_id' => $learner->id,
         'tutor_profile_id' => $tutor->id,
