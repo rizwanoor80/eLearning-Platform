@@ -186,12 +186,12 @@ it('shows a tutor with no profile row yet the full required checklist', function
     expect($tutor->tutorProfile()->exists())->toBeFalse();
 });
 
-it('hides the dashboard checklist from a rejected or suspended tutor', function (TutorProfileStatus $status) {
+it('hides the dashboard checklist from a tutor waiting for review, rejected or suspended', function (TutorProfileStatus $status) {
     $profile = clDraft(['status' => $status]);
 
     test()->actingAs($profile->user)->get(route('tutor.dashboard'))
         ->assertInertia(fn ($page) => $page->where('checklist', null));
-})->with([[TutorProfileStatus::Rejected], [TutorProfileStatus::Suspended]]);
+})->with([[TutorProfileStatus::PendingReview], [TutorProfileStatus::Rejected], [TutorProfileStatus::Suspended]]);
 
 it('shows an approved tutor without availability the search group still open', function () {
     $profile = TutorProfile::factory()->approved()->create(['country' => 'AE', 'linkedin_url' => 'https://www.linkedin.com/in/test-tutor', 'agreement_accepted_at' => now(), 'agreement_version' => '1']);
@@ -219,4 +219,40 @@ it('shows the admin review page the same three groups and the parent-facing name
         ->assertSee('✓ Contact details')
         ->assertSee('✗ CV or LinkedIn profile')
         ->assertSee('Miss Amira');
+});
+
+/**
+ * 14a FAIL 5 shape: an item must never link to a page the tutor cannot open. A locked profile
+ * (waiting for review, rejected, suspended, or approved apart from availability) gets `href: null`.
+ */
+it('leaves every item linkable for a draft and for a profile with changes requested', function (TutorProfileStatus $status) {
+    $profile = clDraft(['status' => $status]);
+
+    $items = collect(clGroups($profile))->flatMap(fn (array $group) => $group['items']);
+
+    expect($items)->not->toBeEmpty()
+        ->and($items->every(fn (array $item): bool => ! array_key_exists('href', $item)))->toBeTrue();
+})->with([[TutorProfileStatus::Draft], [TutorProfileStatus::ChangesRequested]]);
+
+it('turns every item into a plain line while the profile is locked', function (TutorProfileStatus $status) {
+    $profile = clDraft(['status' => $status]);
+
+    $items = collect(clGroups($profile))->flatMap(fn (array $group) => $group['items']);
+
+    expect($items)->not->toBeEmpty()
+        ->and($items->every(fn (array $item): bool => array_key_exists('href', $item) && $item['href'] === null))->toBeTrue();
+})->with([[TutorProfileStatus::PendingReview], [TutorProfileStatus::Rejected], [TutorProfileStatus::Suspended]]);
+
+it('keeps only availability open for an approved tutor, and makes a stale rate a plain line', function () {
+    $profile = TutorProfile::factory()->approved()->create(['country' => 'AE', 'linkedin_url' => 'https://www.linkedin.com/in/test-tutor', 'agreement_accepted_at' => now(), 'agreement_version' => '1']);
+    TutorProfile::factory()->makeApprovable($profile);
+    $profile->forceFill(['hourly_rate' => 999999])->save();
+    $profile->availabilityRules()->delete();
+
+    $search = collect(clGroups($profile->fresh())['search']['items'])->keyBy('key');
+
+    expect($search['rate']['done'])->toBeFalse()
+        ->and(array_key_exists('href', $search['rate']) && $search['rate']['href'] === null)->toBeTrue()
+        ->and($search['availability']['done'])->toBeFalse()
+        ->and(array_key_exists('href', $search['availability']))->toBeFalse();
 });

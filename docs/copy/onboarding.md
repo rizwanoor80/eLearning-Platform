@@ -19,11 +19,12 @@ after a dash. One component (`FieldTag`) draws all of them.
 | | Phone number | Optional |
 | | Timezone | Required |
 | | Display name | Optional (hint: shown to parents instead of your first name; 2–30 characters; no email, phone or link) |
-| Permit | Permit number, Permit expiry date | Optional |
+| Permit | Permit number | Optional — "give both the number and the expiry date, or neither" |
+| | Permit expiry date | Optional — "needed with the permit number" |
 | CV, LinkedIn & documents | LinkedIn profile URL | Required — "a CV or LinkedIn, one is enough" |
 | | CV | Required — "or a LinkedIn profile" |
 | | Any other document type | Optional, or Required where an admin has marked the type required |
-| Bank details | Bank name, Account holder name, IBAN | Required — only "if you add bank details" |
+| Bank details | Bank name, Account holder name, IBAN | Required — "if you add bank details" |
 | | SWIFT/BIC | Optional |
 | Subjects | Curriculum, Subject, From/To year group | Required (at least one subject to appear in search) |
 | Hourly rate | Hourly rate (AED) | Required — "to appear in search" |
@@ -42,8 +43,12 @@ Heading (full page): **Your profile checklist** · (dashboard): **Finish setting
 | Optional | Optional | Not needed to be reviewed or listed, but they help parents choose you. | Work permit · Other documents · Bank details · Bio and headline · Intro video · Booking notice (lead time) |
 
 A group with every item done shows **All done**. The dashboard shows only the two required groups
-and only what is still to do; it disappears once both are complete (and never shows for a
-rejected or suspended tutor).
+and only what is still to do; it disappears once both are complete (and never shows while the
+profile is waiting for review, or for a rejected or suspended tutor).
+
+Where the onboarding page is locked (waiting for review, rejected, suspended; for an approved
+tutor everything except availability) a checklist line is plain text, not a link, so it never
+points at a page the tutor cannot open.
 
 ## Hourly rate step
 

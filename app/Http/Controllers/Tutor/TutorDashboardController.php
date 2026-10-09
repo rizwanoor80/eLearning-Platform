@@ -107,7 +107,8 @@ class TutorDashboardController extends Controller
      */
     private function checklist(User $user, ?TutorProfile $tutorProfile): ?array
     {
-        if ($tutorProfile !== null && in_array($tutorProfile->status, [TutorProfileStatus::Rejected, TutorProfileStatus::Suspended], true)) {
+        // Nothing to do on a profile that is locked: waiting for review, rejected or suspended.
+        if ($tutorProfile !== null && in_array($tutorProfile->status, [TutorProfileStatus::PendingReview, TutorProfileStatus::Rejected, TutorProfileStatus::Suspended], true)) {
             return null;
         }
 

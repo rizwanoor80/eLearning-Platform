@@ -489,13 +489,13 @@ const submitComplete = () => {
             </p>
 
             <div class="grid gap-2">
-                <Label for="permit_number">Permit number<FieldTag /></Label>
+                <Label for="permit_number">Permit number<FieldTag note="give both the number and the expiry date, or neither" /></Label>
                 <Input id="permit_number" v-model="permitForm.permit_number" type="text" autofocus />
                 <InputError :message="permitForm.errors.permit_number" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="permit_expires_at">Permit expiry date<FieldTag /></Label>
+                <Label for="permit_expires_at">Permit expiry date<FieldTag note="needed with the permit number" /></Label>
                 <Input id="permit_expires_at" v-model="permitForm.permit_expires_at" type="date" />
                 <InputError :message="permitForm.errors.permit_expires_at" />
             </div>
@@ -563,19 +563,19 @@ const submitComplete = () => {
             <p class="text-muted-foreground text-sm">Payout details are optional, but if you add them the first three fields are needed. Your IBAN is encrypted and only ever shown to you masked.</p>
 
             <div class="grid gap-2">
-                <Label for="bank_name">Bank name<FieldTag required /></Label>
+                <Label for="bank_name">Bank name<FieldTag required note="if you add bank details" /></Label>
                 <Input id="bank_name" v-model="bankForm.bank_name" type="text" required autofocus />
                 <InputError :message="bankForm.errors.bank_name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bank_account_name">Account holder name<FieldTag required /></Label>
+                <Label for="bank_account_name">Account holder name<FieldTag required note="if you add bank details" /></Label>
                 <Input id="bank_account_name" v-model="bankForm.bank_account_name" type="text" required />
                 <InputError :message="bankForm.errors.bank_account_name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bank_iban">IBAN {{ profile.bank_iban_masked ? `(currently ${profile.bank_iban_masked})` : '' }}<FieldTag required /></Label>
+                <Label for="bank_iban">IBAN {{ profile.bank_iban_masked ? `(currently ${profile.bank_iban_masked})` : '' }}<FieldTag required note="if you add bank details" /></Label>
                 <Input id="bank_iban" v-model="bankForm.bank_iban" type="text" required />
                 <InputError :message="bankForm.errors.bank_iban" />
             </div>

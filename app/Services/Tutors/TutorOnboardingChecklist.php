@@ -3,6 +3,7 @@
 namespace App\Services\Tutors;
 
 use App\Enums\TutorDocumentStatus;
+use App\Enums\TutorProfileStatus;
 use App\Models\DocumentType;
 use App\Models\TutorProfile;
 use App\Models\User;
@@ -70,9 +71,9 @@ class TutorOnboardingChecklist
         ];
 
         return [
-            $this->group(self::GROUP_SUBMIT, 'To submit for review', 'Needed before you can send your profile to our team.', true, $submit),
-            $this->group(self::GROUP_SEARCH, 'To appear in search', 'Needed before parents can find and book you.', true, $search),
-            $this->group(self::GROUP_OPTIONAL, 'Optional', 'Not needed to be reviewed or listed, but they help parents choose you.', false, $optional),
+            $this->group($profile, self::GROUP_SUBMIT, 'To submit for review', 'Needed before you can send your profile to our team.', true, $submit),
+            $this->group($profile, self::GROUP_SEARCH, 'To appear in search', 'Needed before parents can find and book you.', true, $search),
+            $this->group($profile, self::GROUP_OPTIONAL, 'Optional', 'Not needed to be reviewed or listed, but they help parents choose you.', false, $optional),
         ];
     }
 
@@ -108,9 +109,9 @@ class TutorOnboardingChecklist
 
     /**
      * @param  list<array{key: string, label: string, step: string, done: bool}>  $items
-     * @return array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool}>}
+     * @return array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool, href?: null}>}
      */
-    private function group(string $key, string $title, string $hint, bool $required, array $items): array
+    private function group(TutorProfile $profile, string $key, string $title, string $hint, bool $required, array $items): array
     {
         return [
             'key' => $key,
@@ -118,7 +119,24 @@ class TutorOnboardingChecklist
             'hint' => $hint,
             'required' => $required,
             'complete' => collect($items)->every(fn (array $item): bool => $item['done']),
-            'items' => $items,
+            'items' => array_map(fn (array $item): array => $this->locked($profile, $item['step']) ? $item + ['href' => null] : $item, $items),
         ];
+    }
+
+    /**
+     * Whether the onboarding page lets the tutor open this section now. The wizard is editable only
+     * as a draft or when changes are requested; an approved tutor can still add availability (14a).
+     * Anywhere else the item is a plain line (`href: null`), never a link to a locked page. A profile
+     * that does not exist yet is a draft.
+     */
+    private function locked(TutorProfile $profile, string $step): bool
+    {
+        $status = $profile->status ?? TutorProfileStatus::Draft;
+
+        if (in_array($status, [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested], true)) {
+            return false;
+        }
+
+        return ! ($status === TutorProfileStatus::Approved && $step === 'availability');
     }
 }

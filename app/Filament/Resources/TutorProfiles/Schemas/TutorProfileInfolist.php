@@ -15,6 +15,8 @@ use App\Support\Money;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
+use InvalidArgumentException;
+use WeakMap;
 
 /**
  * Read-only review information. Bank fields are deliberately not shown here
@@ -29,12 +31,26 @@ use Filament\Schemas\Schema;
 class TutorProfileInfolist
 {
     /**
+     * @var WeakMap<TutorProfile, list<array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool}>}>>|null
+     */
+    private static ?WeakMap $groups = null;
+
+    /**
      * @return array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool}>}
      */
     private static function group(TutorProfile $record, string $key): array
     {
-        return collect(app(TutorOnboardingChecklist::class)->groups($record->user, $record))
-            ->firstWhere('key', $key);
+        // Computed once per record object (the label and the state both ask), never kept past it.
+        self::$groups ??= new WeakMap;
+        self::$groups[$record] ??= app(TutorOnboardingChecklist::class)->groups($record->user, $record);
+
+        foreach (self::$groups[$record] as $group) {
+            if ($group['key'] === $key) {
+                return $group;
+            }
+        }
+
+        throw new InvalidArgumentException("Unknown checklist group [{$key}].");
     }
 
     public static function configure(Schema $schema): Schema
