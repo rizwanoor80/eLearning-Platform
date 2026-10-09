@@ -472,7 +472,7 @@ const submitComplete = () => {
             <div class="grid gap-2">
                 <Label for="display_name">Display name<FieldTag /></Label>
                 <Input id="display_name" v-model="personalForm.display_name" type="text" minlength="2" maxlength="30" :placeholder="personal.default_display_name" />
-                <p class="text-muted-foreground text-xs">The name parents see. Leave blank to use {{ personal.default_display_name }}. Your full name stays private to the admin team.</p>
+                <p class="text-muted-foreground text-xs">The name parents see. Letters, spaces, full stops, apostrophes and hyphens only. Leave blank to use {{ personal.default_display_name }}. Your full name stays private to the admin team.</p>
                 <InputError :message="personalForm.errors.display_name" />
             </div>
 

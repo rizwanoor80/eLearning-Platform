@@ -10,6 +10,8 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class PersonalStepRequest extends FormRequest
 {
+    private const NAME_PATTERN = "/^\p{L}[\p{L}\p{M}\x{200C}\x{200D} .'’-]*$/u";
+
     /**
      * Authorization is the `access-tutor-area` route middleware; this
      * request only validates its own step's input.
@@ -45,6 +47,16 @@ class PersonalStepRequest extends FormRequest
     {
         return function (string $attribute, mixed $value, Closure $fail): void {
             if (! is_string($value) || trim($value) === '') {
+                return;
+            }
+
+            // A name is words: letters and marks, with a space, full stop, apostrophe or hyphen between
+            // them (and a joiner inside, as many Persian and Indic names need). Anything else — digits,
+            // symbols, an @, a direction override, an invisible character — is refused, so the text on
+            // screen is the text the masker checked. At least two letters, so it can never read as blank.
+            if (preg_match(self::NAME_PATTERN, $value) !== 1 || preg_match_all('/\p{L}/u', $value) < 2) {
+                $fail('A display name can only use letters, spaces, full stops, apostrophes and hyphens.');
+
                 return;
             }
 

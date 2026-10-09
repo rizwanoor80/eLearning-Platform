@@ -3,12 +3,13 @@
 use App\Enums\TutorProfileStatus;
 use App\Models\TutorProfile;
 use App\Models\User;
+use Illuminate\Testing\TestResponse;
 
 /**
  * R188(a): a tutor-chosen display name, shown wherever a parent sees the tutor; the full name stays
  * admin-only; contact details are refused.
  */
-function dnPost(TutorProfile $profile, array $extra = []): Illuminate\Testing\TestResponse
+function dnPost(TutorProfile $profile, array $extra = []): TestResponse
 {
     return test()->actingAs($profile->user)->post(route('tutor.onboarding.personal'), array_merge([
         'country' => 'AE',
@@ -79,4 +80,53 @@ it('sends the onboarding page the saved and the default display name', function 
 
     test()->actingAs($profile->user)->get(route('tutor.onboarding'))
         ->assertInertia(fn ($page) => $page->where('personal.display_name', null)->where('personal.default_display_name', 'Amira'));
+});
+
+it('refuses a display name that could hide or fake contact details or read as blank (review 14b item 1, 2)', function (string $value) {
+    $profile = dnTutor();
+
+    dnPost($profile, ['display_name' => $value])->assertSessionHasErrors('display_name');
+
+    expect($profile->fresh()->display_name)->toBeNull();
+})->with([
+    'reversed email behind a direction override' => ["\u{202E}moc.liamg@aras"],
+    'social handle' => ['@sara_tutor'],
+    'digits' => ['Sara 2'],
+    'one letter and a joiner' => ["A\u{200D}"],
+    'leading symbol' => ['-Sara'],
+]);
+
+// Not refused, and not stored: Laravel's TrimStrings/ConvertEmptyStringsToNull treats a name that is only
+// invisible characters as blank, so it saves as null and the first-name default shows. A spelled-out address
+// ("sara at gmail dot com") is a documented MessageMasker limit and cannot be told from a name made of words.
+it('stores a name of only invisible characters as blank, so the default shows', function () {
+    $profile = dnTutor('Amira Haddad');
+
+    dnPost($profile, ['display_name' => '‍‍']);
+
+    expect($profile->fresh()->display_name)->toBeNull()->and($profile->fresh()->displayName())->toBe('Amira');
+});
+
+it('accepts ordinary names in several scripts', function (string $value) {
+    $profile = dnTutor();
+
+    dnPost($profile, ['display_name' => $value])->assertSessionHasNoErrors();
+
+    expect($profile->fresh()->display_name)->toBe($value);
+})->with([
+    'title and dot' => ['Ms. Amira'],
+    'apostrophe and hyphen' => ["Mary-Jane O'Neil"],
+    'arabic' => ['أميرة'],
+    'persian with joiner' => ["می\u{200C}خواهم"],
+    'accents' => ['José Müller'],
+]);
+
+it('never displays an invisible format character from a stored value, and never a blank name', function () {
+    $profile = dnTutor('Amira Haddad');
+
+    $profile->forceFill(['display_name' => "\u{202E}moc.liamg@aras"])->save();
+    expect($profile->fresh()->displayName())->toBe('moc.liamg@aras');
+
+    $profile->forceFill(['display_name' => "\u{200D}\u{200D}"])->save();
+    expect($profile->fresh()->displayName())->toBe('Amira');
 });

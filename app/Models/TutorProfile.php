@@ -138,9 +138,11 @@ class TutorProfile extends Model
     {
         // R188(a): the tutor's own chosen name wins; it was checked against the contact-detail masker
         // when saved (PersonalStepRequest), and only the default below is derived from the account.
-        $chosen = trim((string) $this->display_name);
+        // Direction overrides and other invisible format characters are dropped (a joiner inside a word
+        // stays), so a stored value can never display as something other than what was checked, nor blank.
+        $chosen = trim(preg_replace('/(?![\x{200C}\x{200D}])\p{Cf}/u', '', (string) $this->display_name) ?? '');
 
-        if ($chosen !== '') {
+        if (preg_match('/\p{L}/u', $chosen) === 1) {
             return $chosen;
         }
 

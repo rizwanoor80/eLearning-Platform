@@ -18,7 +18,7 @@ after a dash. One component (`FieldTag`) draws all of them.
 | Contact details | Country | Required |
 | | Phone number | Optional |
 | | Timezone | Required |
-| | Display name | Optional (hint: shown to parents instead of your first name; 2–30 characters; no email, phone or link) |
+| | Display name | Optional (hint: shown to parents instead of your first name; 2–30 characters; letters, spaces, full stops, apostrophes and hyphens only) |
 | Permit | Permit number | Optional — "give both the number and the expiry date, or neither" |
 | | Permit expiry date | Optional — "needed with the permit number" |
 | CV, LinkedIn & documents | LinkedIn profile URL | Required — "a CV or LinkedIn, one is enough" |
