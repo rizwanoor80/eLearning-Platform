@@ -27,6 +27,7 @@ use App\Models\TutorDocument;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Scheduling\BookingLeadTime;
+use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Services\Tutors\TutorRateBands;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use App\Support\Money;
@@ -96,6 +97,8 @@ class TutorOnboardingController extends Controller
             'canEditAvailability' => $profile->status === TutorProfileStatus::Approved,
             'canPickSteps' => in_array($profile->status, [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested], true),
             'missingForSubmission' => app(TutorSubmissionReadiness::class)->missing($user, $profile),
+            // R186: the three-group checklist, ticks read from the same checks the server enforces.
+            'checklist' => app(TutorOnboardingChecklist::class)->groups($user, $profile),
             'personal' => [
                 'country' => $profile->country,
                 'phone' => $user->phone,
@@ -124,7 +127,7 @@ class TutorOnboardingController extends Controller
                 $leadTime->options(),
             ),
             'documentTypes' => DocumentType::query()->active()->orderBy('sort')
-                ->get(['id', 'code', 'name', 'description']),
+                ->get(['id', 'code', 'name', 'description', 'required']),
             'documents' => $profile->tutorDocuments()
                 ->get(['id', 'document_type_id', 'original_name', 'status']),
             'curricula' => Curriculum::query()->orderBy('sort')->get(['id', 'code', 'name']),
@@ -480,10 +483,16 @@ class TutorOnboardingController extends Controller
     }
 
     /**
-     * @return array{min: int, max: int, conflicting: array<int, string>}|null
+     * `level` names the highest tier among the tutor's subjects (R186c), the one the band belongs to.
+     *
+     * @return array{min: int, max: int, conflicting: array<int, string>, level: string}|null
      */
     private function rateBandFor(TutorProfile $profile): ?array
     {
-        return app(TutorRateBands::class)->bandFor($profile);
+        $rates = app(TutorRateBands::class);
+        $band = $rates->bandFor($profile);
+        $tier = $rates->highestTier($profile);
+
+        return $band === null || $tier === null ? null : $band + ['level' => $tier->label()];
     }
 }

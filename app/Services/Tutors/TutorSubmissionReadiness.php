@@ -17,28 +17,42 @@ use App\Models\User;
 class TutorSubmissionReadiness
 {
     /**
+     * Each submission requirement and whether it holds — the one place the checks live, so the
+     * missing-list below and the onboarding checklist's ticks (R186) can never disagree.
+     *
+     * @return array{name: bool, country: bool, cv_or_linkedin: bool, agreement: bool}
+     */
+    public function met(User $user, TutorProfile $profile): array
+    {
+        return [
+            'name' => trim((string) $user->name) !== '',
+            'country' => $profile->country !== null,
+            // `users.timezone` is never null (non-nullable column, defaults to 'Asia/Dubai'), so it
+            // cannot be "missing" — no check here, unlike the other submission-minimum fields.
+            'cv_or_linkedin' => $profile->hasCvOrLinkedin(),
+            'agreement' => $profile->agreement_accepted_at !== null,
+        ];
+    }
+
+    /**
      * @return list<string>
      */
     public function missing(User $user, TutorProfile $profile): array
     {
+        $met = $this->met($user, $profile);
+        $labels = [
+            'name' => 'your name',
+            'country' => 'your country',
+            'cv_or_linkedin' => 'a CV or LinkedIn profile',
+            'agreement' => 'accepting the tutor agreement',
+        ];
+
         $missing = [];
 
-        if (trim((string) $user->name) === '') {
-            $missing[] = 'your name';
-        }
-
-        if ($profile->country === null) {
-            $missing[] = 'your country';
-        }
-
-        // `users.timezone` is never null (non-nullable column, defaults to 'Asia/Dubai'), so it
-        // cannot be "missing" — no check here, unlike the other submission-minimum fields.
-        if (! $profile->hasCvOrLinkedin()) {
-            $missing[] = 'a CV or LinkedIn profile';
-        }
-
-        if ($profile->agreement_accepted_at === null) {
-            $missing[] = 'accepting the tutor agreement';
+        foreach ($labels as $key => $label) {
+            if (! $met[$key]) {
+                $missing[] = $label;
+            }
         }
 
         return $missing;

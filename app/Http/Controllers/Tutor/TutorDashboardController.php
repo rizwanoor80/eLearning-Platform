@@ -11,6 +11,7 @@ use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Scheduling\BookingLeadTime;
+use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,6 +45,7 @@ class TutorDashboardController extends Controller
                 'slots' => [],
                 'onboarding' => $this->onboardingBanner($user, null),
                 'needsAvailability' => false,
+                'checklist' => $this->checklist($user, null),
                 'leadTime' => null,
             ]);
         }
@@ -92,8 +94,29 @@ class TutorDashboardController extends Controller
             'slots' => $this->slots($tutorProfile),
             'onboarding' => $this->onboardingBanner($user, $tutorProfile),
             'needsAvailability' => $this->needsAvailability($tutorProfile),
+            'checklist' => $this->checklist($user, $tutorProfile),
             'leadTime' => $this->leadTime($tutorProfile),
         ]);
+    }
+
+    /**
+     * R186: the condensed checklist — only the two required groups, and only until both are done.
+     * A rejected or suspended tutor has nothing to complete, so none is shown.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function checklist(User $user, ?TutorProfile $tutorProfile): ?array
+    {
+        if ($tutorProfile !== null && in_array($tutorProfile->status, [TutorProfileStatus::Rejected, TutorProfileStatus::Suspended], true)) {
+            return null;
+        }
+
+        $groups = array_values(array_filter(
+            app(TutorOnboardingChecklist::class)->groups($user, $tutorProfile ?? new TutorProfile),
+            fn (array $group): bool => $group['required'],
+        ));
+
+        return collect($groups)->every(fn (array $group): bool => $group['complete']) ? null : $groups;
     }
 
     /**

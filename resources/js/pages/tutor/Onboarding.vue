@@ -2,6 +2,9 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import FieldTag from '@/components/tutor/FieldTag.vue';
+import OnboardingChecklist from '@/components/tutor/OnboardingChecklist.vue';
+import type { ChecklistGroup } from '@/components/tutor/OnboardingChecklist.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +16,7 @@ interface DocumentTypeProp {
     code: string;
     name: string;
     description: string;
+    required: boolean;
 }
 
 interface DocumentProp {
@@ -88,6 +92,8 @@ const props = defineProps<{
     canPickSteps: boolean;
     canEditAvailability: boolean;
     missingForSubmission: string[];
+    // R186: the three-group checklist (submit / appear in search / optional), ticks computed server-side.
+    checklist: ChecklistGroup[];
     personal: { country: string | null; phone: string | null; timezone: string; display_name: string | null; default_display_name: string };
     profile: {
         permit_number: string | null;
@@ -110,7 +116,7 @@ const props = defineProps<{
     subjects: SubjectProp[];
     tutorSubjects: TutorSubjectProp[];
     yearGroups: YearGroupProp[];
-    rateBand: { min: number; max: number; conflicting: string[] } | null;
+    rateBand: { min: number; max: number; conflicting: string[]; level: string } | null;
     trialPriceFils: number | null;
     availabilityRules: AvailabilityRuleProp[];
     availabilityExceptions: AvailabilityExceptionProp[];
@@ -137,7 +143,7 @@ const formatFils = (fils: number) => (fils / 100).toFixed(2);
 // reachable before the mandatory three (personal, CV-or-LinkedIn, agreement) are done. Every
 // submit still redirects to /tutor/onboarding, which re-derives `step` server-side; `viewing` only
 // decides which already-saved form the tutor is looking at meanwhile.
-type PickableStep = 'personal' | 'permit' | 'document' | 'bank' | 'subjects' | 'rate' | 'profile' | 'availability';
+type PickableStep = 'personal' | 'permit' | 'document' | 'bank' | 'subjects' | 'rate' | 'profile' | 'availability' | 'agreement';
 
 const pickableSteps: Array<{ key: PickableStep; label: string }> = [
     { key: 'personal', label: 'Contact details' },
@@ -174,6 +180,16 @@ const shown = computed(() => {
     return props.canPickSteps && viewing.value !== null ? viewing.value : props.step;
 });
 const afterSubmit = { onSuccess: () => (viewing.value = null) };
+
+// A checklist item (or a link inside a form) opens its section; only while the profile is still editable.
+const openStep = (step: string) => {
+    if (props.canPickSteps) {
+        viewing.value = step as PickableStep;
+    }
+};
+
+// Rejected and suspended tutors have nothing left to complete, so no checklist.
+const showChecklist = computed(() => !['rejected', 'suspended'].includes(props.status));
 
 const lockedTitle = computed(() => {
     switch (props.status) {
@@ -409,13 +425,12 @@ const submitComplete = () => {
             <p v-if="reviewNote" class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
         </div>
 
+        <OnboardingChecklist v-if="showChecklist" :groups="checklist" class="max-w-md" @open="openStep" />
+
         <div v-if="canPickSteps" class="grid max-w-md gap-3">
             <p class="text-muted-foreground text-sm">
                 Pick a section to update. A document that is pending or accepted can only be replaced after the admin
                 rejects it and requests changes — you'll then be taken to its upload step automatically.
-            </p>
-            <p v-if="missingForSubmission.length > 0" class="text-muted-foreground text-sm">
-                Still needed before you can submit for review: {{ missingForSubmission.join(', ') }}.
             </p>
             <div class="flex flex-wrap gap-2">
                 <Button
@@ -437,25 +452,25 @@ const submitComplete = () => {
             <p class="text-muted-foreground text-sm">First, a couple of contact details.</p>
 
             <div class="grid gap-2">
-                <Label for="country">Country</Label>
+                <Label for="country">Country<FieldTag required /></Label>
                 <Input id="country" v-model="personalForm.country" type="text" maxlength="2" required autofocus placeholder="AE" />
                 <InputError :message="personalForm.errors.country" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="phone">Phone number (optional)</Label>
+                <Label for="phone">Phone number<FieldTag /></Label>
                 <Input id="phone" v-model="personalForm.phone" type="tel" autocomplete="tel" />
                 <InputError :message="personalForm.errors.phone" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="timezone">Timezone</Label>
+                <Label for="timezone">Timezone<FieldTag required /></Label>
                 <Input id="timezone" v-model="personalForm.timezone" type="text" required />
                 <InputError :message="personalForm.errors.timezone" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="display_name">Display name (optional)</Label>
+                <Label for="display_name">Display name<FieldTag /></Label>
                 <Input id="display_name" v-model="personalForm.display_name" type="text" minlength="2" maxlength="30" :placeholder="personal.default_display_name" />
                 <p class="text-muted-foreground text-xs">The name parents see. Leave blank to use {{ personal.default_display_name }}. Your full name stays private to the admin team.</p>
                 <InputError :message="personalForm.errors.display_name" />
@@ -474,13 +489,13 @@ const submitComplete = () => {
             </p>
 
             <div class="grid gap-2">
-                <Label for="permit_number">Permit number</Label>
+                <Label for="permit_number">Permit number<FieldTag /></Label>
                 <Input id="permit_number" v-model="permitForm.permit_number" type="text" autofocus />
                 <InputError :message="permitForm.errors.permit_number" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="permit_expires_at">Permit expiry date</Label>
+                <Label for="permit_expires_at">Permit expiry date<FieldTag /></Label>
                 <Input id="permit_expires_at" v-model="permitForm.permit_expires_at" type="date" />
                 <InputError :message="permitForm.errors.permit_expires_at" />
             </div>
@@ -503,7 +518,7 @@ const submitComplete = () => {
             </p>
 
             <form @submit.prevent="submitLinkedin" class="grid gap-2 border-b pb-6">
-                <Label for="linkedin_url">LinkedIn profile URL</Label>
+                <Label for="linkedin_url">LinkedIn profile URL<FieldTag required note="a CV or LinkedIn, one is enough" /></Label>
                 <Input id="linkedin_url" v-model="linkedinForm.linkedin_url" type="url" placeholder="https://www.linkedin.com/in/you" />
                 <InputError :message="linkedinForm.errors.linkedin_url" />
                 <Button type="submit" size="sm" :disabled="linkedinForm.processing" class="w-fit">
@@ -515,7 +530,9 @@ const submitComplete = () => {
             <div v-for="type in documentTypes" :key="type.id" class="grid gap-2 border-b pb-6 last:border-b-0">
                 <div class="flex items-center justify-between gap-2">
                     <div>
-                        <p class="font-medium">{{ type.name }}</p>
+                        <p class="font-medium">
+                            {{ type.name }}<FieldTag :required="type.required || type.code === 'cv'" :note="type.code === 'cv' && !type.required ? 'or a LinkedIn profile' : undefined" />
+                        </p>
                         <p class="text-muted-foreground text-sm">{{ type.description }}</p>
                     </div>
                     <Badge v-if="documentStatusFor(type.id)" variant="secondary">{{ documentStatusFor(type.id) }}</Badge>
@@ -543,28 +560,28 @@ const submitComplete = () => {
         </div>
 
         <form v-else-if="shown === 'bank'" @submit.prevent="submitBank" class="grid max-w-md gap-4">
-            <p class="text-muted-foreground text-sm">Payout details — your IBAN is encrypted and only ever shown to you masked.</p>
+            <p class="text-muted-foreground text-sm">Payout details are optional, but if you add them the first three fields are needed. Your IBAN is encrypted and only ever shown to you masked.</p>
 
             <div class="grid gap-2">
-                <Label for="bank_name">Bank name</Label>
+                <Label for="bank_name">Bank name<FieldTag required /></Label>
                 <Input id="bank_name" v-model="bankForm.bank_name" type="text" required autofocus />
                 <InputError :message="bankForm.errors.bank_name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bank_account_name">Account holder name</Label>
+                <Label for="bank_account_name">Account holder name<FieldTag required /></Label>
                 <Input id="bank_account_name" v-model="bankForm.bank_account_name" type="text" required />
                 <InputError :message="bankForm.errors.bank_account_name" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bank_iban">IBAN {{ profile.bank_iban_masked ? `(currently ${profile.bank_iban_masked})` : '' }}</Label>
+                <Label for="bank_iban">IBAN {{ profile.bank_iban_masked ? `(currently ${profile.bank_iban_masked})` : '' }}<FieldTag required /></Label>
                 <Input id="bank_iban" v-model="bankForm.bank_iban" type="text" required />
                 <InputError :message="bankForm.errors.bank_iban" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bank_swift">SWIFT/BIC (optional)</Label>
+                <Label for="bank_swift">SWIFT/BIC<FieldTag /></Label>
                 <Input id="bank_swift" v-model="bankForm.bank_swift" type="text" />
                 <InputError :message="bankForm.errors.bank_swift" />
             </div>
@@ -576,32 +593,32 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="shown === 'subjects'" @submit.prevent="submitSubjects" class="grid max-w-2xl gap-4">
-            <p class="text-muted-foreground text-sm">Which curricula, subjects and levels do you teach?</p>
+            <p class="text-muted-foreground text-sm">Which curricula, subjects and levels do you teach? You need at least one to appear in search; every box on a row is required.</p>
 
             <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-1 items-end gap-3 border-b pb-4 sm:grid-cols-2">
                 <div class="grid min-w-0 gap-2">
-                    <Label :for="`curriculum_${index}`">Curriculum</Label>
+                    <Label :for="`curriculum_${index}`">Curriculum<FieldTag required /></Label>
                     <select :id="`curriculum_${index}`" v-model="row.curriculum_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" @change="clearForeignLevels(row)">
                         <option value="" disabled>Select</option>
                         <option v-for="curriculum in curricula" :key="curriculum.id" :value="curriculum.id">{{ curriculum.name }}</option>
                     </select>
                 </div>
                 <div class="grid min-w-0 gap-2">
-                    <Label :for="`subject_${index}`">Subject</Label>
+                    <Label :for="`subject_${index}`">Subject<FieldTag required /></Label>
                     <select :id="`subject_${index}`" v-model="row.subject_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm">
                         <option value="" disabled>Select</option>
                         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">{{ subject.name }}</option>
                     </select>
                 </div>
                 <div class="grid min-w-0 gap-2">
-                    <Label :for="`level_min_${index}`">From year group</Label>
+                    <Label :for="`level_min_${index}`">From year group<FieldTag required /></Label>
                     <select :id="`level_min_${index}`" v-model="row.level_min_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
                         <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
                         <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
                     </select>
                 </div>
                 <div class="grid min-w-0 gap-2">
-                    <Label :for="`level_max_${index}`">To year group</Label>
+                    <Label :for="`level_max_${index}`">To year group<FieldTag required /></Label>
                     <select :id="`level_max_${index}`" v-model="row.level_max_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
                         <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
                         <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
@@ -626,15 +643,19 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="shown === 'rate'" @submit.prevent="submitRate" class="grid max-w-md gap-4">
-            <p v-if="rateBand && rateBand.conflicting.length > 0" class="text-destructive text-sm">
+            <p v-if="!rateBand" class="text-sm" data-test="rate-needs-subjects">
+                Your rate is set against the price band for the highest level you teach, so choose your subjects first.
+                <button type="button" class="underline underline-offset-4" @click="openStep('subjects')">Go to Subjects</button>
+            </p>
+            <p v-else-if="rateBand.conflicting.length > 0" class="text-destructive text-sm">
                 No single rate satisfies every curriculum you teach at this level — {{ rateBand.conflicting.join(' and ') }} have non-overlapping bands.
             </p>
-            <p v-else-if="rateBand" class="text-muted-foreground text-sm">
-                Your rate for the highest level you teach must be between {{ formatFils(rateBand.min) }} and {{ formatFils(rateBand.max) }} AED/hour.
+            <p v-else class="text-muted-foreground text-sm" data-test="rate-band">
+                The highest level you teach is {{ rateBand.level }}, so your rate must be between {{ formatFils(rateBand.min) }} and {{ formatFils(rateBand.max) }} AED/hour.
             </p>
 
             <div class="grid gap-2">
-                <Label for="hourly_rate">Hourly rate (AED)</Label>
+                <Label for="hourly_rate">Hourly rate (AED)<FieldTag required note="to appear in search" /></Label>
                 <Input id="hourly_rate" v-model="rateForm.hourly_rate" type="text" inputmode="decimal" required autofocus />
                 <InputError :message="rateForm.errors.hourly_rate" />
             </div>
@@ -643,7 +664,7 @@ const submitComplete = () => {
                 Trial lesson price at your saved rate: {{ formatFils(props.trialPriceFils) }} AED. Save a new rate to update this.
             </p>
 
-            <Button type="submit" :disabled="rateForm.processing" class="w-fit">
+            <Button type="submit" :disabled="rateForm.processing || !rateBand" class="w-fit">
                 <Spinner v-if="rateForm.processing" />
                 Continue
             </Button>
@@ -651,25 +672,25 @@ const submitComplete = () => {
 
         <form v-else-if="shown === 'profile'" @submit.prevent="submitProfile" class="grid max-w-md gap-4">
             <div class="grid gap-2">
-                <Label for="headline">Headline</Label>
-                <Input id="headline" v-model="profileForm.headline" type="text" required autofocus />
+                <Label for="headline">Headline<FieldTag /></Label>
+                <Input id="headline" v-model="profileForm.headline" type="text" autofocus />
                 <InputError :message="profileForm.errors.headline" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="bio">Bio</Label>
-                <textarea id="bio" v-model="profileForm.bio" required class="border-input rounded-md border p-2 text-sm" rows="5"></textarea>
+                <Label for="bio">Bio<FieldTag /></Label>
+                <textarea id="bio" v-model="profileForm.bio" class="border-input rounded-md border p-2 text-sm" rows="5"></textarea>
                 <InputError :message="profileForm.errors.bio" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="intro_video_url">Intro video URL (optional)</Label>
+                <Label for="intro_video_url">Intro video URL<FieldTag /></Label>
                 <Input id="intro_video_url" v-model="profileForm.intro_video_url" type="url" />
                 <InputError :message="profileForm.errors.intro_video_url" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="min_lead_hours">How soon can a parent book you?</Label>
+                <Label for="min_lead_hours">How soon can a parent book you?<FieldTag /></Label>
                 <select id="min_lead_hours" v-model="profileForm.min_lead_hours" class="border-input rounded-md border p-2 text-sm">
                     <option v-for="option in leadTimeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
@@ -687,11 +708,11 @@ const submitComplete = () => {
 
         <form v-else-if="shown === 'availability'" @submit.prevent="submitAvailability" class="grid max-w-2xl gap-4">
             <p v-if="canEditAvailability" class="font-medium">{{ lockedTitle }}</p>
-            <p class="text-muted-foreground text-sm">Your weekly availability, in your own timezone.</p>
+            <p class="text-muted-foreground text-sm">Your weekly availability, in your own timezone. At least one weekly window is required to appear in search.</p>
 
             <div v-for="(rule, index) in availabilityForm.rules" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">
                 <div class="grid gap-2">
-                    <Label :for="`weekday_${index}`">Weekday</Label>
+                    <Label :for="`weekday_${index}`">Weekday<FieldTag required /></Label>
                     <select :id="`weekday_${index}`" v-model="rule.weekday" class="border-input rounded-md border p-2 text-sm">
                         <option value="" disabled>Select</option>
                         <option :value="0">Sunday</option>
@@ -704,11 +725,11 @@ const submitComplete = () => {
                     </select>
                 </div>
                 <div class="grid gap-2">
-                    <Label :for="`start_${index}`">Start</Label>
+                    <Label :for="`start_${index}`">Start<FieldTag required /></Label>
                     <Input :id="`start_${index}`" v-model="rule.start_time" type="time" />
                 </div>
                 <div class="grid gap-2">
-                    <Label :for="`end_${index}`">End</Label>
+                    <Label :for="`end_${index}`">End<FieldTag required /></Label>
                     <Input :id="`end_${index}`" v-model="rule.end_time" type="time" />
                 </div>
                 <Button v-if="availabilityForm.rules.length > 1" type="button" variant="ghost" @click="removeAvailabilityRow(index)">Remove</Button>
@@ -730,7 +751,7 @@ const submitComplete = () => {
 
             <label class="flex items-center gap-2 text-sm">
                 <input type="checkbox" v-model="agreementForm.accepted" required />
-                I accept the tutor agreement (version {{ agreement.current_version }})
+                I accept the tutor agreement (version {{ agreement.current_version }})<FieldTag required />
             </label>
             <InputError :message="agreementForm.errors.accepted" />
             <InputError :message="agreementForm.errors.version" />

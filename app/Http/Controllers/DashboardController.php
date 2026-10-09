@@ -5,13 +5,14 @@ namespace App\Http\Controllers;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Models\User;
+use App\Services\Parents\ParentGetStarted;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function show(Request $request): Response
+    public function show(Request $request, ParentGetStarted $getStarted): Response
     {
         /** @var User $user */
         $user = $request->user();
@@ -24,6 +25,8 @@ class DashboardController extends Controller
             ->get();
 
         return Inertia::render('Dashboard', [
+            // R186: a banner until the parent has a learner (nothing can be booked without one).
+            'needsLearner' => $getStarted->needsLearner($user),
             'upcoming' => $lessons->map(fn (Lesson $lesson): array => $this->present($lesson, $user))->all(),
         ]);
     }

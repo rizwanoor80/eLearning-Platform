@@ -6,6 +6,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import OnboardingChecklist from '@/components/tutor/OnboardingChecklist.vue';
+import type { ChecklistGroup } from '@/components/tutor/OnboardingChecklist.vue';
 import { dashboard as tutorDashboard } from '@/routes/tutor';
 
 type OnboardingBanner = {
@@ -47,6 +49,8 @@ const props = defineProps<{
     upcoming: ScheduledLesson[];
     slots: WeeklySlot[];
     onboarding: OnboardingBanner;
+    // R186: the groups still open (submit / appear in search), or null once both are done.
+    checklist: ChecklistGroup[] | null;
     needsAvailability: boolean;
     leadTime: { current: number; options: Array<{ value: number; label: string }> } | null;
 }>();
@@ -69,7 +73,9 @@ defineOptions({
     <Head title="Dashboard" />
 
     <div class="flex flex-col gap-6 p-4">
-        <Alert v-if="props.onboarding.visible" data-test="onboarding-banner">
+        <OnboardingChecklist v-if="props.checklist" :groups="props.checklist" condensed href="/tutor/onboarding" />
+
+        <Alert v-else-if="props.onboarding.visible" data-test="onboarding-banner">
             <ClipboardCheck class="size-4" />
             <AlertTitle>Finish setting up your tutor profile</AlertTitle>
             <AlertDescription>
@@ -80,7 +86,7 @@ defineOptions({
             </AlertDescription>
         </Alert>
 
-        <Alert v-if="props.needsAvailability" data-test="availability-banner">
+        <Alert v-if="!props.checklist && props.needsAvailability" data-test="availability-banner">
             <ClipboardCheck class="size-4" />
             <AlertTitle>Add your availability to appear in search</AlertTitle>
             <AlertDescription>
