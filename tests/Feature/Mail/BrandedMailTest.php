@@ -1,7 +1,12 @@
 <?php
 
+use App\Enums\LessonStatus;
 use App\Enums\SettingGroup;
+use App\Mail\Lessons\LessonConfirmedMail;
+use App\Mail\Lessons\LessonReminderMail;
 use App\Mail\Tutor\TutorApprovedMail;
+use App\Models\Learner;
+use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Notifications\Auth\ResetPasswordNotification;
@@ -156,16 +161,16 @@ it('renders the lesson confirmed and reminder mails through the branded layout, 
 
     $tutor = TutorProfile::factory()->approved()->create(['display_name' => 'Miss Amira']);
     $parent = User::factory()->create(['name' => 'Omar Saleh']);
-    $learner = App\Models\Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => gcseCurriculumId()]);
-    $lesson = App\Models\Lesson::factory()->withStatus(App\Enums\LessonStatus::Confirmed)->create([
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => gcseCurriculumId()]);
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Confirmed)->create([
         'tutor_profile_id' => $tutor->id,
         'learner_id' => $learner->id,
     ]);
 
     $mails = [
-        new App\Mail\Lessons\LessonConfirmedMail($lesson, $parent),
-        new App\Mail\Lessons\LessonReminderMail($lesson, $parent, '24h'),
-        new App\Mail\Lessons\LessonReminderMail($lesson, $parent, '1h'),
+        new LessonConfirmedMail($lesson, $parent),
+        new LessonReminderMail($lesson, $parent, '24h'),
+        new LessonReminderMail($lesson, $parent, '1h'),
     ];
 
     foreach ($mails as $mail) {
