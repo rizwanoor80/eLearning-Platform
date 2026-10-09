@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TutorProfiles\Schemas;
 
+use App\Enums\TutorReviewSection;
 use App\Models\AbuseReport;
 use App\Models\AuditLog;
 use App\Models\Dispute;
@@ -50,6 +51,14 @@ class TutorProfileInfolist
                     ->getStateUsing(fn (TutorProfile $record): string => app(BookingLeadTime::class)->label(app(BookingLeadTime::class)->for($record))),
                 TextEntry::make('agreement_version')
                     ->label('Agreement version accepted'),
+                TextEntry::make('review_sections')
+                    ->label('Sections to fix')
+                    ->columnSpanFull()
+                    ->getStateUsing(fn (TutorProfile $record): string => collect($record->review_sections ?? [])
+                        ->map(fn (string $key): ?string => TutorReviewSection::tryFrom($key)?->label())
+                        ->filter()
+                        ->implode(', '))
+                    ->placeholder('—'),
                 TextEntry::make('review_note')
                     ->label('Review note')
                     ->columnSpanFull()

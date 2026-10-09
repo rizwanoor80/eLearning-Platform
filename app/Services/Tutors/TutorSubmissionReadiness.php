@@ -8,7 +8,7 @@ use App\Models\User;
 /**
  * R171/R173(a): what a `draft`/`changes_requested` tutor still needs before they can submit for
  * review — name, country, timezone, a CV or LinkedIn, and the tutor agreement. This is the
- * submission minimum, not the approval minimum (subjects, rate, availability — see
+ * submission minimum, not the approval minimum (subjects, rate and the permit/document checks — availability is neither, R185 — see
  * `TutorApprovalReadiness`, which `ApproveTutor` checks separately once review starts). Drives the
  * tutor dashboard's "what's missing" banner (R173a); `TutorOnboardingController::currentStep()`
  * derives the same three gates in its own step order rather than reusing this list, since it also

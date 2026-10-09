@@ -5,6 +5,7 @@ namespace App\Actions\Tutor;
 use App\Actions\RecordAuditLog;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Enums\TutorReviewSection;
 use App\Events\Tutor\TutorChangesRequested;
 use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorDocument;
@@ -89,7 +90,7 @@ class ReviewTutorDocument
                 && $profile->status === TutorProfileStatus::Approved
                 && $document->documentType->active
                 && $document->documentType->required) {
-                app(RequestTutorChanges::class)->apply($admin, $profile, sprintf(
+                app(RequestTutorChanges::class)->apply($admin, $profile, [TutorReviewSection::Documents], sprintf(
                     'Your %s was rejected. Please upload a new one so it can be reviewed again.',
                     $document->documentType->name,
                 ));

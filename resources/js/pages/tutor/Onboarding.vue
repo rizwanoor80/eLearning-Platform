@@ -80,10 +80,13 @@ const props = defineProps<{
         | 'submitted';
     status: string;
     reviewNote: string | null;
+    // R185: the sections an admin ticked on "Request changes" (TutorReviewSection values).
+    reviewSections: string[];
     currentDocumentType: DocumentTypeProp | null;
     // R171: everything but personal/CV-or-LinkedIn/agreement is optional and reachable at any
     // time via the step picker, once the profile is still editable (draft or changes_requested).
     canPickSteps: boolean;
+    canEditAvailability: boolean;
     missingForSubmission: string[];
     personal: { country: string | null; phone: string | null; timezone: string };
     profile: {
@@ -147,8 +150,29 @@ const pickableSteps: Array<{ key: PickableStep; label: string }> = [
     { key: 'availability', label: 'Availability' },
 ];
 
+// R185: which picker button each requested review section points at.
+const reviewSectionStep: Record<string, PickableStep> = {
+    contact: 'personal',
+    permit: 'permit',
+    documents: 'document',
+    bank: 'bank',
+    subjects: 'subjects',
+    rate: 'rate',
+    bio: 'profile',
+    availability: 'availability',
+};
+
+const flagged = computed(() => new Set(props.reviewSections.map((key) => reviewSectionStep[key]).filter(Boolean)));
+const flaggedLabels = computed(() => pickableSteps.filter((section) => flagged.value.has(section.key)).map((section) => section.label));
+
 const viewing = ref<PickableStep | null>(null);
-const shown = computed(() => (props.canPickSteps && viewing.value !== null ? viewing.value : props.step));
+const shown = computed(() => {
+    if (props.canEditAvailability) {
+        return 'availability';
+    }
+
+    return props.canPickSteps && viewing.value !== null ? viewing.value : props.step;
+});
 const afterSubmit = { onSuccess: () => (viewing.value = null) };
 
 const lockedTitle = computed(() => {
@@ -376,9 +400,12 @@ const submitComplete = () => {
             <h1 class="text-xl font-semibold">Onboarding</h1>
         </div>
 
-        <div v-if="reviewNote" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
+        <div v-if="reviewNote || flaggedLabels.length > 0" class="max-w-md rounded-md border border-amber-300 bg-amber-50 p-4 text-sm">
             <p class="font-medium">{{ status === 'suspended' ? 'Reason given by an admin:' : 'An admin asked for some changes:' }}</p>
-            <p class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
+            <ul v-if="flaggedLabels.length > 0" class="list-disc ps-5">
+                <li v-for="label in flaggedLabels" :key="label">{{ label }}</li>
+            </ul>
+            <p v-if="reviewNote" class="text-muted-foreground whitespace-pre-line">{{ reviewNote }}</p>
         </div>
 
         <div v-if="canPickSteps" class="grid max-w-md gap-3">
@@ -396,9 +423,10 @@ const submitComplete = () => {
                     type="button"
                     size="sm"
                     :variant="viewing === section.key ? 'default' : 'outline'"
+                    :class="flagged.has(section.key) ? 'border-amber-500 ring-1 ring-amber-400' : ''"
                     @click="viewing = section.key"
                 >
-                    {{ section.label }}
+                    {{ section.label }}<span v-if="flagged.has(section.key)" class="ms-1 text-amber-600">• needs changes</span>
                 </Button>
                 <Button v-if="viewing !== null" type="button" size="sm" variant="ghost" @click="viewing = null">Back</Button>
             </div>
@@ -650,6 +678,7 @@ const submitComplete = () => {
         </form>
 
         <form v-else-if="shown === 'availability'" @submit.prevent="submitAvailability" class="grid max-w-2xl gap-4">
+            <p v-if="canEditAvailability" class="font-medium">{{ lockedTitle }}</p>
             <p class="text-muted-foreground text-sm">Your weekly availability, in your own timezone.</p>
 
             <div v-for="(rule, index) in availabilityForm.rules" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">

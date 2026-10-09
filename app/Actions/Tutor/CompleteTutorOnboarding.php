@@ -32,6 +32,7 @@ class CompleteTutorOnboarding
                 $profile->forceFill([
                     'status' => TutorProfileStatus::PendingReview,
                     'review_note' => null,
+                    'review_sections' => null,
                     'submitted_at' => now(),
                 ])->save();
 

@@ -42,6 +42,7 @@ class SuspendTutor
                 $profile->forceFill([
                     'status' => TutorProfileStatus::Suspended,
                     'review_note' => $note,
+                    'review_sections' => null,
                 ])->save();
 
                 ($this->recordAuditLog)($admin, 'tutor.suspended', $profile, $before, [

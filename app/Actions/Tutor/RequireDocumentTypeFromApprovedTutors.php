@@ -4,6 +4,7 @@ namespace App\Actions\Tutor;
 
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Enums\TutorReviewSection;
 use App\Exceptions\TutorStatusTransitionException;
 use App\Models\DocumentType;
 use App\Models\TutorProfile;
@@ -56,7 +57,7 @@ class RequireDocumentTypeFromApprovedTutors
             ->chunkById(100, function ($profiles) use ($admin, $type, &$moved, &$failed) {
                 foreach ($profiles as $profile) {
                     try {
-                        ($this->requestChanges)($admin, $profile, sprintf(
+                        ($this->requestChanges)($admin, $profile, [TutorReviewSection::Documents], sprintf(
                             'A new document is now required: %s. Please upload it so your profile can be reviewed again.',
                             $type->name,
                         ));

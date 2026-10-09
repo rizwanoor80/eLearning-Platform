@@ -49,7 +49,7 @@ beforeEach(function () {
  */
 function rgSlot(array $attributes = []): RecurringSlot
 {
-    $tutor = TutorProfile::factory()->approved()->create(['hourly_rate' => 10000]);
+    $tutor = TutorProfile::factory()->bookable()->create(['hourly_rate' => 10000]);
 
     return RecurringSlot::factory()->create(array_merge([
         'tutor_profile_id' => $tutor->id,

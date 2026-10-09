@@ -36,7 +36,7 @@ beforeEach(function () {
 function mrTutor(Curriculum $curriculum, array $profile = [], string $name = 'Layla Hassan'): TutorProfile
 {
     $user = User::factory()->tutor()->create(['name' => $name]);
-    $tutor = TutorProfile::factory()->approved()->create(array_merge(['user_id' => $user->id, 'hourly_rate' => 10000, 'headline' => 'Patient maths tutor'], $profile));
+    $tutor = TutorProfile::factory()->bookable()->create(array_merge(['user_id' => $user->id, 'hourly_rate' => 10000, 'headline' => 'Patient maths tutor'], $profile));
     TutorSubject::factory()->create(['tutor_profile_id' => $tutor->id, 'curriculum_id' => $curriculum->id]);
 
     return $tutor;

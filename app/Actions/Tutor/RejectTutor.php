@@ -25,6 +25,7 @@ class RejectTutor
                 $profile->forceFill([
                     'status' => TutorProfileStatus::Rejected,
                     'review_note' => $note,
+                    'review_sections' => null,
                 ])->save();
 
                 ($this->recordAuditLog)($admin, 'tutor.rejected', $profile, $before, [

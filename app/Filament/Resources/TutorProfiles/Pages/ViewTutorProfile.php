@@ -7,10 +7,12 @@ use App\Actions\Tutor\ApproveTutor;
 use App\Actions\Tutor\ReinstateTutor;
 use App\Actions\Tutor\RejectTutor;
 use App\Actions\Tutor\RequestTutorChanges;
+use App\Actions\Tutor\SaveTutorAvailability;
 use App\Actions\Tutor\SaveTutorSubjects;
 use App\Actions\Tutor\SetTutorRate;
 use App\Actions\Tutor\SuspendTutor;
 use App\Enums\TutorProfileStatus;
+use App\Enums\TutorReviewSection;
 use App\Exceptions\TutorApprovalBlockedException;
 use App\Exceptions\TutorStatusTransitionException;
 use App\Filament\Resources\TutorProfiles\TutorProfileResource;
@@ -21,10 +23,12 @@ use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
 use Closure;
 use Filament\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TimePicker;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Utilities\Get;
@@ -55,11 +59,18 @@ class ViewTutorProfile extends ViewRecord
                 ->label('Request changes')
                 ->color('warning')
                 ->schema([
-                    Textarea::make('note')->required()->label('What needs to change?'),
+                    CheckboxList::make('sections')
+                        ->label('Which sections need work?')
+                        ->options(TutorReviewSection::options())
+                        ->columns(2)
+                        ->requiredWithout('note'),
+                    Textarea::make('note')
+                        ->label('Note to the tutor (optional if you ticked a section)')
+                        ->requiredWithout('sections'),
                 ])
                 ->visible(fn (TutorProfile $record) => in_array($record->status, RequestTutorChanges::FROM, true))
                 ->action($this->guarded(function (TutorProfile $record, array $data) {
-                    app(RequestTutorChanges::class)(auth()->user(), $record, $data['note']);
+                    app(RequestTutorChanges::class)(auth()->user(), $record, $data['sections'] ?? [], $data['note'] ?? null);
                     Notification::make()->title('Changes requested')->success()->send();
                 })),
 
@@ -194,6 +205,46 @@ class ViewTutorProfile extends ViewRecord
                     );
 
                     Notification::make()->title('Rate updated')->success()->send();
+                })),
+
+            // R185: an admin is never blocked by a tutor who has not set a window — the weekly windows
+            // can be set on their behalf (in the tutor's own timezone, as the wizard does). Also
+            // offered on an approved tutor, as an approved tutor with no window is not listed.
+            Action::make('editAvailability')
+                ->label('Edit availability')
+                ->color('gray')
+                ->modalWidth('2xl')
+                ->modalDescription(fn (TutorProfile $record): string => 'Weekly windows in the tutor\'s own timezone ('.$record->user->timezone.'). Date exceptions are left as they are.')
+                ->visible(fn (TutorProfile $record) => in_array($record->status, [...$submitted, TutorProfileStatus::Approved], true))
+                ->fillForm(fn (TutorProfile $record): array => ['rules' => SaveTutorAvailability::snapshot($record)])
+                ->schema([
+                    Repeater::make('rules')
+                        ->label('Weekly windows')
+                        ->minItems(1)
+                        ->required()
+                        ->schema([
+                            Select::make('weekday')
+                                ->options([0 => 'Sunday', 1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday'])
+                                ->required(),
+                            TimePicker::make('start_time')->seconds(false)->format('H:i')->required(),
+                            TimePicker::make('end_time')->seconds(false)->format('H:i')->required(),
+                        ])
+                        ->columns(3),
+                ])
+                ->action($this->guarded(function (TutorProfile $record, array $data) {
+                    $before = SaveTutorAvailability::snapshot($record);
+
+                    app(SaveTutorAvailability::class)($record, array_values($data['rules']));
+
+                    app(RecordAuditLog::class)(
+                        auth()->user(),
+                        'tutor.availability_edited_by_admin',
+                        $record,
+                        ['rules' => $before],
+                        ['rules' => SaveTutorAvailability::snapshot($record)],
+                    );
+
+                    Notification::make()->title('Availability updated')->success()->send();
                 })),
         ];
     }

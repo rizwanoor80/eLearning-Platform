@@ -44,11 +44,14 @@ class ReinstateTutor
                 $note = $problems === [] ? null : 'Reinstatement needs: '.implode('; ', $problems).'.';
 
                 // approved_by / approved_at are kept: history, overwritten by the next approval.
-                $profile->forceFill(['status' => $to, 'review_note' => $note])->save();
+                $sections = $problems === [] ? null : app(TutorApprovalReadiness::class)->sections($profile);
+
+                $profile->forceFill(['status' => $to, 'review_note' => $note, 'review_sections' => $sections])->save();
 
                 ($this->recordAuditLog)($admin, 'tutor.reinstated', $profile, $before, [
                     'status' => $to->value,
                     'review_note' => $note,
+                    'review_sections' => $sections,
                 ]);
 
                 return $to;

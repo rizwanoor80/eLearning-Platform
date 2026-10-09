@@ -2,6 +2,7 @@
 
 namespace App\Mail\Tutor;
 
+use App\Enums\TutorReviewSection;
 use App\Models\TutorProfile;
 use App\Support\Mail\UsesSettingsSender;
 use Illuminate\Bus\Queueable;
@@ -28,6 +29,15 @@ class TutorChangesRequestedMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
-        return new Content(view: 'emails.tutor.changes_requested');
+        return new Content(
+            view: 'emails.tutor.changes_requested',
+            with: [
+                // Labels of the sections the admin named (R185), in checklist order.
+                'sections' => array_values(array_filter(array_map(
+                    fn (string $key): ?string => TutorReviewSection::tryFrom($key)?->label(),
+                    $this->profile->review_sections ?? [],
+                ))),
+            ],
+        );
     }
 }
