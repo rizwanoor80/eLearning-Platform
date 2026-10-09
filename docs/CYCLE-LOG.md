@@ -6572,3 +6572,63 @@ $ php8.4 artisan horizon:status     → Horizon is running.
 $ grep -ciE 'ERROR|exception|critical' storage/logs/laravel.log → 0
 ```
 09:51–10:02 UTC is 13:51–14:02 Asia/Dubai, the lesson-3 window. Every delivery was answered 200 with outcome `received` (verified and stored once), so nothing was "delivered but ignored" at the signature, dedupe or storage layer, and `WebhookPayload::parse` accepts the real body shape (an unparseable body would have produced outcome `ignored`). Not verifiable by CC: the values of `user_id` (key names only are kept, by design), and whether lesson 3's `tutor_joined_at` / `learner_joined_at` are set (no row reads on the allow-list); indirect evidence is six stored events, 0 failed jobs, 0 log errors, Horizon running. The log's only `video.webhook.rejected` line is the 2026-10-07 10:57 unsigned registration ping (empty timestamp, body length 2), already answered 401 by design. R184 closed: ADR-017 closure line and the CHECKPOINTS CP6 line written. (cycle 14 r1)
+
+### 2026-10-08 14:30 — ADVISOR (14a design, before the first edit; written up after a context compaction)
+Consulted before writing code; the advisor answered (the session transcript records the answering model as `claude-fable-5-1`). The reply is stored redacted in the transcript and I cannot quote a line from it, so by rule 11 this entry does not count toward the minimum; the consultation after it (below) does. What I carried from it, from my own notes made at the time: keep the permit-not-expired and required-documents-accepted checks in `TutorApprovalReadiness` unchanged, because R185 is silent on them and removing them would widen what an admin can approve without authority. Taken: availability leaves `problems()` and becomes a `whereExists` on `availability_rules` inside `TutorProfile::scopeBookable()` (the single scope, invariant 5, so no call site changes); `problems()` and the new `sections()` are built on one private `checks()` so a failed reinstatement can send the tutor to exactly the sections behind the problems; the admin availability edit reuses an extracted `SaveTutorAvailability` (the wizard's own save) rather than a second path.
+
+### 2026-10-08 14:31 — DECISION (14a, permit and required documents kept in the approval bar, CC)
+R185 lists what a tutor needs to be approved (name, country, timezone, CV or LinkedIn, agreement, one subject, a rate in band) and is silent on the permit and the required document types that R171 already checked. Read literally, the list would drop both. I kept them: `TutorApprovalReadiness::problems()` still requires "permit not expired if present" and "every required document type accepted", and loses only the availability window. Name, country, timezone, CV or LinkedIn and the agreement are the submission minimum (`TutorSubmissionReadiness`); `ApproveTutor` only approves from `pending_review`, so they hold at approval transitively, and the docs (ADR-024 amendment, CHECKPOINTS CP1 note) say exactly that rather than claiming `problems()` re-asserts them. Disclosed in STATUS §6 as plan-silent; if the planner meant to drop the permit and document checks, that is a one-line change under a new ruling.
+
+### 2026-10-08 14:32 — DECISION (14a, recurring-charge cancellation on zero windows is intended, CC)
+`ChargeReservedLesson` cancels a due weekly lesson uncharged when its tutor is no longer `bookable()` (R104). Because `bookable()` now also needs an availability window, a tutor who removes every window has their reserved weekly lessons cancelled at the next charge run, with the same "tutor unavailable" emails to parent and tutor, no strike, no ledger entry and the slot left active. I judge that correct: a lesson the platform would no longer let anyone book should not be charged for, and the existing cancel path already protects the parent's card. `GenerateSlotLessons` likewise skips and records the occurrence rather than losing it silently. Pinned by a fourth case, `availability removed`, in the `unbookable tutors` dataset of `AutoChargeTest`.
+
+### 2026-10-08 14:50 — ADVISOR (14a, tests green, before commit)
+Model: `claude-fable-5-1` (the session transcript's `advisorModel` field; the tool itself does not report it). Quote: "Don't ship the stronger claim with the weaker code." Taken: the ADR-024 amendment and the CP1 note no longer say `problems()` asserts name, country, timezone, CV and agreement; they say those are the submission minimum already met to reach `pending_review`. Also taken: the leak test now gives the second tutor its own sections and note and asserts each tutor sees only theirs; the `AutoChargeTest` dataset has no restore arm (checked, none exists); `ApproveTutor` only approves from `pending_review`, where `CompleteTutorOnboarding` has already cleared `review_sections`, so it needs no null. Placement of docs: the advisor pointed out that 13a's DATA_MODEL and DECISIONS edits landed in the post-merge record on main, not in the code PR. I follow that precedent: the DATA_MODEL v1.11, ADR-024 amendment, PRD and CP1 edits (R191) stay out of the PR commit and go to main with the post-merge record; the PRD diff is quoted in the VERIFICATION below so the reviewer still reads it.
+
+### 2026-10-08 15:05 — VERIFICATION (14a, branch cp/14a-approval-rule, before the commit)
+```
+composer test equivalent: php artisan test --parallel --compact  → Tests: 2203 passed (11142 assertions), 357.8 s, EXIT=0
+tests/Feature/Tutor/ApprovalAvailabilityRuleTest.php             → 21 tests, 134 assertions, passing (new)
+php artisan ledger:verify                                        → green
+npm run build                                                    → exit 0 (warnings only)
+vendor/bin/pint --dirty · phpstan analyse · vue-tsc              → green
+bash scripts/rtl-check.sh                                        → green
+```
+PRD diff (git diff -U0 docs/PRD.md, lines cut at 260 characters; the PRD edit goes to main with the post-merge record, R191):
+```
+diff --git a/docs/PRD.md b/docs/PRD.md
+index e007870..da456b9 100644
+--- a/docs/PRD.md
++++ b/docs/PRD.md
+@@ -30,2 +30,2 @@ ### 2.1 Tutor onboarding (R170/R171 — 2026-10)
+-3. Status `pending_review`. The tutor may submit with only the three mandatory steps done; subjects, a rate, and availability are **not** required to submit, only to be approved (see point 4). Admin reviews in the approval queue, can request changes (note to 
+-4. Approval's own minimum, enforced by the system at approval time regardless of what onboarding allowed at submission: at least one subject (curriculum + year-group range) with an hourly rate inside today's price band for it, at least one weekly availability
++3. Status `pending_review`. The tutor may submit with only the three mandatory steps done; subjects and a rate are **not** required to submit, only to be approved (see point 4); availability is required neither to submit nor to be approved, only to be listed 
++4. Approval's own minimum, enforced by the system at approval time regardless of what onboarding allowed at submission: at least one subject (curriculum + year-group range) with an hourly rate inside today's price band for it, every currently-required documen
+@@ -35 +35 @@ ### 2.2 Parent finds a tutor (browse path)
+-2. Search: filter by curriculum, subject, year group, price range, day/time availability, minimum rating. Sort by rating or price. Only approved tutors with a valid permit and at least one open slot in the next 14 days appear.
++2. Search: filter by curriculum, subject, year group, price range, day/time availability, minimum rating. Sort by rating or price. Only approved tutors with a valid permit, at least one weekly availability window and at least one open slot in the next 14 days
+@@ -141 +141 @@ ## 6. Tutor portal
+-Pages: **Dashboard** (today's lessons, join buttons, reports due) · **Calendar / availability** (weekly template + date exceptions; active weekly slots shown as fixed blocks) · **Weekly slots** (end with notice) · **Profile** · **Earnings** (five buckets,
++Pages: **Dashboard** (today's lessons, join buttons, reports due; an "Add your availability to appear in search" banner for an approved tutor with no weekly window) · **Calendar / availability** (weekly template + date exceptions; active weekly slots shown a
+```
+
+### 2026-10-08 15:30 — REVIEW (14a, PR #46, fresh subagent, round 1)
+Reviewer: fresh general-purpose subagent on the strongest model alias, no prior context, read-only, brief = the four R190 targets plus tests/migration/RTL/money. Verdicts as reported:
+1. Unapproved tutor reachable in search, match, booking, recurring — PASS (every selector goes through `bookable()`; five non-approved statuses with a window tested).
+2. Approved tutor with no window listed or bookable — PASS WITH NOTE (`ListRecurringSlots.php:77`, `MatchRequestInfolist.php:46`, `AdminDashboardMetrics.php:127` do not use the scope but are admin display or re-checked; a stub window shorter than a lesson satisfies `bookable()` but search's 14-day slot rule hides it).
+3. Admin Edit availability — PASS WITH NOTE (overlap/inverted refused before write and before audit, tested; audit is written after the save transaction commits, same pattern as `editSubjects`/`editRate`; existing booked lessons are not re-checked against new windows — Low).
+4. Request-changes checklist leak/persistence/unknown keys — PASS (cleared on resubmit, reject, suspend, reinstate; only the signed-in tutor's own sections are sent; unknown keys refused). Low note: `guarded()` does not catch the `InvalidArgumentException`; unreachable from the form.
+5. **FAIL (Medium)** `Dashboard.vue:83-89` + `TutorOnboardingController.php:303,401-408,445` — the new banner links an approved tutor to /tutor/onboarding, but `currentStep()` returns `submitted` and `storeAvailability()` aborts 409 through `guardStepNotAhead()`: the banner is a dead end; only an admin could list the tutor.
+6. PASS WITH NOTE — banner shows for "approved and no rules" only, not full `bookable()` (expired permit plus no window gets a slightly misleading banner). Low.
+7. Test diffs — PASS WITH NOTE (fixture-only swaps, nothing removed or loosened; `TutorProfileTest` now stricter).
+8. Migration — PASS WITH NOTE (`->after()` ignored on PostgreSQL, harmless). 9. RTL — PASS. 10. Money/ledger untouched — PASS. 11. Docs — note: R191 docs ride the post-merge record.
+
+### 2026-10-08 15:32 — DECISION (14a, fix loop 1 of 2: item 5, CC)
+Accepted FAIL 5 as correct and reproduced in the controller. Fix: `storeAvailability()` skips the 409 guard for an `Approved` profile only (every other step still 409s for approved, and availability still 409s for pending_review/rejected/suspended); `show()` sends `canEditAvailability` (status Approved); `Onboarding.vue` shows the availability form directly for such a tutor, headed by the "You're approved." line. Two new tests in `ApprovalAvailabilityRuleTest` (approved tutor adds a window from the banner link and becomes bookable; other steps still 409; a pending tutor is offered no availability edit and gets 409). Items 2/3/4/6 Low notes are left as is (no behaviour wrong; 6 is wording). Tutor feature folder after the fix: 251 passed, 1011 assertions.
+
+### 2026-10-09 13:40 — DECISION (14a, merge, CC)
+Authorisation quoted from PLAN r1 R190: "self-merge under R147 with CI green on the head (R177 wait)". Head `a63d9eb` (fix loop 1 of 2 on top of `3a339a3`); `gh pr checks 46` → `CI pass 2m42s`; mergeable, no conflicts. The fix commit was not given a second fresh review (it is a 9-line controller change and a Vue branch with two new tests, full suite 2205 passed); stated here so the omission is visible. Squash-merged as `3aaac2c` (PR #46); branch not deleted (CLAUDE.md). `git log origin/main..HEAD` before the merge: `a63d9eb`, `3a339a3`.
+
+### 2026-10-09 13:45 — NOTE (14a post-merge record)
+`main` at `3aaac2c`. The R191 docs land in this commit, with this entry: DATA_MODEL v1.11 (`tutor_profiles.review_sections`), DECISIONS ADR-024 amendment, PRD §2.1 points 3 and 4 / §2.2 point 2 / §6 (diff quoted in the 15:05 VERIFICATION), CHECKPOINTS CP1 note, CYCLE-LOG, STATUS. An untracked `docs/cloud/ENVIRONMENT.md` (written 2026-10-09 13:27, not by this session) is left untouched and uncommitted.

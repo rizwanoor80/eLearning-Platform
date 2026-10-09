@@ -31,6 +31,7 @@ Acceptance
 
 ## CP1 — Tutor onboarding and approval — done (cycle 02 sub-cycles 1a–1c; hardened in cycle 03: the R36 status lifecycle, `ReinstateTutor`, re-vetting, `submitted_at`)
 **Goal:** a tutor can complete onboarding; admin can approve; only approved tutors with valid permits are "bookable".
+**Cycle 14a revision (R185, ADR-024 amendment):** availability moves from the approval bar to the listing bar. Approval needs name, country, timezone, CV or LinkedIn and the agreement (the submission minimum, already met to reach `pending_review`), plus a subject, an in-band rate and the unchanged permit and required-document checks (`TutorApprovalReadiness`); `bookable()` additionally needs at least one `availability_rules` row. An approved tutor with no window sees a dashboard banner; the admin can edit availability on their behalf (audited); "Request changes" names sections (`TutorReviewSection`, `tutor_profiles.review_sections`).
 
 Tasks
 - `document_types` table + seeder (permit scan, ID/passport, qualifications, police clearance) + Filament CRUD (name, description, required, active, sort). `tutor_documents.type` → `document_type_id`.
