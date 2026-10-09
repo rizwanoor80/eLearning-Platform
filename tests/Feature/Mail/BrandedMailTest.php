@@ -149,3 +149,31 @@ it('does not use the published Laravel theme colours any more', function () {
 
     expect($css)->toContain('#64011D')->not->toContain('#18181b');
 });
+
+it('renders the lesson confirmed and reminder mails through the branded layout, from the settings sender (R188b)', function () {
+    Settings::set('from_name', 'Acme Tutors', SettingGroup::Mail);
+    Settings::set('email_footer', 'TrusTutor FZ-LLC · Dubai', SettingGroup::Mail);
+
+    $tutor = TutorProfile::factory()->approved()->create(['display_name' => 'Miss Amira']);
+    $parent = User::factory()->create(['name' => 'Omar Saleh']);
+    $learner = App\Models\Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => gcseCurriculumId()]);
+    $lesson = App\Models\Lesson::factory()->withStatus(App\Enums\LessonStatus::Confirmed)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+    ]);
+
+    $mails = [
+        new App\Mail\Lessons\LessonConfirmedMail($lesson, $parent),
+        new App\Mail\Lessons\LessonReminderMail($lesson, $parent, '24h'),
+        new App\Mail\Lessons\LessonReminderMail($lesson, $parent, '1h'),
+    ];
+
+    foreach ($mails as $mail) {
+        expect($mail->envelope()->from->name)->toBe('Acme Tutors')
+            ->and($mail->render())
+            ->toContain('data-brand="lockup"')
+            ->toContain('Hi Omar,')
+            ->toContain('Miss Amira')
+            ->toContain('TrusTutor FZ-LLC · Dubai');
+    }
+});
