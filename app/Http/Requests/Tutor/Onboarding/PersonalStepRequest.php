@@ -10,7 +10,15 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class PersonalStepRequest extends FormRequest
 {
-    private const NAME_PATTERN = "/^\p{L}[\p{L}\p{M}\x{200C}\x{200D} .'’-]*$/u";
+    private const NAME_PATTERN = "/^\p{L}[\p{L}\p{M}\x{200C}\x{200D} .'’-]*\z/u";
+
+    /**
+     * Characters the allow-list admits as letters or marks but that either draw as punctuation or are
+     * invisible, so the text on screen could differ from the text the masker read (review 14b round 2):
+     * enclosing marks (one on an "a" draws as "@"), invisible variation selectors and fillers, the
+     * dot-shaped Lisu tone letters and U+A78F, and a stack of four or more combining marks.
+     */
+    private const LOOKALIKE_PATTERN = '/\p{Me}|[\x{034F}\x{180B}-\x{180F}\x{FE00}-\x{FE0F}\x{16FE4}\x{E0100}-\x{E01EF}\x{A4F8}-\x{A4FD}\x{A78F}]|\p{M}{4}/u';
 
     /**
      * Authorization is the `access-tutor-area` route middleware; this
@@ -54,7 +62,11 @@ class PersonalStepRequest extends FormRequest
             // them (and a joiner inside, as many Persian and Indic names need). Anything else — digits,
             // symbols, an @, a direction override, an invisible character — is refused, so the text on
             // screen is the text the masker checked. At least two letters, so it can never read as blank.
-            if (preg_match(self::NAME_PATTERN, $value) !== 1 || preg_match_all('/\p{L}/u', $value) < 2) {
+            if (
+                preg_match(self::NAME_PATTERN, $value) !== 1
+                || preg_match(self::LOOKALIKE_PATTERN, $value) !== 0
+                || preg_match_all('/\p{L}/u', $value) < 2
+            ) {
                 $fail('A display name can only use letters, spaces, full stops, apostrophes and hyphens.');
 
                 return;

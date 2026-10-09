@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TutorProfileStatus;
+use App\Http\Requests\Tutor\Onboarding\PersonalStepRequest;
 use App\Models\TutorProfile;
 use App\Models\User;
 use Illuminate\Testing\TestResponse;
@@ -92,9 +93,23 @@ it('refuses a display name that could hide or fake contact details or read as bl
     'reversed email behind a direction override' => ["\u{202E}moc.liamg@aras"],
     'social handle' => ['@sara_tutor'],
     'digits' => ['Sara 2'],
-    'one letter and a joiner' => ["A\u{200D}"],
+    'one letter and a full stop' => ['A.'],
+    'one letter and a hyphen' => ['A-'],
     'leading symbol' => ['-Sara'],
+    'dot-shaped Lisu tone letter' => ["sarahtutor\u{A4F8}com"],
+    'dot-shaped Latin letter' => ["sarahtutor\u{A78F}com"],
+    'enclosing mark that draws as an at sign' => ["saraa\u{20DD}gmail\u{A4F8}com"],
+    'invisible Mongolian variation selector' => ["sara.sch\u{180B}ool"],
+    'invisible Khitan filler' => ["sara.tut\u{16FE4}ors"],
+    'stack of combining marks' => ["Sa\u{0336}\u{0336}\u{0336}\u{0336}ra"],
 ]);
+
+it('refuses a trailing line break on its own, without relying on the middleware trimming it', function () {
+    $request = new PersonalStepRequest;
+    $rule = new ReflectionClassConstant($request, 'NAME_PATTERN');
+
+    expect(preg_match($rule->getValue(), "Sara\n"))->toBe(0)->and(preg_match($rule->getValue(), 'Sara'))->toBe(1);
+});
 
 // Not refused, and not stored: Laravel's TrimStrings/ConvertEmptyStringsToNull treats a name that is only
 // invisible characters as blank, so it saves as null and the first-name default shows. A spelled-out address
@@ -119,6 +134,10 @@ it('accepts ordinary names in several scripts', function (string $value) {
     'arabic' => ['أميرة'],
     'persian with joiner' => ["می\u{200C}خواهم"],
     'accents' => ['José Müller'],
+    'okina' => ['Keʻala'],
+    'stacked Vietnamese accents' => ['Nguyễn Thị'],
+    'devanagari' => ['प्रिया शर्मा'],
+    'cjk' => ['李明'],
 ]);
 
 it('never displays an invisible format character from a stored value, and never a blank name', function () {
@@ -126,6 +145,9 @@ it('never displays an invisible format character from a stored value, and never 
 
     $profile->forceFill(['display_name' => "\u{202E}moc.liamg@aras"])->save();
     expect($profile->fresh()->displayName())->toBe('moc.liamg@aras');
+
+    $profile->forceFill(['display_name' => "sara.sch\u{180B}ool"])->save();
+    expect($profile->fresh()->displayName())->toBe('sara.school');
 
     $profile->forceFill(['display_name' => "\u{200D}\u{200D}"])->save();
     expect($profile->fresh()->displayName())->toBe('Amira');

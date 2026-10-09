@@ -140,7 +140,7 @@ class TutorProfile extends Model
         // when saved (PersonalStepRequest), and only the default below is derived from the account.
         // Direction overrides and other invisible format characters are dropped (a joiner inside a word
         // stays), so a stored value can never display as something other than what was checked, nor blank.
-        $chosen = trim(preg_replace('/(?![\x{200C}\x{200D}])\p{Cf}/u', '', (string) $this->display_name) ?? '');
+        $chosen = trim(preg_replace('/(?![\x{200C}\x{200D}])\p{Cf}|[\x{034F}\x{180B}-\x{180F}\x{FE00}-\x{FE0F}\x{16FE4}\x{E0100}-\x{E01EF}]/u', '', (string) $this->display_name) ?? '');
 
         if (preg_match('/\p{L}/u', $chosen) === 1) {
             return $chosen;
