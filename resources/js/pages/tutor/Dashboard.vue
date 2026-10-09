@@ -172,7 +172,7 @@ defineOptions({
                     </div>
                     <div class="flex items-center gap-2">
                         <Badge v-if="lesson.weekly" variant="secondary">weekly</Badge>
-                        <Badge variant="outline">{{ lesson.status }}</Badge>
+                        <Badge variant="outline">{{ lesson.status.replace(/_/g, ' ') }}</Badge>
                         <Link :href="`/lessons/${lesson.id}`" class="text-sm underline underline-offset-4">Open</Link>
                     </div>
                 </li>

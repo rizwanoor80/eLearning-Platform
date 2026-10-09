@@ -578,39 +578,39 @@ const submitComplete = () => {
         <form v-else-if="shown === 'subjects'" @submit.prevent="submitSubjects" class="grid max-w-2xl gap-4">
             <p class="text-muted-foreground text-sm">Which curricula, subjects and levels do you teach?</p>
 
-            <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-4 items-end gap-2 border-b pb-4">
-                <div class="grid gap-2">
+            <div v-for="(row, index) in subjectsForm.subjects" :key="index" class="grid grid-cols-1 items-end gap-3 border-b pb-4 sm:grid-cols-2">
+                <div class="grid min-w-0 gap-2">
                     <Label :for="`curriculum_${index}`">Curriculum</Label>
-                    <select :id="`curriculum_${index}`" v-model="row.curriculum_id" class="border-input rounded-md border p-2 text-sm" @change="clearForeignLevels(row)">
+                    <select :id="`curriculum_${index}`" v-model="row.curriculum_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" @change="clearForeignLevels(row)">
                         <option value="" disabled>Select</option>
                         <option v-for="curriculum in curricula" :key="curriculum.id" :value="curriculum.id">{{ curriculum.name }}</option>
                     </select>
                 </div>
-                <div class="grid gap-2">
+                <div class="grid min-w-0 gap-2">
                     <Label :for="`subject_${index}`">Subject</Label>
-                    <select :id="`subject_${index}`" v-model="row.subject_id" class="border-input rounded-md border p-2 text-sm">
+                    <select :id="`subject_${index}`" v-model="row.subject_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm">
                         <option value="" disabled>Select</option>
                         <option v-for="subject in subjects" :key="subject.id" :value="subject.id">{{ subject.name }}</option>
                     </select>
                 </div>
-                <div class="grid gap-2">
+                <div class="grid min-w-0 gap-2">
                     <Label :for="`level_min_${index}`">From year group</Label>
-                    <select :id="`level_min_${index}`" v-model="row.level_min_id" class="border-input rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
+                    <select :id="`level_min_${index}`" v-model="row.level_min_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
                         <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
                         <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
                     </select>
                 </div>
-                <div class="grid gap-2">
+                <div class="grid min-w-0 gap-2">
                     <Label :for="`level_max_${index}`">To year group</Label>
-                    <select :id="`level_max_${index}`" v-model="row.level_max_id" class="border-input rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
+                    <select :id="`level_max_${index}`" v-model="row.level_max_id" class="border-input w-full min-w-0 rounded-md border p-2 text-sm" :disabled="row.curriculum_id === ''">
                         <option value="" disabled>{{ row.curriculum_id === '' ? 'Choose a curriculum first' : 'Select' }}</option>
                         <option v-for="group in groupsFor(row.curriculum_id)" :key="group.id" :value="group.id">{{ group.label }}</option>
                     </select>
                 </div>
-                <p v-if="row.legacy" class="text-muted-foreground col-span-4 text-xs">
+                <p v-if="row.legacy" class="text-muted-foreground text-xs sm:col-span-2">
                     We could not match “{{ row.legacy }}” to our list of year groups — please choose them.
                 </p>
-                <Button v-if="subjectsForm.subjects.length > 1" type="button" variant="ghost" class="col-span-4 w-fit" @click="removeSubjectRow(index)">
+                <Button v-if="subjectsForm.subjects.length > 1" type="button" variant="ghost" class="w-fit sm:col-span-2" @click="removeSubjectRow(index)">
                     Remove
                 </Button>
             </div>

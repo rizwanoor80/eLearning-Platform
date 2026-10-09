@@ -55,7 +55,7 @@ class TutorDashboardController extends Controller
 
         $today = Lesson::query()
             ->where('tutor_profile_id', $tutorProfile->id)
-            ->whereIn('status', [LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress])
+            ->whereNotIn('status', $this->notOnTodaysList())
             ->where('starts_at', '>=', $todayStartsUtc)
             ->where('starts_at', '<', $todayEndsUtc)
             ->with(['learner'])
@@ -94,6 +94,20 @@ class TutorDashboardController extends Controller
             'needsAvailability' => $this->needsAvailability($tutorProfile),
             'leadTime' => $this->leadTime($tutorProfile),
         ]);
+    }
+
+    /**
+     * R187(c): "Today" is every lesson that starts on the tutor's local day and still stands — including
+     * one that has already been taught (completed, reported, settled, disputed, a no-show). It used to list
+     * only reserved / confirmed / in-progress, so a 14:00 lesson vanished from the list the moment it ended
+     * and the page said "No lessons today". Only a lesson that never became real (unpaid) or that was
+     * cancelled, expired or refunded is left off.
+     *
+     * @return list<LessonStatus>
+     */
+    private function notOnTodaysList(): array
+    {
+        return [LessonStatus::PendingPayment, ...LessonStatus::freeingSlot()];
     }
 
     /**
