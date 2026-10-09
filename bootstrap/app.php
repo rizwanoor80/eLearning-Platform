@@ -9,6 +9,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -39,6 +41,24 @@ return Application::configure(basePath: dirname(__DIR__))
         // body/comment must not go there, or an over-long one holding a phone number would be kept
         // unmasked (R134/R136).
         $exceptions->dontFlash(['body', 'comment']);
+
+        // R187(a): a conflict the app raises itself (abort(409, ...)) on a form submit — a double click,
+        // a stale tab, a step already locked — is told to the user on the page they are on, never as a
+        // bare error page. Only a deliberate 409 HttpException is handled here: every other status and
+        // every other exception still reaches the normal handler (and the log). The Inertia
+        // asset-version 409 is a middleware response, not an exception; the client reloads on it.
+        $exceptions->render(function (HttpExceptionInterface $e, Request $request) {
+            if ($e->getStatusCode() !== 409 || $request->isMethodSafe() || $request->expectsJson()) {
+                return null;
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'That could not be done because the page was out of date. Please check it and try again.',
+            ]);
+
+            return redirect()->back(fallback: route('home'));
+        });
 
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),

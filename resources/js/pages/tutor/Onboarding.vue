@@ -88,7 +88,7 @@ const props = defineProps<{
     canPickSteps: boolean;
     canEditAvailability: boolean;
     missingForSubmission: string[];
-    personal: { country: string | null; phone: string | null; timezone: string };
+    personal: { country: string | null; phone: string | null; timezone: string; display_name: string | null; default_display_name: string };
     profile: {
         permit_number: string | null;
         permit_expires_at: string | null;
@@ -205,6 +205,7 @@ const personalForm = useForm({
     country: props.personal.country ?? '',
     phone: props.personal.phone ?? '',
     timezone: props.personal.timezone,
+    display_name: props.personal.display_name ?? '',
 });
 
 const submitPersonal = () => {
@@ -451,6 +452,13 @@ const submitComplete = () => {
                 <Label for="timezone">Timezone</Label>
                 <Input id="timezone" v-model="personalForm.timezone" type="text" required />
                 <InputError :message="personalForm.errors.timezone" />
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="display_name">Display name (optional)</Label>
+                <Input id="display_name" v-model="personalForm.display_name" type="text" minlength="2" maxlength="30" :placeholder="personal.default_display_name" />
+                <p class="text-muted-foreground text-xs">The name parents see. Leave blank to use {{ personal.default_display_name }}. Your full name stays private to the admin team.</p>
+                <InputError :message="personalForm.errors.display_name" />
             </div>
 
             <Button type="submit" :disabled="personalForm.processing" class="w-fit">

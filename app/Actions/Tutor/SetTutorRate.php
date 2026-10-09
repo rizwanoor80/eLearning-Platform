@@ -27,7 +27,7 @@ class SetTutorRate
     public function __invoke(TutorProfile $profile, Money $rate): void
     {
         $band = $this->rateBands->bandFor($profile);
-        abort_if($band === null, 409);
+        abort_if($band === null, 409, 'Add at least one subject before setting your rate.');
 
         if ($band['conflicting'] !== []) {
             throw ValidationException::withMessages([

@@ -58,6 +58,12 @@ class TutorOnboardingController extends Controller
      */
     private const MANDATORY_STEPS = ['personal', 'document', 'agreement'];
 
+    /**
+     * R187(a): the words a tutor sees when a step is refused because the profile is no longer
+     * editable — shown as a message on the same page (bootstrap/app.php), never as an error page.
+     */
+    private const LOCKED = 'Your profile is with the review team, so this section is locked for now.';
+
     public function show(Request $request): Response
     {
         /** @var User $user */
@@ -94,6 +100,8 @@ class TutorOnboardingController extends Controller
                 'country' => $profile->country,
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,
+                'display_name' => $profile->display_name,
+                'default_display_name' => $profile->defaultDisplayName(),
             ],
             'profile' => [
                 'permit_number' => $profile->permit_number,
@@ -159,7 +167,11 @@ class TutorOnboardingController extends Controller
             'phone' => $validated['phone'] ?? null,
             'timezone' => $validated['timezone'],
         ]);
-        $profile->update(['country' => strtoupper((string) $validated['country'])]);
+        $displayName = trim((string) ($validated['display_name'] ?? ''));
+        $profile->update([
+            'country' => strtoupper((string) $validated['country']),
+            'display_name' => $displayName === '' ? null : $displayName,
+        ]);
 
         return redirect()->route('tutor.onboarding');
     }
@@ -202,7 +214,7 @@ class TutorOnboardingController extends Controller
         // `currentStep()` is currently waiting on), so the client says which type it means —
         // validated against `active` types only (`DocumentStepRequest`); the only ordering rule
         // left is that the profile must still be editable.
-        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409);
+        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409, self::LOCKED);
 
         $documentType = DocumentType::query()->active()->where('id', $request->validated('document_type_id'))->firstOrFail();
 
@@ -237,7 +249,7 @@ class TutorOnboardingController extends Controller
         /** @var User $user */
         $user = $request->user();
         $profile = $this->profileFor($user);
-        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409);
+        abort_if($this->currentStep($user, $profile)['name'] === 'submitted', 409, self::LOCKED);
 
         $profile->update(['linkedin_url' => $request->validated('linkedin_url')]);
 
@@ -342,7 +354,9 @@ class TutorOnboardingController extends Controller
         $user = $request->user();
         $profile = $this->profileFor($user);
 
-        abort_unless($this->currentStep($user, $profile)['name'] === 'complete', 409);
+        $current = $this->currentStep($user, $profile)['name'];
+        abort_if($current === 'submitted', 409, 'Your profile has already been submitted for review.');
+        abort_unless($current === 'complete', 409, 'Finish the required steps first, then submit for review.');
 
         // Defence in depth (R27): completion re-checks the stored rate
         // against the *current* band rather than trusting that it was
@@ -360,6 +374,7 @@ class TutorOnboardingController extends Controller
                 $band === null || $band['conflicting'] !== []
                     || $rateFils < $band['min'] || $rateFils > $band['max'],
                 409,
+                'Your rate no longer fits the price band for your subjects. Please update it, then submit again.',
             );
         }
 
@@ -448,7 +463,7 @@ class TutorOnboardingController extends Controller
     {
         $current = $this->currentStep($user, $profile)['name'];
 
-        abort_if($current === 'submitted', 409);
+        abort_if($current === 'submitted', 409, self::LOCKED);
 
         if (! in_array($step, self::MANDATORY_STEPS, true)) {
             return;
@@ -461,7 +476,7 @@ class TutorOnboardingController extends Controller
             return;
         }
 
-        abort_if($stepIndex > $currentIndex, 409);
+        abort_if($stepIndex > $currentIndex, 409, 'Please finish the earlier step first.');
     }
 
     /**
