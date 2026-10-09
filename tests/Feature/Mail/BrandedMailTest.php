@@ -1,7 +1,12 @@
 <?php
 
+use App\Enums\LessonStatus;
 use App\Enums\SettingGroup;
+use App\Mail\Lessons\LessonConfirmedMail;
+use App\Mail\Lessons\LessonReminderMail;
 use App\Mail\Tutor\TutorApprovedMail;
+use App\Models\Learner;
+use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Notifications\Auth\ResetPasswordNotification;
@@ -148,4 +153,32 @@ it('does not use the published Laravel theme colours any more', function () {
     $css = file_get_contents(resource_path('views/vendor/mail/html/themes/default.css'));
 
     expect($css)->toContain('#64011D')->not->toContain('#18181b');
+});
+
+it('renders the lesson confirmed and reminder mails through the branded layout, from the settings sender (R188b)', function () {
+    Settings::set('from_name', 'Acme Tutors', SettingGroup::Mail);
+    Settings::set('email_footer', 'TrusTutor FZ-LLC · Dubai', SettingGroup::Mail);
+
+    $tutor = TutorProfile::factory()->approved()->create(['display_name' => 'Miss Amira']);
+    $parent = User::factory()->create(['name' => 'Omar Saleh']);
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => gcseCurriculumId()]);
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Confirmed)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+    ]);
+
+    $mails = [
+        new LessonConfirmedMail($lesson, $parent),
+        new LessonReminderMail($lesson, $parent, '24h'),
+        new LessonReminderMail($lesson, $parent, '1h'),
+    ];
+
+    foreach ($mails as $mail) {
+        expect($mail->envelope()->from->name)->toBe('Acme Tutors')
+            ->and($mail->render())
+            ->toContain('data-brand="lockup"')
+            ->toContain('Hi Omar,')
+            ->toContain('Miss Amira')
+            ->toContain('TrusTutor FZ-LLC · Dubai');
+    }
 });

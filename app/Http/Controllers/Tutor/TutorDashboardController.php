@@ -11,6 +11,7 @@ use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Scheduling\BookingLeadTime;
+use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,6 +45,7 @@ class TutorDashboardController extends Controller
                 'slots' => [],
                 'onboarding' => $this->onboardingBanner($user, null),
                 'needsAvailability' => false,
+                'checklist' => $this->checklist($user, null),
                 'leadTime' => null,
             ]);
         }
@@ -55,7 +57,7 @@ class TutorDashboardController extends Controller
 
         $today = Lesson::query()
             ->where('tutor_profile_id', $tutorProfile->id)
-            ->whereIn('status', [LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress])
+            ->whereNotIn('status', $this->notOnTodaysList())
             ->where('starts_at', '>=', $todayStartsUtc)
             ->where('starts_at', '<', $todayEndsUtc)
             ->with(['learner'])
@@ -92,8 +94,44 @@ class TutorDashboardController extends Controller
             'slots' => $this->slots($tutorProfile),
             'onboarding' => $this->onboardingBanner($user, $tutorProfile),
             'needsAvailability' => $this->needsAvailability($tutorProfile),
+            'checklist' => $this->checklist($user, $tutorProfile),
             'leadTime' => $this->leadTime($tutorProfile),
         ]);
+    }
+
+    /**
+     * R186: the condensed checklist — only the two required groups, and only until both are done.
+     * A rejected or suspended tutor has nothing to complete, so none is shown.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function checklist(User $user, ?TutorProfile $tutorProfile): ?array
+    {
+        // Nothing to do on a profile that is locked: waiting for review, rejected or suspended.
+        if ($tutorProfile !== null && in_array($tutorProfile->status, [TutorProfileStatus::PendingReview, TutorProfileStatus::Rejected, TutorProfileStatus::Suspended], true)) {
+            return null;
+        }
+
+        $groups = array_values(array_filter(
+            app(TutorOnboardingChecklist::class)->groups($user, $tutorProfile ?? new TutorProfile),
+            fn (array $group): bool => $group['required'],
+        ));
+
+        return collect($groups)->every(fn (array $group): bool => $group['complete']) ? null : $groups;
+    }
+
+    /**
+     * R187(c): "Today" is every lesson that starts on the tutor's local day and still stands — including
+     * one that has already been taught (completed, reported, settled, disputed, a no-show). It used to list
+     * only reserved / confirmed / in-progress, so a 14:00 lesson vanished from the list the moment it ended
+     * and the page said "No lessons today". Only a lesson that never became real (unpaid) or that was
+     * cancelled, expired or refunded is left off.
+     *
+     * @return list<LessonStatus>
+     */
+    private function notOnTodaysList(): array
+    {
+        return [LessonStatus::PendingPayment, ...LessonStatus::freeingSlot()];
     }
 
     /**

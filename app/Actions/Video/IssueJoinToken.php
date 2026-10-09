@@ -43,7 +43,7 @@ class IssueJoinToken
         // Creating a room that exists returns it (the interface's contract), which is how the URL is
         // recovered without storing it.
         $room = $provider->createRoom(VideoRoom::nameFor($lesson->id), $expiresAt);
-        $name = $participant === VideoParticipant::Tutor ? $lesson->tutorProfile->user->name : $lesson->learner->display_name;
+        $name = $participant === VideoParticipant::Tutor ? $lesson->tutorProfile->displayName() : $lesson->learner->display_name;
 
         return [
             'url' => $room->url,

@@ -105,7 +105,7 @@ it('blocks completion without an accepted agreement', function () {
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
-    $response->assertStatus(409);
+    $response->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
     expect($profile->status)->toBe(TutorProfileStatus::Draft);
 });
@@ -201,7 +201,7 @@ it('refuses completion when an admin narrows the price band after the rate step 
 
     $response = test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
-    $response->assertStatus(409);
+    $response->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
     $profile = TutorProfile::query()->where('user_id', $tutor->id)->firstOrFail();
     expect($profile->status)->toBe(TutorProfileStatus::Draft);
 });
@@ -212,10 +212,10 @@ it('refuses every step handler once the profile has been submitted for review', 
     test()->actingAs($tutor)->post(route('tutor.onboarding.complete'));
 
     test()->actingAs($tutor)->post(route('tutor.onboarding.rate'), ['hourly_rate' => '150.00'])
-        ->assertStatus(409);
+        ->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
     test()->actingAs($tutor)->post(route('tutor.onboarding.bank'), [
         'bank_name' => 'Other Bank', 'bank_account_name' => 'Someone Else', 'bank_iban' => 'AE999999999999999999999',
-    ])->assertStatus(409);
+    ])->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
 });
 
 /**
@@ -292,7 +292,7 @@ it('replaces a rejected document, then resubmits and is approved only once the r
 it('keeps completion blocked until a rejected document is replaced', function () {
     [$tutor] = changesRequestedTutorWithDocument(TutorDocumentStatus::Rejected);
 
-    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'))->assertStatus(409);
+    test()->actingAs($tutor)->post(route('tutor.onboarding.complete'))->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
 });
 
 it('passes the status and, for changes_requested and suspended only, the admin note to the page (R31)', function (TutorProfileStatus $status, bool $noteShown) {

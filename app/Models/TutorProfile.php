@@ -60,7 +60,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
+        'user_id', 'country', 'display_name', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
@@ -128,13 +128,32 @@ class TutorProfile extends Model
     }
 
     /**
-     * What a public page or a parent email calls this tutor: the first word of
-     * the account name (R32). Splits on any Unicode whitespace and ignores empty
+     * What a public page or a parent email calls this tutor: the name the tutor chose (R188(a)),
+     * else the first word of the account name (R32). Splits on any Unicode whitespace and ignores empty
      * pieces, so a leading no-break space or tab cannot produce an empty name.
      * The one source — search, the profile and match suggestions all use it;
      * admin screens deliberately keep the full name.
      */
     public function displayName(): string
+    {
+        // R188(a): the tutor's own chosen name wins; it was checked against the contact-detail masker
+        // when saved (PersonalStepRequest), and only the default below is derived from the account.
+        // Direction overrides and other invisible format characters are dropped (a joiner inside a word
+        // stays), so a stored value can never display as something other than what was checked, nor blank.
+        $chosen = trim(preg_replace('/(?![\x{200C}\x{200D}])\p{Cf}|[\x{034F}\x{180B}-\x{180F}\x{FE00}-\x{FE0F}\x{16FE4}\x{E0100}-\x{E01EF}]/u', '', (string) $this->display_name) ?? '');
+
+        if (preg_match('/\p{L}/u', $chosen) === 1) {
+            return $chosen;
+        }
+
+        return $this->defaultDisplayName();
+    }
+
+    /**
+     * The first word of the account name — what `displayName()` falls back to, and what the
+     * onboarding form shows as the placeholder.
+     */
+    public function defaultDisplayName(): string
     {
         // Leading invisible format characters (zero-width space, BOM, direction
         // marks) are dropped with the whitespace, so they cannot become the

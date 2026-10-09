@@ -23,6 +23,18 @@ enum LevelTier: string
     }
 
     /**
+     * The words a tutor sees for the tier (PRD §3's table), e.g. next to the price band that applies.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::LowerSecondary => 'Lower secondary',
+            self::Exam1 => 'Exam years 1',
+            self::Exam2 => 'Exam years 2',
+        };
+    }
+
+    /**
      * Ordering from youngest to oldest students, used to pick the "highest
      * tier" a tutor teaches when validating their rate against a price band.
      */

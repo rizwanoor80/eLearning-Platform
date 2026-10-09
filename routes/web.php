@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\TutorRegisteredUserController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GetStartedController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Learner\LearnerController;
 use App\Http\Controllers\Lessons\BookLessonController;
@@ -112,6 +113,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
+    // R186: where a new parent lands after verifying their email; see ParentGetStarted.
+    Route::get('get-started', GetStartedController::class)->name('get-started');
     // R114: the single-booking screen. The GET is the parent's page for one chosen slot; a guest is sent to login and returned here.
     Route::get('tutors/{tutor}/book', [BookLessonController::class, 'create'])->where('tutor', '[0-9]{1,18}')->name('tutors.book');
     Route::post('lessons', [BookLessonController::class, 'store'])->name('lessons.store');

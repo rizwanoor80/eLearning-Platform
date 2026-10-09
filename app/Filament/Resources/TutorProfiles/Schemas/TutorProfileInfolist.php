@@ -10,10 +10,13 @@ use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\TutorStrike;
 use App\Services\Scheduling\BookingLeadTime;
+use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Support\Money;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Schema;
+use InvalidArgumentException;
+use WeakMap;
 
 /**
  * Read-only review information. Bank fields are deliberately not shown here
@@ -27,6 +30,29 @@ use Filament\Schemas\Schema;
  */
 class TutorProfileInfolist
 {
+    /**
+     * @var WeakMap<TutorProfile, list<array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool}>}>>|null
+     */
+    private static ?WeakMap $groups = null;
+
+    /**
+     * @return array{key: string, title: string, hint: string, required: bool, complete: bool, items: list<array{key: string, label: string, step: string, done: bool}>}
+     */
+    private static function group(TutorProfile $record, string $key): array
+    {
+        // Computed once per record object (the label and the state both ask), never kept past it.
+        self::$groups ??= new WeakMap;
+        self::$groups[$record] ??= app(TutorOnboardingChecklist::class)->groups($record->user, $record);
+
+        foreach (self::$groups[$record] as $group) {
+            if ($group['key'] === $key) {
+                return $group;
+            }
+        }
+
+        throw new InvalidArgumentException("Unknown checklist group [{$key}].");
+    }
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -37,6 +63,23 @@ class TutorProfileInfolist
                     ->label('Email'),
                 TextEntry::make('status')
                     ->badge(),
+                TextEntry::make('display_name')
+                    ->label('Shown to parents as')
+                    ->getStateUsing(fn (TutorProfile $record): string => $record->displayName()),
+
+                // R186: the same three groups the tutor sees, ticked from the same server-side checks.
+                ...collect([
+                    TutorOnboardingChecklist::GROUP_SUBMIT,
+                    TutorOnboardingChecklist::GROUP_SEARCH,
+                    TutorOnboardingChecklist::GROUP_OPTIONAL,
+                ])->map(fn (string $key): TextEntry => TextEntry::make("checklist_{$key}")
+                    ->label(fn (TutorProfile $record): string => self::group($record, $key)['title'].(self::group($record, $key)['required'] ? ' (required)' : ' (optional)'))
+                    ->columnSpanFull()
+                    ->listWithLineBreaks()
+                    ->getStateUsing(fn (TutorProfile $record): array => collect(self::group($record, $key)['items'])
+                        ->map(fn (array $item): string => ($item['done'] ? '✓ ' : '✗ ').$item['label'])
+                        ->all()))->all(),
+
                 TextEntry::make('headline'),
                 TextEntry::make('bio')
                     ->columnSpanFull(),
