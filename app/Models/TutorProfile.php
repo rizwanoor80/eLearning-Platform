@@ -8,6 +8,7 @@ use App\Enums\AbuseReportSubjectType;
 use App\Enums\DisputeStatus;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Rules\DisplayNameRule;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Database\Factories\TutorProfileFactory;
@@ -136,13 +137,13 @@ class TutorProfile extends Model
      */
     public function displayName(): string
     {
-        // R188(a): the tutor's own chosen name wins; it was checked against the contact-detail masker
-        // when saved (PersonalStepRequest), and only the default below is derived from the account.
-        // Direction overrides and other invisible format characters are dropped (a joiner inside a word
-        // stays), so a stored value can never display as something other than what was checked, nor blank.
-        $chosen = trim(preg_replace('/(?![\x{200C}\x{200D}])\p{Cf}|[\x{034F}\x{180B}-\x{180F}\x{FE00}-\x{FE0F}\x{16FE4}\x{E0100}-\x{E01EF}]/u', '', (string) $this->display_name) ?? '');
+        // R188(a): the tutor's own chosen name wins, but only if it still passes the rule it was saved
+        // under (R192) — the same structural check and masker as the form, so a value written under any
+        // older rule, or around the form, can never reach a parent and never shows as something other
+        // than what was checked, nor blank. Otherwise the first-name default below.
+        $chosen = trim((string) $this->display_name);
 
-        if (preg_match('/\p{L}/u', $chosen) === 1) {
+        if ($chosen !== '' && DisplayNameRule::accepts($chosen)) {
             return $chosen;
         }
 

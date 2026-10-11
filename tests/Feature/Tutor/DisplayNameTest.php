@@ -1,14 +1,14 @@
 <?php
 
 use App\Enums\TutorProfileStatus;
-use App\Http\Requests\Tutor\Onboarding\PersonalStepRequest;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Rules\DisplayNameRule;
 use Illuminate\Testing\TestResponse;
 
 /**
  * R188(a): a tutor-chosen display name, shown wherever a parent sees the tutor; the full name stays
- * admin-only; contact details are refused.
+ * admin-only; contact details are refused. The rule itself (R192) is tested in DisplayNameRuleTest.
  */
 function dnPost(TutorProfile $profile, array $extra = []): TestResponse
 {
@@ -83,7 +83,7 @@ it('sends the onboarding page the saved and the default display name', function 
         ->assertInertia(fn ($page) => $page->where('personal.display_name', null)->where('personal.default_display_name', 'Amira'));
 });
 
-it('refuses a display name that could hide or fake contact details or read as blank (review 14b item 1, 2)', function (string $value) {
+it('refuses, over HTTP, a display name that could hide or fake contact details or read as blank (review 14b rounds 1 to 4)', function (string $value) {
     $profile = dnTutor();
 
     dnPost($profile, ['display_name' => $value])->assertSessionHasErrors('display_name');
@@ -101,23 +101,27 @@ it('refuses a display name that could hide or fake contact details or read as bl
     'enclosing mark that draws as an at sign' => ["saraa\u{20DD}gmail\u{A4F8}com"],
     'invisible Mongolian variation selector' => ["sara.sch\u{180B}ool"],
     'invisible Khitan filler' => ["sara.tut\u{16FE4}ors"],
-    'stack of combining marks' => ["Sa\u{0336}\u{0336}\u{0336}\u{0336}ra"],
+    'stack of combining marks' => ["Sa\u{0336}\u{0336}\u{0336}\u{0336}\u{0336}\u{0336}ra"],
+    'invisible Hangul filler between a domain and a word' => ["mysite.com\u{3164}Tutor"],
+    'filler after a letter and a hyphen' => ["A\u{3164}-"],
+    'domain-shaped name' => ['sara.school'],
+    'zero-width space between two names' => ["Sara\u{200B}Khan"],
+    'Arabic baseline round dot' => ["sarahtutor\u{0887}com"],
+    'Canadian syllabics dot' => ["sarahtutor\u{1427}com"],
 ]);
 
 it('refuses a trailing line break on its own, without relying on the middleware trimming it', function () {
-    $request = new PersonalStepRequest;
-    $rule = new ReflectionClassConstant($request, 'NAME_PATTERN');
-
-    expect(preg_match($rule->getValue(), "Sara\n"))->toBe(0)->and(preg_match($rule->getValue(), 'Sara'))->toBe(1);
+    expect(preg_match(DisplayNameRule::NAME_PATTERN, "Sara\n"))->toBe(0)
+        ->and(preg_match(DisplayNameRule::NAME_PATTERN, 'Sara'))->toBe(1);
 });
 
-// Not refused, and not stored: Laravel's TrimStrings/ConvertEmptyStringsToNull treats a name that is only
-// invisible characters as blank, so it saves as null and the first-name default shows. A spelled-out address
-// ("sara at gmail dot com") is a documented MessageMasker limit and cannot be told from a name made of words.
+// Laravel's TrimStrings treats a name of only invisible characters as blank, so it saves as null and the
+// first-name default shows. A spelled-out address ("sara at gmail dot com") is a documented MessageMasker
+// limit and cannot be told from a name made of words.
 it('stores a name of only invisible characters as blank, so the default shows', function () {
     $profile = dnTutor('Amira Haddad');
 
-    dnPost($profile, ['display_name' => '‍‍']);
+    dnPost($profile, ['display_name' => "\u{200D}\u{200D}"]);
 
     expect($profile->fresh()->display_name)->toBeNull()->and($profile->fresh()->displayName())->toBe('Amira');
 });
@@ -132,23 +136,34 @@ it('accepts ordinary names in several scripts', function (string $value) {
     'title and dot' => ['Ms. Amira'],
     'apostrophe and hyphen' => ["Mary-Jane O'Neil"],
     'arabic' => ['أميرة'],
-    'persian with joiner' => ["می\u{200C}خواهم"],
+    'urdu' => ['فاطمہ زہرا'],
+    'hindi' => ['प्रिया शर्मा'],
     'accents' => ['José Müller'],
     'okina' => ['Keʻala'],
     'stacked Vietnamese accents' => ['Nguyễn Thị'],
-    'devanagari' => ['प्रिया शर्मा'],
     'cjk' => ['李明'],
 ]);
 
-it('never displays an invisible format character from a stored value, and never a blank name', function () {
+it('shows the default instead of any stored value that no longer passes the rule, and never a blank name', function (string $stored) {
     $profile = dnTutor('Amira Haddad');
 
-    $profile->forceFill(['display_name' => "\u{202E}moc.liamg@aras"])->save();
-    expect($profile->fresh()->displayName())->toBe('moc.liamg@aras');
+    $profile->forceFill(['display_name' => $stored])->save();
 
-    $profile->forceFill(['display_name' => "sara.sch\u{180B}ool"])->save();
-    expect($profile->fresh()->displayName())->toBe('sara.school');
-
-    $profile->forceFill(['display_name' => "\u{200D}\u{200D}"])->save();
     expect($profile->fresh()->displayName())->toBe('Amira');
+})->with([
+    'direction override' => ["\u{202E}moc.liamg@aras"],
+    'invisible variation selector' => ["sara.sch\u{180B}ool"],
+    'only joiners' => ["\u{200D}\u{200D}"],
+    'domain' => ['sara.school'],
+    'phone number' => ['Amira 0501234567'],
+    'zero-width space' => ["Sara\u{200B}Khan"],
+    'dot-shaped letter' => ["sarahtutor\u{1427}com"],
+]);
+
+it('shows a stored value that does pass the rule', function () {
+    $profile = dnTutor('Amira Haddad');
+
+    $profile->forceFill(['display_name' => 'Miss Amira'])->save();
+
+    expect($profile->fresh()->displayName())->toBe('Miss Amira');
 });

@@ -210,7 +210,7 @@ class MessageMasker
      * the variation selectors. The ZWJ is spared so an emoji ZWJ-sequence still counts as one grapheme cluster
      * when a phone-number gap is measured (R143 — see the class docblock); it is otherwise invisible and inert.
      */
-    private const INVISIBLE = '~(?:(?!\x{200D})\p{Cf})|\x{034F}|\x{115F}|\x{1160}|\x{17B4}|\x{17B5}|\x{180E}|\x{2800}|\x{3164}|[\x{FE00}-\x{FE0F}]|\x{FFA0}|[\x{E0100}-\x{E01EF}]~u';
+    public const INVISIBLE = '~(?:(?!\x{200D})\p{Cf})|\x{034F}|\x{115F}|\x{1160}|\x{17B4}|\x{17B5}|\x{180E}|\x{2800}|\x{3164}|[\x{FE00}-\x{FE0F}]|\x{FFA0}|[\x{E0100}-\x{E01EF}]~u';
 
     /**
      * Any single symbol that is not a letter, digit, whitespace or `@` — one Unicode code point, generalised so no
