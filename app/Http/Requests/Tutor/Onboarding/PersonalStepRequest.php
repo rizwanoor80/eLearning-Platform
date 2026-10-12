@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Tutor\Onboarding;
 
-use App\Rules\DisplayNameRule;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -30,9 +29,6 @@ class PersonalStepRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:32'],
             'country' => ['required', 'string', 'regex:/^[A-Za-z]{2}$/'],
             'timezone' => ['required', 'string', 'timezone:all'],
-            // R188(a): optional; blank keeps the first-name default. Parents see it, so anything the
-            // R134 masker would hide (an email, a phone number, a link) is refused rather than shown.
-            'display_name' => ['bail', 'nullable', 'string', 'min:2', 'max:30', new DisplayNameRule],
         ];
     }
 }

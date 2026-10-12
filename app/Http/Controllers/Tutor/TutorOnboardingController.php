@@ -103,8 +103,6 @@ class TutorOnboardingController extends Controller
                 'country' => $profile->country,
                 'phone' => $user->phone,
                 'timezone' => $user->timezone,
-                'display_name' => $profile->display_name,
-                'default_display_name' => $profile->defaultDisplayName(),
             ],
             'profile' => [
                 'permit_number' => $profile->permit_number,
@@ -170,11 +168,7 @@ class TutorOnboardingController extends Controller
             'phone' => $validated['phone'] ?? null,
             'timezone' => $validated['timezone'],
         ]);
-        $displayName = trim((string) ($validated['display_name'] ?? ''));
-        $profile->update([
-            'country' => strtoupper((string) $validated['country']),
-            'display_name' => $displayName === '' ? null : $displayName,
-        ]);
+        $profile->update(['country' => strtoupper((string) $validated['country'])]);
 
         return redirect()->route('tutor.onboarding');
     }

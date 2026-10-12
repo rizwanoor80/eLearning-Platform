@@ -8,7 +8,6 @@ use App\Enums\AbuseReportSubjectType;
 use App\Enums\DisputeStatus;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
-use App\Rules\DisplayNameRule;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Database\Factories\TutorProfileFactory;
@@ -61,7 +60,7 @@ class TutorProfile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'country', 'display_name', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
+        'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
         'permit_number', 'permit_expires_at',
         'agreement_accepted_at', 'agreement_version',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
@@ -129,32 +128,13 @@ class TutorProfile extends Model
     }
 
     /**
-     * What a public page or a parent email calls this tutor: the name the tutor chose (R188(a)),
-     * else the first word of the account name (R32). Splits on any Unicode whitespace and ignores empty
+     * What a public page or a parent email calls this tutor: the first word of
+     * the account name (R32). Splits on any Unicode whitespace and ignores empty
      * pieces, so a leading no-break space or tab cannot produce an empty name.
      * The one source — search, the profile and match suggestions all use it;
      * admin screens deliberately keep the full name.
      */
     public function displayName(): string
-    {
-        // R188(a): the tutor's own chosen name wins, but only if it still passes the rule it was saved
-        // under (R192) — the same structural check and masker as the form, so a value written under any
-        // older rule, or around the form, can never reach a parent and never shows as something other
-        // than what was checked, nor blank. Otherwise the first-name default below.
-        $chosen = trim((string) $this->display_name);
-
-        if ($chosen !== '' && DisplayNameRule::accepts($chosen)) {
-            return $chosen;
-        }
-
-        return $this->defaultDisplayName();
-    }
-
-    /**
-     * The first word of the account name — what `displayName()` falls back to, and what the
-     * onboarding form shows as the placeholder.
-     */
-    public function defaultDisplayName(): string
     {
         // Leading invisible format characters (zero-width space, BOM, direction
         // marks) are dropped with the whitespace, so they cannot become the

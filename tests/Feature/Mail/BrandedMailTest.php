@@ -159,7 +159,7 @@ it('renders the lesson confirmed and reminder mails through the branded layout, 
     Settings::set('from_name', 'Acme Tutors', SettingGroup::Mail);
     Settings::set('email_footer', 'TrusTutor FZ-LLC · Dubai', SettingGroup::Mail);
 
-    $tutor = TutorProfile::factory()->approved()->create(['display_name' => 'Miss Amira']);
+    $tutor = TutorProfile::factory()->approved()->create(['user_id' => User::factory()->tutor()->create(['name' => 'Amira Haddad'])]);
     $parent = User::factory()->create(['name' => 'Omar Saleh']);
     $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => gcseCurriculumId()]);
     $lesson = Lesson::factory()->withStatus(LessonStatus::Confirmed)->create([
@@ -178,7 +178,8 @@ it('renders the lesson confirmed and reminder mails through the branded layout, 
             ->and($mail->render())
             ->toContain('data-brand="lockup"')
             ->toContain('Hi Omar,')
-            ->toContain('Miss Amira')
+            ->toContain('Amira')
+            ->not->toContain('Haddad')
             ->toContain('TrusTutor FZ-LLC · Dubai');
     }
 });

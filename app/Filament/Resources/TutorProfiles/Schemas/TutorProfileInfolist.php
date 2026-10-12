@@ -63,9 +63,6 @@ class TutorProfileInfolist
                     ->label('Email'),
                 TextEntry::make('status')
                     ->badge(),
-                TextEntry::make('display_name')
-                    ->label('Shown to parents as')
-                    ->getStateUsing(fn (TutorProfile $record): string => $record->displayName()),
 
                 // R186: the same three groups the tutor sees, ticked from the same server-side checks.
                 ...collect([

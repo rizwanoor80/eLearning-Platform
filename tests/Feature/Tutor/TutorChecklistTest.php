@@ -205,10 +205,9 @@ it('shows an approved tutor without availability the search group still open', f
             ->where('checklist.1.items.2.done', false));
 });
 
-it('shows the admin review page the same three groups and the parent-facing name', function () {
+it('shows the admin review page the same three groups', function () {
     $admin = User::factory()->admin()->create();
     $profile = clDraft(['country' => 'AE', 'user_id' => User::factory()->tutor()->create(['name' => 'Amira Haddad'])]);
-    $profile->update(['display_name' => 'Miss Amira']);
 
     Livewire::actingAs($admin)
         ->test(ViewTutorProfile::class, ['record' => $profile->getRouteKey()])
@@ -217,8 +216,7 @@ it('shows the admin review page the same three groups and the parent-facing name
         ->assertSee('To appear in search')
         ->assertSee('Optional')
         ->assertSee('✓ Contact details')
-        ->assertSee('✗ CV or LinkedIn profile')
-        ->assertSee('Miss Amira');
+        ->assertSee('✗ CV or LinkedIn profile');
 });
 
 /**
