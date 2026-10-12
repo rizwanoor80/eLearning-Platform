@@ -147,7 +147,8 @@ it('puts the subject only, never a person\'s name, in the browser tab title', fu
     // There is no JS runner in this repository, so the page is checked by reading it (STATUS section 6).
     expect($head)->not->toBe([])
         ->and($head[0])->toContain('lesson.subject')
-        ->and($head[0])->not->toContain('lesson.title')->not->toContain('display_name')->not->toContain('learner');
+        ->and($head[0])->not->toContain('lesson.title')->not->toContain('display_name')->not->toContain('learner')
+        ->and($source)->not->toContain('document.title');
 });
 
 // ---- the join step (R189(a), (c)) -----------------------------------------------------------------------------------
@@ -169,9 +170,17 @@ it('never puts a room address or a token in the page, whatever the address bar c
         ->and(json_encode($props))->not->toContain('forged')->not->toContain('evil.example')->not->toContain('daily.co')
         ->and(array_intersect_key($props, array_flip(['url', 'token', 'join_url'])))->toBe([]);
 
-    // The only place a token is minted is the POST, which is authorised on its own (LessonRoomTest).
+    // The only place a token is minted is the POST, which is authorised on its own (LessonRoomTest). Reading-verified
+    // (no JS runner): the join address starts empty, is set in exactly one place — from the POST's own answer — and the
+    // page reads nothing from the address bar or the router's URL.
     $source = file_get_contents(resource_path('js/pages/lessons/Show.vue'));
-    expect($source)->not->toContain('location.search')->not->toContain('URLSearchParams')->not->toContain('useUrlSearchParams');
+    preg_match_all('/joinUrl\.value\s*=(?!=)/', $source, $assignments);
+
+    expect($source)->toContain('const joinUrl = ref<string | null>(null);')
+        ->and($assignments[0])->toHaveCount(1)
+        ->and($source)->toContain('joinUrl.value = `${body.url}')
+        ->and($source)->not->toContain('location')->not->toContain('URLSearchParams')->not->toContain('useUrlSearchParams')
+        ->not->toContain('searchParams')->not->toContain('usePage')->not->toContain('new URL(')->not->toContain('history.');
 });
 
 it('hides the join button once the room is open, in the frame and in link mode', function () {
@@ -179,8 +188,8 @@ it('hides the join button once the room is open, in the frame and in link mode',
     $source = file_get_contents(resource_path('js/pages/lessons/Show.vue'));
 
     expect($source)->toMatch('/<Button v-if="!joinUrl"[^>]*data-test="join-button"/')
-        ->and($source)->toContain('v-if="joinUrl && lesson.embed"')
-        ->and($source)->toContain('v-if="joinUrl && !lesson.embed"');
+        ->and($source)->toMatch('/<iframe\s[^>]*v-if="joinUrl && lesson\.embed"[^>]*data-test="room-frame"/')
+        ->and($source)->toMatch('/<a\s[^>]*v-if="joinUrl && !lesson\.embed"[^>]*data-test="join-link"/');
 });
 
 // ---- the clock -----------------------------------------------------------------------------------------------
