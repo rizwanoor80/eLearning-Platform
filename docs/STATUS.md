@@ -1,62 +1,53 @@
-# STATUS — cycle 14 r1 — written 2026-10-09 16:05 (HALT: 14b PR #47 not merged; review round 3 FAIL, both fix loops used)
-Tests: 2289 passed / 11609 assertions on the 14b head `ab7cf8b` · `ledger:verify` OK · phpstan 0 · pint clean · `npm run build` exit 0 on `5ca1cc3` (no front-end file changed since) · CI on `ab7cf8b` completed success (run 37919899908) · Advisor: 7 consultations this cycle (14a ×2, 14b ×5, the last on this halt); three have no quotable line (replies stored encrypted) and do not count toward the minimum, four name `claude-fable-5-1` and quote a line (CYCLE-LOG) · Review: PR #47 round 1 FAIL (fixed loop 1), round 2 FAIL (fixed loop 2), **round 3 FAIL (High, Medium, Low/Medium) — open, cap spent** · Context: not measured by the tool this write · Resume cap 0 of 8 · **Halted, waiting on the owner.**
+# STATUS — cycle 14 r2 — written 2026-10-12 18:10 (step boundary: review round 4 logged, display-name removal about to start; resume cap 0 of 8)
+Tests: 2401 passed / 12217 assertions on the 14b head `9a99db5` (per-directory runs, see CYCLE-LOG BLOCKER) · `ledger:verify` OK · phpstan 0 · pint clean · `npm run build` exit 0 · CI on `9a99db5` success (run 38147960823) — all measured **before** the removal; the removal commit is not yet written · Advisor: 9 consultations this cycle (14a ×2, 14b ×7); consultation 8 is quotable (live quote, model `claude-fable-5-1`), 9 is recorded with one recovered line and is not counted as quotable · Review: PR #47 round 4 (the one R192 allows) **FAIL, highest High** → R192 removal branch in force · Context: not measured by the tool this write; 1 compaction since the last `/clear`.
 
 ## §1 Git state
-`main` and `origin/main` at `ecac339` plus the docs commit that carries this file and CYCLE-LOG. Branch `cp/14b-onboarding-clarity` at `ab7cf8b` (9 commits ahead of `ecac339`), pushed; PR #47 open and **not to be merged**. Rehearsal is still at `2f50206`. Uncommitted in the working tree and deliberately not on `main` yet: the R191 docs (DATA_MODEL v1.12, DECISIONS ADR-024 amendment, CHECKPOINTS notes, PRD §2.1/§5/§6) — they describe the `display_name` column, which is not on `main` until the PR merges. An untracked `docs/cloud/ENVIRONMENT.md` is not mine and is left alone.
+`main` at `e2b24ca` (PLAN cycle 14 r2) plus the docs commit that carries this file, CYCLE-LOG and the corrected R191 docs. Branch `cp/14b-onboarding-clarity` at `9a99db5`, pushed, PR #47 open; the removal commit is not yet made. Rehearsal is still at `2f50206`. An untracked `docs/cloud/` is not mine and is left alone.
 
 ## §2 Step map
 1. Commit PLAN r1 and close R184 — done.
 2. `cp/14a-approval-rule` (R185) — done, merged `3aaac2c`.
-3. `cp/14b-onboarding-clarity` (R186, R187, R188) — code and tests done; **halted** on review round 3 (the display-name validator).
-4. `cp/14c-lesson-polish` (R189) — not started (HOW-WE-WORK: the next checkpoint waits for the current PR to merge).
+3. `cp/14b-onboarding-clarity` (R186, R187, R188) — R192 loop done and reviewed; **removing the free-text display name now**, then merge under R190/R147 once CI is green on the head (R177 wait).
+4. `cp/14c-lesson-polish` (R189) — not started (waits for the 14b merge and its post-merge record).
 5. Rehearsal deploy (R111), R91/R169 checks, END — not started.
 
-## §3 What changed (14b, on the branch, unmerged)
-- **R186:** three-group tutor checklist with live ticks, Required/Optional tags, condensed dashboard checklist, admin review groups, parent Get started page and banner, rate band by highest level; locked items are plain lines; the dashboard checklist hides while the profile is with the review team. Copy: `docs/copy/onboarding.md`.
-- **R187:** in-page handling of a 409 on form submit (`bootstrap/app.php`), Subjects row wraps, "No lessons today" keeps taught lessons. Details: `docs/reports/14b.md`.
-- **R188:** tutor display name shown to parents, in emails and in the video room; full name admin-only. This is the part under review. Sender name and unsubscribe are settings, not code.
-- No round found a fault in anything except the display-name validator.
+## §3 What changed
+- R192 loop (on the branch, `9a99db5`): a rule-based `DisplayNameRule` (the masker's own invisible-character constant, named scripts only, marks and joiners counted, masker run on the result) with 99 rule tests and the display-name feature tests. It is being **removed** — see §5.
+- Everything else in 14b is unchanged from the last STATUS: R186 checklist, tags, parent Get started page; R187 409 toast, Subjects wrap, "Today" keeps taught lessons.
+- On `main` (docs only): CYCLE-LOG entries for this run; the four R191 docs corrected so they no longer describe a `display_name` column (DATA_MODEL stays v1.11 with a note that the column was built and removed — there is no v1.12; ADR-024 row, CHECKPOINTS CP1 note and PRD §2.1 say the same).
 
 ## §4 Decisions and by whom
-- Planner (PLAN r1): R184 to R191, the programme shape, the merge rule.
-- CC, logged as DECISION: locked links plain; dashboard checklist hidden for `pending_review`; two display-name fix loops; **halt instead of a third fix or a merge** (CYCLE-LOG 15:55) because the cap is spent and the open findings are Medium and High in code.
-- Advisor: smallest fix for dead links; disclose the residual rather than merge silently.
+- Owner (via PLAN r2 R192): one more fix loop, one review, and the removal branch if that review finds a High.
+- CC, logged as DECISION: rule design (CYCLE-LOG 17:42); the removal (CYCLE-LOG 18:00). The removal is R192 applied, not my choice.
+- Advisor (`claude-fable-5-1`): extra probes before the commit; on the High branch, remove by targeted revert, check factories/seeders before dropping the column, keep the masker findings visible.
 
 ## §5 Why stopping
-Round 3 of the fresh-subagent review, on the second fix commit, found: **(High)** Hangul and Khmer filler characters (U+115F, U+1160, U+3164, U+FFA0, U+17B4, U+17B5) pass the name rules and draw as blank, while the contact-detail masker strips them before matching, so `mysite.com` + filler + `Tutor` is accepted and shown to a parent as "mysite.com Tutor"; **(Medium)** more dot-shaped letters (e.g. U+1427, U+01C3, U+02D0) pass, so a website can be shown as a name; **(Low/Medium)** a joiner defeats the combining-mark limit. Two fix loops are used, and the rule is that Medium or above in code returns to the owner. Both earlier rounds were the same defect in a new form (the displayed text differing from the text the masker read), because I was extending a hand-made list over characters the rule admits. Handoff (CYCLE-LOG 16:00): done — everything in §3; next — the owner's answer to Owner action 1; ruled out — a third list-based patch, merging with a known High.
+Not stopped; this is a step-boundary write. Why the field goes: the fresh review of `9a99db5` found three High that I reproduced myself (a zero-width joiner splits a long word past the "full stop after a long word" rule; combining Devanagari digits U+A8E0–A8E9 get in as marks; Cyrillic or Greek look-alikes spell a domain ending such as "com" that the masker's ASCII-only endings cannot read) and two Medium. R192 says another High means "do not patch — remove the free-text field".
 
 ## §6 Mismatches
-- **The merge rule cannot be used:** PLAN R190/R147 lets me self-merge with CI green on the head, but not past an unfixed review FAIL.
-- **Residual if the display name ships as it is on the branch (plain words):** a name can still be built from look-alike letters and invisible filler characters so that a parent sees a website or email address that the check did not see. Reviewers proved concrete strings for it. The cost is a tutor putting contact details in front of a parent before a first paid lesson, which invariant 8 says must stay masked.
-- **Review Low notes on PR #47, not fixed:** LinkedIn tag wording when an admin marks the CV type required; the "contact" tick also needs the account name (unreachable); `bookable()` does not check rate or documents, and the availability button does nothing for an approved tutor; the "profile is with the review team" lock message also shows for approved, rejected and suspended tutors; **a draft or changes-requested tutor no longer sees the onboarding banner or the requested-changes nudge on the dashboard (the sections are still highlighted on the onboarding page)**; the unused prop `missingForSubmission`; the admin checklist memo is per record object; the 409 handler is global; tutor bio and headline are not masked (pre-existing); plus false refusals of some legitimate names (names joined by a middle dot, pointed Hebrew with a cantillation mark, "Bo.Li" read as a domain).
-- **Plan wording, judgment call:** the dashboard checklist is hidden for `pending_review`, rejected and suspended; the plan does not say so.
-- **"No lessons today":** cause found and tested, but the owner's exact lesson is not reproduced.
-- **Sender name:** rehearsal sends as "TrusTutor (Support)" (`mail.from.name`); "trusTutor Team" is not in the code; the source is the `from_name` setting, which CC may not write.
+- **Masker findings the reviews turned up (these are in `MessageMasker`, not only in the validator, so they also touch messaging and invariant 8; none is in scope now, all are under `## Deferred`):** (a) U+A8E0–A8E9 are combining digits classed as marks, so the masker does not see a digit; (b) the masker's ending tokens (`com|net|…`, two ASCII letters) are ASCII, so look-alike Cyrillic/Greek endings are not read as a domain; (c) a hyphen or apostrophe followed by exactly two ASCII letters is read as a country code, so ordinary names such as "Sa'id", "Mary-Jo", "Noor-ul-Ain", "Zia-ul-Haq", "Abd-al-Aziz" lose characters, and a title or initial plus a domain-ending word ("Dr. Dev Patel", "A. Page") is read as a domain; (d) a short word then ". " and a two-letter tail ("Ali. co") is not read as a domain (arguably a deliberate limit).
+- **Suite count:** removing the display-name rule and its two test files drops this branch's count from 2401 (the number the review ran against) to a lower figure, recorded after the removal. "Suite never shrinks" is relative to `main` (2203 was measured on the 14a branch before its fix loop; `main` is at least that); the cause of the within-branch drop is R192.
+- **My mistakes this run:** an edit script wiped `app/Models/TutorProfile.php` through a null `preg_replace`; I restored it from `HEAD` and re-ran the suite. A 16-minute full-suite command was killed as a stall (CYCLE-LOG BLOCKER) and replaced with per-directory runs.
+- **Possible local orphan:** the local dev database may still hold the unmerged `add_display_name_to_tutor_profiles` migration row and column from earlier runs. It is local only; I will not run `migrate:fresh` for it unless the owner asks.
+- **Review Low notes on PR #47 carried from earlier rounds** (not fixed): LinkedIn tag wording when an admin marks the CV type required; the "contact" tick also needs the account name (unreachable); `bookable()` does not check rate or documents, and the availability button does nothing for an approved tutor; the "profile is with the review team" lock message also shows for approved, rejected and suspended tutors; a draft or changes-requested tutor no longer sees the onboarding banner or the requested-changes nudge on the dashboard (the sections are still highlighted on the onboarding page); the unused prop `missingForSubmission`; the admin checklist memo is per record object; the 409 handler is global; tutor bio and headline are not masked (pre-existing).
+- **Review round 4 items 6 to 9** (one-mark trigger, modifier letters, `accepts()` length, keyword sweep) concern code that the removal deletes; they are recorded in CYCLE-LOG and need no fix.
+- **Sender name:** rehearsal sends as "TrusTutor (Support)" (`mail.from.name`); the source is the `from_name` setting, which CC may not write.
 - **Subjects row:** checked by reading the layout only; no browser tool.
-- **14a items standing:** the permit and required-document bar in `ApproveTutor`; four 14a Low notes (see the previous STATUS in git history).
-- **Advisor minimum:** three of six consultations cannot be quoted (the replies are stored encrypted), so they do not count toward the minimum under rule 11.
 
 ## §7 Next step / Owner actions
-Owner action 1: Decide how the 14b display name is finished. Reply with the number.
-1. **(Recommended)** Authorise a third fix loop for the display name only, with the validator rebuilt on rules rather than a list: refuse every code point `MessageMasker` strips (read from the masker, not copied), admit only named scripts (Latin, Arabic, Hebrew, Devanagari, Han, Kana, Hangul syllables only — not the Jamo blocks the fillers live in — Thai and similar) instead of all letters and marks, and count combining marks through joiners; then a fourth fresh review and the merge under R190/R147. Reason: it closes the whole class that two rounds found piecemeal, and it keeps all of R186 to R188.
-2. Take the free-text display name out of 14b (parents keep seeing the first name; R188(a) moves to a later cycle) and merge the rest. Reason it is not first: it drops a feature you asked for and costs rework.
-3. Keep the feature but have an admin approve each display name before parents see it (the safe closure; needs a PLAN revision for the status and the admin action).
-Then `/clear` this session and reply `update — <1, 2 or 3>`.
-
-Owner actions that fall due at END, listed now so nothing is lost (do none of them yet):
-- Owner action 2: in Admin → Settings → Mail set **From name** to "trusTutor Team" if that is what you want; reply `update` when done.
-- Owner action 3: check the unsubscribe link in your mail provider's settings; reply `update` when done.
-- Owner action 4: have the UI developer read `docs/copy/onboarding.md` and the onboarding checklist on rehearsal; reply `update` when done.
-- Owner action 5: open the tutor Subjects form at 1280px and 375px and compare with `docs/reports/14b.md` §1; reply `update` when done.
-- Owner action 6: the Daily retry test (R181) and carried items 8 and 9; reply `update` when done.
+No owner action is needed yet. Next, in order: remove the display name on the branch and verify; push; wait for CI on the new head; merge PR #47 under R190/R147; post-merge record; 14c (R189); rehearsal deploy; END with the owner actions (Daily retry test, sender name, unsubscribe link, UI-developer reviews, items 8 and 9, and the planner decision on "admin-approved display names").
 
 ## §8 Programme board
-Programme "clarity" (cycle 14 r1).
+Programme "clarity" (cycle 14 r2).
 | # | Item | State |
 |---|------|-------|
 | 1 | PLAN r1 commit, R184 | done |
 | 2 | 14a R185 | merged `3aaac2c` (PR #46) |
-| 3 | 14b R186-R188 | **halted**: PR #47 head `ab7cf8b`, review round 3 FAIL, awaiting Owner action 1 |
+| 3 | 14b R186-R188 | R192 loop reviewed; display name being removed; PR #47 open |
 | 4 | 14c R189 | not started |
 | 5 | Rehearsal deploy, R91, R169, END | not started |
 Resume cap 0 of 8.
+
+## Deferred
+- **Admin-approved display names (R188(a))** — carried to the next cycle by R192; needs a PLAN revision for the status field and the admin action.
+- **`MessageMasker` gaps (§6 a–d)** — combining digits, non-ASCII domain endings, the country-code heuristic's false positives on common names, short-word ". co" tails. Touches messaging and invariant 8; planner to schedule.
