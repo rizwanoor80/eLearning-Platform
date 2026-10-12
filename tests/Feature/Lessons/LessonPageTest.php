@@ -105,10 +105,82 @@ it('shows each side the other by display name only, with no contact detail and n
             ->and($json)->not->toContain('credentials');
     }
 
-    expect(lpProps($parent, $lesson)['tutor_display_name'])->toBe($tutor->displayName())
-        ->and(lpProps($tutor->user, $lesson)['learner_display_name'])->toBe($lesson->learner->display_name)
+    expect(lpProps($parent, $lesson)['title'])->toContain($tutor->displayName())
+        ->and(lpProps($tutor->user, $lesson)['title'])->toContain($lesson->learner->display_name)
         ->and(lpProps($parent, $lesson)['side'])->toBe('parent')
         ->and(lpProps($tutor->user, $lesson)['side'])->toBe('tutor');
+});
+
+// ---- the lesson title (R189(b)) ---------------------------------------------------------------------------------
+
+it('titles the lesson for the tutor with the learner, and for the parent with the tutor and the learner', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = lpLesson();
+    $tutor->user->forceFill(['name' => 'Amira Haddad'])->save();
+    $lesson->learner->forceFill(['display_name' => 'Sam'])->save();
+    $subject = $lesson->subject->name;
+
+    expect(lpProps($tutor->user, $lesson->fresh())['title'])->toBe("{$subject} with Sam")
+        ->and(lpProps($parent, $lesson->fresh())['title'])->toBe("{$subject} with Amira · for Sam");
+});
+
+it('keeps the learner\'s name out of every prop but the title, and away from anyone else who asks', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = lpLesson();
+    $lesson->learner->forceFill(['display_name' => 'Zebediah'])->save();
+
+    foreach ([$tutor->user, $parent] as $viewer) {
+        $props = lpProps($viewer, $lesson->fresh());
+
+        expect($props['title'])->toContain('Zebediah')
+            ->and(json_encode(array_diff_key($props, ['title' => 1])))->not->toContain('Zebediah')
+            ->and(array_intersect_key($props, array_flip(['learner_display_name', 'tutor_display_name'])))->toBe([]);
+    }
+
+    foreach ([User::factory()->create(), TutorProfile::factory()->approved()->create()->user, User::factory()->admin()->create()] as $stranger) {
+        test()->actingAs($stranger)->get(route('lessons.show', $lesson))->assertForbidden()->assertDontSee('Zebediah');
+    }
+});
+
+it('puts the subject only, never a person\'s name, in the browser tab title', function () {
+    $source = file_get_contents(resource_path('js/pages/lessons/Show.vue'));
+    preg_match('/<Head [^>]*\/>/', $source, $head);
+
+    // There is no JS runner in this repository, so the page is checked by reading it (STATUS section 6).
+    expect($head)->not->toBe([])
+        ->and($head[0])->toContain('lesson.subject')
+        ->and($head[0])->not->toContain('lesson.title')->not->toContain('display_name')->not->toContain('learner');
+});
+
+// ---- the join step (R189(a), (c)) -----------------------------------------------------------------------------------
+
+it('never puts a room address or a token in the page, whatever the address bar carries', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = lpLesson(5, 'daily');
+
+    $plain = lpProps($parent, $lesson);
+    $props = [];
+    test()->actingAs($parent)->get(route('lessons.show', $lesson).'?t=forged&join=1&url=https://evil.example/room')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use (&$props): void {
+            $props = $page->toArray()['props']['lesson'];
+        });
+
+    expect($props)->toBe($plain)
+        ->and($props['embed'])->toBeTrue()
+        ->and($props['can_join'])->toBeTrue()
+        ->and(json_encode($props))->not->toContain('forged')->not->toContain('evil.example')->not->toContain('daily.co')
+        ->and(array_intersect_key($props, array_flip(['url', 'token', 'join_url'])))->toBe([]);
+
+    // The only place a token is minted is the POST, which is authorised on its own (LessonRoomTest).
+    $source = file_get_contents(resource_path('js/pages/lessons/Show.vue'));
+    expect($source)->not->toContain('location.search')->not->toContain('URLSearchParams')->not->toContain('useUrlSearchParams');
+});
+
+it('hides the join button once the room is open, in the frame and in link mode', function () {
+    // Reading-verified: no JS runner here. The button, the hints and the frame hang off one flag.
+    $source = file_get_contents(resource_path('js/pages/lessons/Show.vue'));
+
+    expect($source)->toMatch('/<Button v-if="!joinUrl"[^>]*data-test="join-button"/')
+        ->and($source)->toContain('v-if="joinUrl && lesson.embed"')
+        ->and($source)->toContain('v-if="joinUrl && !lesson.embed"');
 });
 
 // ---- the clock -----------------------------------------------------------------------------------------------

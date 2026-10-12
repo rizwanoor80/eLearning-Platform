@@ -294,6 +294,32 @@ it('mints the token through the lesson\'s own provider after a switch', function
     $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk()->assertJson(['token' => 'tok-1', 'url' => 'https://x.daily.co/lesson-'.$lesson->id]);
 });
 
+it('names each side to Daily as it is shown on the lesson page and asks for the pre-join check', function () {
+    rmUseDaily();
+    rmFakeDaily();
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = rmLesson(5);
+    $tutor->user->forceFill(['name' => 'Amira Haddad'])->save();
+    $lesson->learner->forceFill(['display_name' => 'Sam'])->save();
+    $this->artisan('lessons:create-rooms');
+
+    $this->actingAs($tutor->user)->postJson(route('lessons.room', $lesson))->assertOk();
+    $this->actingAs($parent)->postJson(route('lessons.room', $lesson))->assertOk();
+
+    $names = [];
+    Http::assertSent(function (Request $r) use (&$names) {
+        if (str_ends_with($r->url(), '/meeting-tokens')) {
+            $names[$r['properties']['user_id']] = $r['properties']['user_name'];
+            expect($r['properties']['enable_prejoin_ui'])->toBeTrue();
+        }
+
+        return true;
+    });
+
+    // The tutor is named by the first word of the account (R32); the account holder joins as the learner, who is
+    // seen by the tutor of this lesson only.
+    expect($names)->toBe(['tutor' => 'Amira', 'learner' => 'Sam']);
+});
+
 it('answers a token request with a 422, not a 500, when the provider times out', function () {
     rmUseDaily();
     $state = rmFakeDaily();

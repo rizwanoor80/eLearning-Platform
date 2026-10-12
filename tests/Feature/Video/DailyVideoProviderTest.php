@@ -52,6 +52,19 @@ it('creates a private room named for the lesson', function () {
         && $r['name'] === 'lesson-7' && $r['privacy'] === 'private');
 });
 
+it('asks for the pre-join check on the room and on every token (R189)', function () {
+    Http::fake([
+        'api.daily.co/v1/rooms' => Http::response(['name' => 'lesson-7', 'url' => 'https://x.daily.co/lesson-7']),
+        'api.daily.co/v1/meeting-tokens' => Http::response(['token' => 'tok-abc']),
+    ]);
+
+    daily()->createRoom('lesson-7', now()->addHour());
+    daily()->joinToken('lesson-7', VideoParticipant::Tutor, 'Amira', now()->addHour());
+
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/rooms') && $r['properties']['enable_prejoin_ui'] === true);
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/meeting-tokens') && $r['properties']['enable_prejoin_ui'] === true);
+});
+
 it('fetches the existing room when it already exists so a second create is a no-op', function () {
     Http::fake([
         'api.daily.co/v1/rooms/lesson-7' => Http::response(['name' => 'lesson-7', 'url' => 'https://x.daily.co/lesson-7']),
