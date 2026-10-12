@@ -32,6 +32,8 @@ class DailyVideoProvider implements VideoRoomProvider
                 'exp' => $expiresAt->getTimestamp(),
                 'eject_at_room_exp' => true,
                 'enable_chat' => true,
+                // The camera, microphone and device check Daily shows before anyone enters the call (R189(a)).
+                'enable_prejoin_ui' => true,
             ],
         ]);
 
@@ -63,6 +65,8 @@ class DailyVideoProvider implements VideoRoomProvider
                 'is_owner' => false,
                 'exp' => $expiresAt->getTimestamp(),
                 'eject_at_token_exp' => true,
+                // Also on the token, so a room made before the room property existed still opens on the check.
+                'enable_prejoin_ui' => true,
             ],
         ]);
 

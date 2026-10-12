@@ -11,9 +11,8 @@ type LessonView = {
     status: string;
     side: 'tutor' | 'parent';
     subject: string | null;
+    title: string;
     duration_minutes: number;
-    learner_display_name: string;
-    tutor_display_name: string;
     starts_at_label: string;
     timezone: string;
     join_opens_label: string;
@@ -138,13 +137,9 @@ const closedMessages: Record<string, string> = {
     <div class="flex flex-col gap-6 p-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="grid gap-1">
-                <h1 class="text-xl font-semibold">
-                    {{ lesson.subject ?? 'Lesson' }} with
-                    {{ lesson.side === 'parent' ? lesson.tutor_display_name : lesson.learner_display_name }}
-                </h1>
+                <h1 class="text-xl font-semibold" data-test="lesson-title">{{ lesson.title }}</h1>
                 <p class="text-muted-foreground text-sm">
                     {{ lesson.starts_at_label }} ({{ lesson.timezone }}) · {{ lesson.duration_minutes }} min
-                    <template v-if="lesson.side === 'parent'"> · for {{ lesson.learner_display_name }}</template>
                 </p>
             </div>
             <div class="flex items-center gap-3">
@@ -200,10 +195,17 @@ const closedMessages: Record<string, string> = {
 
             <div v-if="lesson.can_join" class="grid gap-3 rounded-xl border p-4" data-test="join">
                 <div class="flex flex-wrap items-center gap-3">
-                    <Button :disabled="joining" data-test="join-button" @click="join">
+                    <!-- Once the room is open the button goes: the frame (or the link) is all that is left to use. -->
+                    <Button v-if="!joinUrl" :disabled="joining" data-test="join-button" @click="join">
                         <Spinner v-if="joining" />
                         {{ lesson.embed ? 'Join the lesson here' : 'Get the lesson link' }}
                     </Button>
+                    <p v-if="!joinUrl && lesson.embed" class="text-muted-foreground text-sm" data-test="prejoin-hint">
+                        You will check your camera and microphone first, then join.
+                    </p>
+                    <p v-if="joinUrl && lesson.embed" class="text-muted-foreground text-sm" data-test="rejoin-hint">
+                        Reload this page if you need to join again.
+                    </p>
                     <a
                         v-if="joinUrl && !lesson.embed"
                         :href="joinUrl"

@@ -63,9 +63,8 @@ final class LessonRoomView
             'status' => $lesson->status->value,
             'side' => $isTutor ? 'tutor' : 'parent',
             'subject' => $lesson->subject?->name,
+            'title' => self::titleFor($lesson, $isTutor),
             'duration_minutes' => $lesson->duration_minutes,
-            'learner_display_name' => $lesson->learner->display_name,
-            'tutor_display_name' => $lesson->tutorProfile->displayName(),
             'starts_at_label' => $lesson->starts_at->copy()->setTimezone($timezone)->format('D, j M Y, g:i A'),
             'timezone' => $timezone,
             'starts_at' => $lesson->starts_at->copy()->utc()->toIso8601String(),
@@ -97,5 +96,21 @@ final class LessonRoomView
             'abuse_report_reasons' => AbuseReportReason::options(),
             'terminal' => ! in_array($lesson->status, [LessonStatus::PendingPayment, LessonStatus::Reserved, LessonStatus::Confirmed, LessonStatus::InProgress], true),
         ];
+    }
+
+    /**
+     * R189(b): the tutor reads "<subject> with <learner>", the parent "<subject> with <tutor> · for <learner>".
+     * Built here, per side, so the page never holds a name its viewer is not meant to read: the learner's
+     * name goes to this lesson's tutor and to the account holder only (`attend` admits nobody else), and
+     * never into the browser tab's title.
+     */
+    private static function titleFor(Lesson $lesson, bool $isTutor): string
+    {
+        $subject = $lesson->subject->name;
+        $learner = $lesson->learner->display_name;
+
+        return $isTutor
+            ? "{$subject} with {$learner}"
+            : "{$subject} with {$lesson->tutorProfile->displayName()} · for {$learner}";
     }
 }
