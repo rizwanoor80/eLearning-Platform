@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
+import { ClipboardCheck } from '@lucide/vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { dashboard } from '@/routes';
@@ -20,6 +22,7 @@ type UpcomingLesson = {
 
 const props = defineProps<{
     upcoming: UpcomingLesson[];
+    needsLearner: boolean;
 }>();
 
 defineOptions({
@@ -53,6 +56,15 @@ function cancel(lesson: UpcomingLesson) {
     <Head title="Dashboard" />
 
     <div class="flex flex-col gap-6 p-4">
+        <Alert v-if="props.needsLearner" data-test="learner-banner">
+            <ClipboardCheck class="size-4" />
+            <AlertTitle>Add your first learner to start booking</AlertTitle>
+            <AlertDescription>
+                <p class="text-sm">Lessons are booked for a learner, so you need one before you can book a tutor.</p>
+                <Link href="/get-started" class="text-sm underline underline-offset-4">See what to do first</Link>
+            </AlertDescription>
+        </Alert>
+
         <div class="flex gap-6">
             <Link href="/learners" class="text-sm underline underline-offset-4">
                 Manage your learners

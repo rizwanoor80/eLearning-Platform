@@ -18,6 +18,18 @@ use Illuminate\Support\Collection;
 class TutorRateBands
 {
     /**
+     * The highest level tier among the tutor's chosen subjects — the one their rate is priced against
+     * — or null until they have a subject.
+     */
+    public function highestTier(TutorProfile $profile): ?LevelTier
+    {
+        return $profile->tutorSubjects()->get(['level_tier'])
+            ->pluck('level_tier')
+            ->sortByDesc(fn (LevelTier $tier) => $tier->rank())
+            ->first();
+    }
+
+    /**
      * Each curriculum the tutor teaches at their highest level tier, mapped
      * to its current `price_bands` row (latest `effective_from` not in the
      * future) or `null` if that curriculum has none — never hard-coded, so

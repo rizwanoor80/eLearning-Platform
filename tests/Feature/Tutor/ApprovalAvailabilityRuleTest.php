@@ -229,12 +229,12 @@ it('lets an approved tutor with no window add one from the banner link, and beco
 
 it('still refuses every other onboarding step for an approved tutor, and offers no availability edit to a pending one', function () {
     $approved = r185Approved(true);
-    test()->actingAs($approved->user)->post(route('tutor.onboarding.permit'), [])->assertStatus(409);
+    test()->actingAs($approved->user)->post(route('tutor.onboarding.permit'), [])->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
 
     $pending = TutorProfile::factory()->approvable()->create(['status' => TutorProfileStatus::PendingReview]);
     test()->actingAs($pending->user)->get(route('tutor.onboarding'))
         ->assertInertia(fn ($page) => $page->where('canEditAvailability', false));
     test()->actingAs($pending->user)->post(route('tutor.onboarding.availability'), [
         'rules' => [['weekday' => 3, 'start_time' => '09:00', 'end_time' => '12:00']],
-    ])->assertStatus(409);
+    ])->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
 });

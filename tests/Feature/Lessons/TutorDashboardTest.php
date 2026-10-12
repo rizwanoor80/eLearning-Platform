@@ -83,6 +83,47 @@ it('excludes a pending-payment lesson from both today and upcoming', function ()
         ->assertInertia(fn ($page) => $page->has('today', 0)->has('upcoming', 0));
 });
 
+it('keeps a lesson on today\'s list after it has been taught (R187c)', function (LessonStatus $status) {
+    // 14:00 Dubai lesson, viewed at 16:00 the same day: it has ended, but it is still today's lesson.
+    Carbon::setTestNow(Carbon::parse('2026-01-11 16:00:00', 'Asia/Dubai'));
+
+    $tutor = TutorProfile::factory()->approved()->create();
+    $lesson = tdLesson($tutor, $status, Carbon::parse('2026-01-11 14:00:00', 'Asia/Dubai')->utc());
+
+    test()->actingAs($tutor->user)->get(route('tutor.dashboard'))
+        ->assertInertia(fn ($page) => $page->has('today', 1)->where('today.0.id', $lesson->id)->has('upcoming', 0));
+})->with([
+    LessonStatus::Completed,
+    LessonStatus::CompletedReported,
+    LessonStatus::Settled,
+    LessonStatus::Disputed,
+    LessonStatus::NoShowStudent,
+]);
+
+it('leaves a cancelled, expired or refunded lesson off today\'s list', function (LessonStatus $status) {
+    Carbon::setTestNow(Carbon::parse('2026-01-11 12:00:00', 'Asia/Dubai'));
+
+    $tutor = TutorProfile::factory()->approved()->create();
+    tdLesson($tutor, $status, Carbon::parse('2026-01-11 14:00:00', 'Asia/Dubai')->utc());
+
+    test()->actingAs($tutor->user)->get(route('tutor.dashboard'))
+        ->assertInertia(fn ($page) => $page->has('today', 0));
+})->with([LessonStatus::CancelledByParent, LessonStatus::CancelledByTutor, LessonStatus::Expired, LessonStatus::Refunded]);
+
+it('shows a 14:00 lesson today for a tutor whose zone is behind UTC (R187c)', function () {
+    // 14:00 in Los Angeles on 11 Jan is 22:00 UTC; viewed at 09:00 local = 17:00 UTC.
+    Carbon::setTestNow(Carbon::parse('2026-01-11 09:00:00', 'America/Los_Angeles'));
+
+    $tutorUser = User::factory()->tutor()->create(['timezone' => 'America/Los_Angeles']);
+    $tutor = TutorProfile::factory()->approved()->create(['user_id' => $tutorUser->id]);
+    $lesson = tdLesson($tutor, LessonStatus::Confirmed, Carbon::parse('2026-01-11 14:00:00', 'America/Los_Angeles')->utc());
+
+    test()->actingAs($tutor->user)->get(route('tutor.dashboard'))
+        ->assertInertia(fn ($page) => $page->has('today', 1)
+            ->where('today.0.id', $lesson->id)
+            ->where('today.0.starts_at', 'Sun, 11 Jan 2026, 2:00 PM'));
+});
+
 it('does not show another tutor\'s lessons', function () {
     Carbon::setTestNow(Carbon::parse('2026-01-11 12:00:00', 'Asia/Dubai'));
 

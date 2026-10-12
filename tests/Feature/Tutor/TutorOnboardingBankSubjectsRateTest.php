@@ -233,7 +233,7 @@ it('refuses the rate step before any subject has been added', function () {
         'hourly_rate' => '150.00',
     ]);
 
-    $response->assertStatus(409);
+    $response->assertRedirect()->assertSessionHas('inertia.flash_data.toast.type', 'error');
 });
 
 /**
