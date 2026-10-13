@@ -19,12 +19,18 @@ concurrency:
 
 jobs:
   ci:
-    name: CI
+    # The suite runs on PostgreSQL 18 (local Herd and rehearsal) and 16 (the Claude Code cloud VM, R194).
+    name: CI (PostgreSQL ${{ matrix.postgres }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '18']
 
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_USER: root
           POSTGRES_PASSWORD: ''

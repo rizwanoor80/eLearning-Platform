@@ -1,11 +1,12 @@
 # How We Work — Operating Method for AI-Assisted Projects
 
-_Version 1.3 · September 2026 · Owner: Rizwan_
+_Version 1.4 · October 2026 · Owner: Rizwan_
 _Merged from the Franchise OS and SaaS operating manuals. Hand this to every new project on day one together with PROJECT_BRIEF.md, the PRD and CLAUDE.md. Roles, loop, files and rules are fixed; only the names in §16 change per project._
 
 _Changes in 1.1: window/session vocabulary made precise (§1); new §15 Cost and context discipline, covering both seats; advisor consultations must now name the responding model (§10); HANDOFF log kind (§5); `[skip ci]` on docs-only commits (§8); one planning conversation per cycle (§15, Appendix A)._
 _Changes in 1.2: the clear moves from every step to the cycle END; auto-compaction inside a cycle is expected, not a failure; the 100k ceiling and the programme context cap are removed (§1, §2, §12, §15, Appendices A–B). 1.1's per-step clear stopped work every few minutes and cost more owner time than it saved in tokens._
 _Changes in 1.3 (owner ruling 2026-09-26, R119): the planner asks owner questions one at a time, each with its recommended option first, and writes each answer into PLAN.md as a ruling; every Owner action line carries exactly one question (§2, §7, Appendix A)._
+_Changes in 1.4 (PLAN cycle 15 r1, R194 and R198, which call this "v1.3"; 1.3 was already taken by R119, so this is 1.4 — the planner's Project copy takes the same number): the four cloud-session lines, new §17; R177 (waiting for CI is not a halt) and R178 (CC may start Herd's PostgreSQL and Redis) folded into §14, where R178 amends the Herd line it qualifies; the closing note of §14 corrected._
 
 ---
 
@@ -248,14 +249,15 @@ Short. Plain language first, technical detail after. Prose, not bullet soup. Sta
 - A planning conversation carried every cycle of a project for months, on the stronger model, until it began compacting mid-brief → **one planning conversation per cycle, retired at the cycle boundary** (§15).
 - Docs-only commits to `main` triggered a full CI run each time, about half of all runs, on work that could not affect a merge rule → **`[skip ci]` on docs-only commits** (§8).
 - A command that prompts, or hangs, stalled a whole run → **every artisan, composer, npm and gh call carries its non-interactive flag, and a command still running after ten minutes is stopped, logged as a BLOCKER and worked around** (TrusTutor R16).
-- CC launched Herd from its own shell and tied Herd's console to it, then chased the crashes that caused → **Herd and its services are started and stopped only by the owner; a service that is down is a halt with an owner action** (TrusTutor R18).
+- CC launched Herd from its own shell and tied Herd's console to it, then chased the crashes that caused → **Herd and its services are started and stopped only by the owner; a service that is down is a halt with an owner action** (TrusTutor R18). One exception (R178, owner, 2026-10-07): when PostgreSQL (5432) or Redis (6379) refuse connections, CC may start those two services with the `herd` CLI (or, if the CLI is absent, logs the exact command for the owner and halts), waits up to 60 seconds, re-checks the ports and continues; it never stops a service, never touches Herd's PHP or site settings and never installs anything. In a cloud session the `SessionStart` hook does this job and the exception does not apply (§17).
 - Browser automation prompts per action on local sites and cannot hold a standing permission, so an unattended run would stall → **no browser automation by CC; pages are checked with `curl`, behaviour is proven by feature tests** (TrusTutor R20).
 - Three times a form or step that could be revisited left stale downstream state (a rate after subjects, twice; documents after a rejection) → **the design consult lists what each revisitable step invalidates and how it is re-derived, with a test per dependency** (TrusTutor R30).
 - A path on a zero-downtime Forge site was written without `/current` and every artisan call failed with "Could not open input file: artisan" → **the release-directory shape is recorded in `CLAUDE.local.md`, not rediscovered** (TrusTutor R41).
 - A setting was verified on a page that did not read it (the Filament panel title reads `APP_NAME`, not the `site_name` setting) → **verify a value on the surface that renders it, and name that surface in the ruling** (TrusTutor R48).
 - Console work in Forge, the admin panel, GitHub settings and DNS was reachable by neither seat and silently fell to the owner → **the planner performs owner-console work in the owner's browser and records each one as a numbered ruling; it never signs in on his behalf** (TrusTutor R45).
+- A merge or a deploy needs a CI result and the run is still going → **waiting for CI is not a halt: check the run once every 2 minutes (`gh pr checks` or `gh run view`) for up to 20 minutes, then act on the result; only a red run, or 20 minutes without a result, is a halt; no scheduler, cron or background loop — a plain wait-and-check inside the same run** (TrusTutor R177, owner, 2026-10-07).
 
-_The seven lines above are TrusTutor's own additions to §14; the rest of this file is v1.2 unchanged._
+_The eight lines above are TrusTutor's own additions to §14 (the Herd line also carries R178, and the last line is R177, both folded in at 1.4); apart from them this file is v1.2 plus the changes listed at the top (1.3, 1.4)._
 
 ---
 
@@ -315,6 +317,17 @@ Present these files together to both seats before the first "where are we?":
 Before the first `update`, confirm the environment once: `CLAUDE_CODE_DISABLE_1M_CONTEXT` is set in user settings, and `/context` reports a 200k window.
 
 Then paste Appendix A into the planning project's instructions. Only the project name, repo path, branch naming and the two lists (frozen files, allow-list) change from project to project.
+
+---
+
+## 17. Cloud sessions
+
+When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for four lines. The repository's `CLAUDE.md` carries the same four in its own "Cloud sessions" section.
+
+- **No `/clear`.** Start a new session instead. Wherever §15 or Appendix A or B says "`/clear` this session", a cloud session reads "start a new session"; the files carry the state either way.
+- **No `CLAUDE.local.md`, so no ssh.** The allow-list in §11 does not exist there. Read a server's state through the project's status endpoint (TrusTutor: `GET /ops/status` with the bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) and not through a shell. A command that prints the status of the environment it runs in (TrusTutor: `php artisan ops:status`) describes the cloud sandbox there, never a server, and is not evidence about one.
+- **R178 does not apply.** The `SessionStart` hook starts PostgreSQL and Redis and migrates; it exits at once on a local machine. The cloud session does not start or stop services by hand.
+- **Deploys stay push-to-deploy.** A deploy is a fast-forward of the deploy branch to a green `main` commit (TrusTutor: green on both CI jobs, PostgreSQL 16 and 18), and it is verified through the status endpoint.
 
 ---
 
