@@ -1,5 +1,8 @@
 CLAUDE.local.md
 .claude/
+!.claude/
+.claude/*
+!.claude/settings.json
 
 /.phpunit.cache
 /bootstrap/ssr
