@@ -110,9 +110,34 @@ it('refuses the combining Devanagari digits U+A8E0 to U+A8E9 after a letter', fu
     }
 });
 
-it('refuses every bypass found in the review rounds', function (string $value) {
-    expect(DisplayNameRule::accepts($value))->toBeFalse();
-})->with([
+/**
+ * One dataset entry per fixture. Pest hands every element of an entry to the closure as an argument, so a
+ * group of fixtures under one label would be called as (first, second, ...) and a closure that takes one
+ * value would only ever run the first: each fixture gets its own entry instead.
+ *
+ * @param  array<string, list<string>>  $groups
+ * @return array<string, array{string}>
+ */
+function dnrEach(array $groups): array
+{
+    $flat = [];
+
+    foreach ($groups as $label => $values) {
+        foreach (array_values($values) as $i => $value) {
+            $flat[count($values) > 1 ? $label.' #'.($i + 1) : $label] = [$value];
+        }
+    }
+
+    return $flat;
+}
+
+// Both forms are judged: as written (what `ApproveDisplayName` re-reads from storage) and after `normalise()`
+// (what the Form Request and `RequestDisplayName` hand the rule), so a fixture is caught by the check it
+// names and not only by the NFKC gate.
+it('refuses every bypass found in the review rounds, as written and once folded', function (string $value) {
+    expect(DisplayNameRule::accepts($value))->toBeFalse()
+        ->and(DisplayNameRule::accepts(DisplayNameRule::normalise($value)))->toBeFalse();
+})->with(dnrEach([
     'direction override' => ["\u{202E}moc.liamg@aras"],
     'Lisu tone letters' => ["sarahtutor\u{A4F8}com", "sarahtutor\u{A4FD}com"],
     'Latin dot letter' => ["sarahtutor\u{A78F}com"],
@@ -151,27 +176,40 @@ it('refuses every bypass found in the review rounds', function (string $value) {
     'one letter and a hyphen' => ['A-'],
     'leading hyphen' => ['-Sara'],
     'doubled separator' => ['Sara  Khan'],
-    'trailing line break' => ["Sara\n"],
     'tab' => ["Sara\tKhan"],
     'invalid UTF-8' => ["Sara\xC3\x28Khan"],
-]);
+    'modifier letters standing for an apostrophe, spelling a domain' => ["mysite\u{02BC}com", "gmail\u{02BB}com", "mysite\u{02BE}com", "mysite\u{02BF}com"],
+    'prolonged sound mark between Latin words' => ["Sara\u{30FC}Khan", "sara\u{30FC}gmail\u{30FC}com", "mysite\u{30FC}com"],
+    'a mobile number in Han numerals' => ['零五零一二三四五六七', '零五零一二三四'],
+    'a mobile number in Sino-Korean numerals' => ['공일공일이삼사오육칠팔', '영오영 일이삼 사오육칠', '공일공일이삼사'],
+]));
 
-it('refuses the round-4 bypasses: a joiner inside a long word, a compatibility character, a combining digit', function (string $value) {
+function dnrRound4(): array
+{
+    return dnrEach([
+        'zero-width joiner splitting a long word before a domain ending' => ["Sa\u{200D}rah. co", "Sa\u{200D}rah. com", "Kha\u{200D}n. net"],
+        'fullwidth full stop folds to a dot' => ["Sara\u{FF0E}com"],
+        'ligature IJ folds to two letters' => ["R\u{0133}k"],
+        'fullwidth at sign' => ["sara\u{FF20}gmail"],
+        'fullwidth digit' => ["Sara\u{FF11}"],
+        'circled digit' => ["Sara\u{2460}"],
+        'superscript digit' => ["Sara\u{00B2}"],
+        'Arabic-Indic digit' => ["Sara\u{0661}"],
+        'Devanagari digit' => ["Sara\u{0967}"],
+        'combining Devanagari digit' => ["Sara\u{A8E3}", "Sara\u{A8E9}"],
+        'ideographic full stop' => ["Sara\u{3002}com"],
+        'small full stop' => ["Sara\u{FE52}com"],
+    ]);
+}
+
+it('refuses the round-4 bypasses as written: a joiner inside a long word, a compatibility character, a combining digit', function (string $value) {
     expect(DisplayNameRule::accepts($value))->toBeFalse();
-})->with([
-    'zero-width joiner splitting a long word before a domain ending' => ["Sa\u{200D}rah. co", "Sa\u{200D}rah. com", "Kha\u{200D}n. net"],
-    'fullwidth full stop folds to a dot' => ["Sara\u{FF0E}com"],
-    'ligature IJ folds to two letters' => ["R\u{0133}k"],
-    'fullwidth at sign' => ["sara\u{FF20}gmail"],
-    'fullwidth digit' => ["Sara\u{FF11}"],
-    'circled digit' => ["Sara\u{2460}"],
-    'superscript digit' => ["Sara\u{00B2}"],
-    'Arabic-Indic digit' => ["Sara\u{0661}"],
-    'Devanagari digit' => ["Sara\u{0967}"],
-    'combining Devanagari digit' => ["Sara\u{A8E3}", "Sara\u{A8E9}"],
-    'ideographic full stop' => ["Sara\u{3002}com"],
-    'small full stop' => ["Sara\u{FE52}com"],
-]);
+})->with(dnrRound4());
+
+// Folded, every one stays refused except the ligature: "R\u{0133}k" folds to "Rijk", an honest name.
+it('refuses the round-4 bypasses once folded too, but not a ligature that folds to a plain name', function (string $value) {
+    expect(DisplayNameRule::accepts(DisplayNameRule::normalise($value)))->toBeFalse();
+})->with(fn () => array_diff_key(dnrRound4(), ['ligature IJ folds to two letters' => true]));
 
 it('refuses a name that mixes scripts: Cyrillic and Greek look-alikes cannot spell a domain ending the masker never reads', function (string $value) {
     expect(DisplayNameRule::refusal($value))->not->toBeNull()->and(DisplayNameRule::accepts($value))->toBeFalse();
@@ -214,6 +252,58 @@ it('folds an honest input to NFKC and leaves anything else to the refusal', func
 
     expect(DisplayNameRule::accepts(DisplayNameRule::normalise("R\u{0133}k")))->toBeTrue()
         ->and(DisplayNameRule::refusal("R\u{0133}k"))->not->toBeNull();
+
+    // A trailing line break is trimmed on the way in; the untrimmed value is refused as it stands.
+    expect(DisplayNameRule::accepts("Sara\n"))->toBeFalse()
+        ->and(DisplayNameRule::accepts(DisplayNameRule::normalise("Sara\n")))->toBeTrue();
+});
+
+// R195 review round 1, note 6: a mobile number is ten or eleven digits, and in Han numerals (which carry a
+// numeric value) or Sino-Korean syllables (which do not, so they are listed) it fits in 30 code points.
+// Real names with a few numeral characters stay admitted; seven or more are refused.
+it('admits up to six numeral characters, as real Han and Korean names have them, and refuses seven', function () {
+    foreach (['王一二', '李三四五六', '零五零一二三', '공일공일이삼', '이일오', '김이삼 박오육'] as $name) {
+        expect(DisplayNameRule::accepts($name))->toBeTrue(sprintf('"%s" has six numeral characters or fewer', $name));
+    }
+
+    foreach (['零五零一二三四', '공일공일이삼사', '이일오 사육칠팔'] as $name) {
+        expect(DisplayNameRule::accepts($name))->toBeFalse(sprintf('"%s" has seven numeral characters', $name));
+    }
+});
+
+// The masker reads these modifier letters as word characters, so "mysite" + U+02BC + "com" is invisible to it
+// unless the rule folds them to the apostrophe and hyphen they stand for. Every admitted modifier letter that is
+// not a Han or Kana iteration mark must be in the fold table, so a later addition to MODIFIER cannot slip past.
+it('folds, for the masker, every admitted modifier letter that is not a Han or Kana iteration mark', function () {
+    $folds = (new ReflectionClassConstant(DisplayNameRule::class, 'MASKER_FOLDS'))->getValue();
+    $modifier = '/^'.(new ReflectionClassConstant(DisplayNameRule::class, 'MODIFIER'))->getValue().'$/u';
+    $unfolded = [];
+    $seen = 0;
+
+    foreach (dnrCodePoints() as $c => $char) {
+        if (preg_match($modifier, $char) !== 1) {
+            continue;
+        }
+
+        // The halfwidth forms (U+FF70, U+FF9E, U+FF9F) match MODIFIER but are not NFKC, so the rule refuses
+        // them before the masker is asked: only a code point that can reach the masker needs a fold.
+        if (! Normalizer::isNormalized($char, Normalizer::FORM_KC)) {
+            continue;
+        }
+
+        $seen++;
+        $script = IntlChar::getPropertyValueName(IntlChar::PROPERTY_SCRIPT, IntlChar::getIntPropertyValue($c, IntlChar::PROPERTY_SCRIPT), IntlChar::LONG_PROPERTY_NAME);
+
+        if (in_array($script, ['Han', 'Hiragana', 'Katakana'], true)) {
+            continue;
+        }
+
+        if (! array_key_exists($char, $folds)) {
+            $unfolded[] = sprintf('U+%04X', $c);
+        }
+    }
+
+    expect($unfolded)->toBe([])->and($seen)->toBeGreaterThan(4);
 });
 
 it('counts every code point, marks and joiners included, toward the 2 to 30 length', function () {

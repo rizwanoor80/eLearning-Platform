@@ -28,8 +28,12 @@ use Normalizer;
  *     on the way in), so a compatibility character cannot expand into something the masker never saw;
  *  6. one script per name (Han, Hiragana and Katakana count as one), marks included: the masker's endings
  *     are ASCII, so a Cyrillic or Greek look-alike spelling "com" would pass it unseen;
- *  7. the masker must find nothing in the name as written, without its zero-width joiners, or without its
- *     joiners and marks (fail-closed, as the masker itself is).
+ *  7. the masker must find nothing in the name as written, without its zero-width joiners, without its
+ *     joiners and marks, or with the modifier letters it reads as word characters (ʼ ʻ ʾ ʿ and ー) folded to
+ *     the apostrophe and hyphen they stand for (fail-closed, as the masker itself is);
+ *  8. fewer than seven numeral characters (Han numerals, which carry a numeric value in ICU, and the
+ *     Sino-Korean digit syllables): a full mobile number fits in 30 code points in Han or Hangul, which Latin
+ *     cannot do.
  *
  * What it does NOT decide: taste, impersonation, and a short word before a short ending ("Ali. co",
  * "Bob. io", "Wa. me"), which the masker reads as a name. That is the admin's job at approval (R195); the
@@ -40,8 +44,8 @@ use Normalizer;
  * the Arabic tatweel and other modifier letters, a full stop and space after a word of four letters or more
  * ("Prof. Ali"), two or more marks followed by exactly two closing letters (the masker reads the marks as a dot
  * and the two letters as a country code), a name in two scripts ("Wang 王", Hangul with Hanja), a hyphenated
- * name the masker's country-code heuristic reads as an address ("Mary-Jo"), and scripts outside LETTER
- * (e.g. Armenian, Ethiopic).
+ * name the masker's country-code heuristic reads as an address ("Mary-Jo"), a name of seven or more numeral
+ * characters, and scripts outside LETTER (e.g. Armenian, Ethiopic).
  */
 class DisplayNameRule implements ValidationRule
 {
@@ -120,6 +124,18 @@ class DisplayNameRule implements ValidationRule
 
     /** Han, Hiragana and Katakana are one script group: Japanese names mix them. Every other script stands alone. */
     private const JAPANESE = ['Han', 'Hiragana', 'Katakana'];
+
+    /** The prolonged sound mark is Common in Unicode, but inside a name it belongs to Japanese. */
+    private const PROLONGED_SOUND_MARK = "\u{30FC}";
+
+    /** The digits 0 to 9 in Sino-Korean syllables: ICU gives Hangul syllables no numeric value, so they are listed. */
+    private const HANGUL_NUMERALS = ['공', '영', '일', '이', '삼', '사', '오', '육', '륙', '칠', '팔', '구'];
+
+    /** A name with this many numeral characters or more is refused (a mobile number is ten or eleven digits). */
+    private const NUMERAL_LIMIT = 7;
+
+    /** Modifier letters the masker reads as word characters, folded to the separator they stand for. */
+    private const MASKER_FOLDS = ["\u{02BB}" => "'", "\u{02BC}" => "'", "\u{02BE}" => "'", "\u{02BF}" => "'", "\u{30FC}" => '-'];
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
@@ -219,6 +235,12 @@ class DisplayNameRule implements ValidationRule
             return 'fewer than two letters';
         }
 
+        // Seven or more numeral characters: a mobile number written in Han or Hangul numerals fits in 30 code
+        // points. Latin spelled-out numbers do not, and stay in the admitted class (ADR-019, ADR-027).
+        if (self::numerals($value) >= self::NUMERAL_LIMIT) {
+            return 'seven or more numerals';
+        }
+
         // One script per name. The masker's endings are ASCII, so a Cyrillic or Greek look-alike spelling a
         // domain ending ("Ali. \u{0441}\u{043E}\u{043C}") is invisible to it; a name that mixes scripts is
         // refused instead of judged. Common characters (space, hyphen, apostrophe, full stop) and the marks
@@ -235,6 +257,20 @@ class DisplayNameRule implements ValidationRule
         return str_replace("\u{200D}", '', $value);
     }
 
+    /** How many characters of the name are numerals: a numeric value in ICU (Han) or a Sino-Korean digit syllable. */
+    private static function numerals(string $value): int
+    {
+        $count = 0;
+
+        foreach (mb_str_split($value, 1, 'UTF-8') as $char) {
+            if (IntlChar::getNumericValue(mb_ord($char, 'UTF-8')) !== IntlChar::NO_NUMERIC_VALUE || in_array($char, self::HANGUL_NUMERALS, true)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
     /** How many script groups the name's letters and marks come from (Han, Hiragana and Katakana count as one). */
     private static function scriptGroups(string $value): int
     {
@@ -242,6 +278,12 @@ class DisplayNameRule implements ValidationRule
 
         foreach (mb_str_split($value, 1, 'UTF-8') as $char) {
             if (preg_match('/^(?:'.self::LETTER.'|'.self::MARK.')$/u', $char) !== 1) {
+                continue;
+            }
+
+            if ($char === self::PROLONGED_SOUND_MARK) {
+                $groups['Japanese'] = true;
+
                 continue;
             }
 
@@ -264,9 +306,10 @@ class DisplayNameRule implements ValidationRule
 
     /**
      * Fail-closed like the masker itself (R157(a)): if the masker cannot decide, treat the name as masked.
-     * It reads the name three ways: as written; without the zero-width joiners (so a joiner cannot break a
-     * word the masker would otherwise match); and without the joiners and marks (so a mark cannot take the
-     * place of a dot or a gap).
+     * It reads the name in five forms: as written; without the zero-width joiners (so a joiner cannot break a
+     * word the masker would otherwise match); without the joiners and marks (so a mark cannot take the place
+     * of a dot or a gap); and the last two with the modifier letters folded to the apostrophe and hyphen they
+     * stand for (the masker reads them as word characters, so "mysite" + U+02BC + "com" passes it unseen).
      */
     private static function masked(string $value): bool
     {
@@ -274,7 +317,10 @@ class DisplayNameRule implements ValidationRule
         $bare = preg_replace('/'.self::MARK.'/u', '', $noJoiners);
 
         try {
-            foreach (array_unique([$value, $noJoiners, $bare ?? $noJoiners]) as $form) {
+            $bare ??= $noJoiners;
+            $forms = [$value, $noJoiners, $bare, strtr($noJoiners, self::MASKER_FOLDS), strtr($bare, self::MASKER_FOLDS)];
+
+            foreach (array_unique($forms) as $form) {
                 if (app(MessageMasker::class)->mask($form)->masked) {
                     return true;
                 }

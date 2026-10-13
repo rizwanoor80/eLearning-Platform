@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\TutorProfile;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +39,9 @@ class ProfileController extends Controller
      */
     private function tutorDisplayName(Request $request): ?array
     {
-        $profile = $request->user()->tutorProfile;
+        // A query, not `$user->tutorProfile`: that would load the relation onto the user object, which
+        // `HandleInertiaRequests` shares with every page as `auth.user`, bank fields included.
+        $profile = TutorProfile::query()->where('user_id', $request->user()->id)->first();
 
         if ($profile === null) {
             return null;

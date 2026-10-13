@@ -12,6 +12,7 @@ use App\Enums\TutorProfileStatus;
 use App\Exceptions\UserDeletionException;
 use App\Models\Lesson;
 use App\Models\MatchRequest;
+use App\Models\TutorProfile;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -90,12 +91,15 @@ class AnonymizeUser
             }
 
             // R195: a tutor-chosen display name (approved or pending) is personal data and goes with the account.
+            // An unconditional UPDATE, not a dirty-checked save: a read of the profile here is not locked, and an
+            // approval committing between that read and a save would leave the in-memory name null, issue no
+            // UPDATE, and let the anonymised tutor keep the approved name.
             if ($profile !== null) {
-                $profile->forceFill([
+                TutorProfile::query()->whereKey($profile->getKey())->update([
                     'display_name' => null,
                     'display_name_requested' => null,
                     'display_name_requested_at' => null,
-                ])->save();
+                ]);
             }
 
             MatchRequest::query()

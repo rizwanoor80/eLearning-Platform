@@ -231,6 +231,21 @@ it('shows a tutor with no name set the first word and nothing pending', function
             ->where('tutorDisplayName.requested', null));
 });
 
+// R195 review round 1, item 2: the settings page reads the profile with a query, so the relation is not loaded
+// onto the user that `HandleInertiaRequests` shares with every page as `auth.user`, bank fields included.
+it('keeps the tutor profile, and its bank fields, out of the shared auth user on the settings page', function () {
+    $profile = dnTutor('Amira Haddad', ['bank_iban' => 'AE070331234567890123456']);
+
+    $response = test()->actingAs($profile->user)->get(route('profile.edit'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('auth.user.name')
+            ->missing('auth.user.tutor_profile')
+            ->has('tutorDisplayName.shown'));
+
+    expect($response->getContent())->not->toContain('AE070331234567890123456');
+});
+
 it('sends a parent and an admin no display-name section', function () {
     test()->actingAs(User::factory()->create())->get(route('profile.edit'))
         ->assertInertia(fn ($page) => $page->where('tutorDisplayName', null));

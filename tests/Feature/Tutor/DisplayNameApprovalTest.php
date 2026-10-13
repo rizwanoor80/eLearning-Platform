@@ -15,6 +15,7 @@ use App\Models\TutorProfile;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -141,6 +142,24 @@ it('escapes the tutor-typed name and the admin note in the rejection email', fun
     $html = $mail->render();
 
     expect($html)->not->toContain('<script>')->and($html)->not->toContain('<b>K</b>');
+});
+
+// R195 review round 1, item 15: the mail says what parents keep seeing, which is the approved name when the
+// tutor has one and the first name otherwise.
+it('tells a tutor whose second request is rejected that parents keep seeing the approved name', function () {
+    $profile = dnaPending('Amira H.', ['display_name' => 'Mimi']);
+
+    $html = (new DisplayNameRejectedMail($profile, 'Amira H.', 'Please use the name on your documents.'))->render();
+
+    expect($html)->toContain('Parents keep seeing <strong>Mimi</strong>')->and($html)->not->toContain('first name');
+});
+
+it('tells a tutor with no approved name that parents keep seeing the first name', function () {
+    $profile = dnaPending('Ms Amira');
+
+    $html = (new DisplayNameRejectedMail($profile, 'Ms Amira', 'Too formal.'))->render();
+
+    expect($html)->toContain('Parents keep seeing <strong>Amira</strong>');
 });
 
 it('refuses every non-admin: a parent, a tutor, and a suspended admin', function (callable $actor) {
@@ -280,4 +299,34 @@ it('clears the columns on a tutor profile that was never approved too', function
     app(AnonymizeUser::class)($admin, $profile->user);
 
     expect($profile->fresh()->display_name_requested)->toBeNull();
+});
+
+// R195 review round 1, item 17: the profile is read without a lock, so an approval that commits between that
+// read and the anonymising write must not survive. The approval is simulated by an UPDATE fired the moment
+// AnonymizeUser hydrates the profile: the in-memory copy still shows a pending request and no approved name,
+// which a dirty-checked save would leave exactly as the approval wrote it.
+it('clears an approved name committed between the profile read and the anonymising write', function () {
+    $admin = User::factory()->admin()->create();
+    $profile = dnaPending('Ms Amira', ['status' => TutorProfileStatus::Draft]);
+    $approved = false;
+
+    TutorProfile::retrieved(function (TutorProfile $read) use (&$approved) {
+        if ($approved) {
+            return;
+        }
+
+        $approved = true;
+
+        DB::table('tutor_profiles')->where('id', $read->id)->update([
+            'display_name' => 'Ms Amira',
+            'display_name_requested' => null,
+            'display_name_requested_at' => null,
+        ]);
+    });
+
+    app(AnonymizeUser::class)($admin, $profile->user);
+
+    expect($approved)->toBeTrue()
+        ->and($profile->fresh()->display_name)->toBeNull()
+        ->and($profile->fresh()->displayName())->toBe('Deleted');
 });

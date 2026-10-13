@@ -6,5 +6,5 @@
     <blockquote style="border-left: 3px solid #ccc; margin: 1em 0; padding-left: 1em; color: #333;">
         {{ $note }}
     </blockquote>
-    <p>Parents keep seeing your first name. You can ask for a different display name from Settings, in your profile.</p>
+    <p>Parents keep seeing <strong>{{ $profile->displayName() }}</strong>. You can ask for a different display name from Settings, in your profile.</p>
 @endsection
