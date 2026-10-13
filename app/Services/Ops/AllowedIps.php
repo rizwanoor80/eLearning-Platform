@@ -7,8 +7,9 @@ use App\Exceptions\OpsStatusTokenException;
 /**
  * The status token's optional IP allow-list (R193): exact addresses and CIDR ranges, typed one per
  * line or separated by commas or spaces. Matching happens in `OpsStatusToken::allowsIp()` against
- * `Request::ip()`; no trusted proxy is configured in this repo (ADR-026), so behind a load balancer
- * that is the balancer's address, not the caller's.
+ * `Request::ip()`. `TRUSTED_PROXIES` is empty by default (`config/trustedproxy.php`), so no
+ * `X-Forwarded-For` is believed and that address is the connecting socket's — behind a load balancer it
+ * is the balancer's, not the caller's, until `TRUSTED_PROXIES` names the balancer (ADR-026).
  */
 final class AllowedIps
 {

@@ -56,7 +56,8 @@ Schedule::command('video:prune-webhook-deliveries')->dailyAt('03:30')->onOneServ
 
 // The scheduler's own pulse (R193): `/ops/status` reports how long ago this last ran, which is how a deploy
 // check tells that the scheduler is alive without ssh. In-process (no subprocess every minute), no
-// onOneServer: it must record every server's tick, and a second write the same second is harmless.
+// onOneServer: the key is shared, so any server's tick keeps it fresh and a second write the same second is
+// harmless (one server's scheduler stopping is hidden while another still ticks).
 Schedule::call(fn () => Cache::forever(OpsStatusReport::SCHEDULER_TICK_KEY, now()->getTimestamp()))
     ->name('scheduler:ping')
     ->everyMinute();

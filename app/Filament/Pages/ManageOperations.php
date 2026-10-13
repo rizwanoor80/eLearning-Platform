@@ -54,7 +54,7 @@ class ManageOperations extends Page implements HasSchemas
     public function mount(): void
     {
         $this->form->fill([
-            'allowed_ips' => implode("\n", $this->activeToken()->allowed_ips ?? []),
+            'allowed_ips' => implode("\n", OpsStatusToken::current()->allowed_ips ?? []),
         ]);
     }
 
@@ -64,15 +64,29 @@ class ManageOperations extends Page implements HasSchemas
             ->components([
                 Textarea::make('allowed_ips')
                     ->label('Allowed addresses (optional)')
-                    ->helperText('One IP address or CIDR range per line. Empty means any address. Matched against the address the request arrives from; behind a load balancer that is the balancer unless trusted proxies are configured.')
+                    ->helperText('One IP address or CIDR range per line. Empty means any address. Matched against the address the request arrives from; behind a load balancer that is the balancer until TRUSTED_PROXIES is set on the server. Generate and Rotate apply whatever is in this box, saved or not.')
                     ->rows(4),
             ])
             ->statePath('data');
     }
 
-    public function activeToken(): ?OpsStatusToken
+    /**
+     * Kept off the public surface: a public method is callable from the browser through Livewire, and
+     * this one used to return a token row. The view gets what it needs from here instead.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getViewData(): array
     {
-        return OpsStatusToken::current();
+        return [
+            'token' => OpsStatusToken::current(),
+            'endpoint' => url('/ops/status'),
+        ];
+    }
+
+    private function hasActiveToken(): bool
+    {
+        return OpsStatusToken::current() !== null;
     }
 
     public function dismissToken(): void
@@ -83,9 +97,7 @@ class ManageOperations extends Page implements HasSchemas
     public function saveAllowList(): void
     {
         try {
-            $allowed = AllowedIps::parse($this->data['allowed_ips'] ?? null);
-
-            app(UpdateOpsStatusAllowList::class)($this->admin(), $allowed);
+            app(UpdateOpsStatusAllowList::class)($this->admin(), $this->allowListInput());
         } catch (OpsStatusTokenException $e) {
             Notification::make()->title($e->getMessage())->danger()->send();
 
@@ -104,7 +116,7 @@ class ManageOperations extends Page implements HasSchemas
             Action::make('generate')
                 ->label('Generate token')
                 ->icon(Heroicon::OutlinedKey)
-                ->visible(fn (): bool => $this->activeToken() === null)
+                ->visible(fn (): bool => ! $this->hasActiveToken())
                 ->requiresConfirmation()
                 ->modalHeading('Generate the status token?')
                 ->modalDescription('The token is shown once, right after this. Copy it into the cloud environment; it cannot be shown again.')
@@ -113,16 +125,16 @@ class ManageOperations extends Page implements HasSchemas
                 ->label('Rotate token')
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('warning')
-                ->visible(fn (): bool => $this->activeToken() !== null)
+                ->visible(fn (): bool => $this->hasActiveToken())
                 ->requiresConfirmation()
                 ->modalHeading('Rotate the status token?')
-                ->modalDescription('The current token stops working at once, and everything that holds it must be given the new one.')
+                ->modalDescription('The current token stops working at once, and everything that holds it must be given the new one. The new token takes the allow-list as it stands in the box below, saved or not.')
                 ->action(fn () => $this->issue()),
             Action::make('revoke')
                 ->label('Revoke token')
                 ->icon(Heroicon::OutlinedNoSymbol)
                 ->color('danger')
-                ->visible(fn (): bool => $this->activeToken() !== null)
+                ->visible(fn (): bool => $this->hasActiveToken())
                 ->requiresConfirmation()
                 ->modalHeading('Revoke the status token?')
                 ->modalDescription('GET /ops/status answers 404 to everyone until a new token is generated.')
@@ -133,9 +145,7 @@ class ManageOperations extends Page implements HasSchemas
     private function issue(): void
     {
         try {
-            $allowed = AllowedIps::parse($this->data['allowed_ips'] ?? null);
-
-            $issued = app(IssueOpsStatusToken::class)($this->admin(), $allowed);
+            $issued = app(IssueOpsStatusToken::class)($this->admin(), $this->allowListInput());
         } catch (OpsStatusTokenException $e) {
             Notification::make()->title($e->getMessage())->danger()->send();
 
@@ -160,6 +170,25 @@ class ManageOperations extends Page implements HasSchemas
         $this->revealedToken = null;
 
         Notification::make()->title($revoked ? 'Status token revoked' : 'There was no active token')->success()->send();
+    }
+
+    /**
+     * The allow-list box as a list of entries. The form state is client-settable, so anything but text is
+     * refused rather than read as "empty", which would mean "any address".
+     *
+     * @return list<string>
+     *
+     * @throws OpsStatusTokenException
+     */
+    private function allowListInput(): array
+    {
+        $text = $this->data['allowed_ips'] ?? null;
+
+        if ($text !== null && ! is_string($text)) {
+            throw new OpsStatusTokenException('The allow-list must be text, one address or range per line.');
+        }
+
+        return AllowedIps::parse($text);
     }
 
     private function admin(): User

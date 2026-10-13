@@ -34,9 +34,11 @@ it('names the first bad entry, trimmed to a sane length', function () {
 });
 
 it('refuses a list longer than the cap', function () {
-    $ok = implode(' ', array_map(fn (int $i) => "198.51.100.$i", range(1, AllowedIps::MAX_ENTRIES)));
+    // The literal 20 is the point: a test built from the constant would stay green if the cap were raised.
+    $ok = implode(' ', array_map(fn (int $i) => "198.51.100.$i", range(1, 20)));
     $tooMany = $ok.' 198.51.100.200';
 
-    expect(AllowedIps::parse($ok))->toHaveCount(AllowedIps::MAX_ENTRIES)
+    expect(AllowedIps::MAX_ENTRIES)->toBe(20)
+        ->and(AllowedIps::parse($ok))->toHaveCount(20)
         ->and(fn () => AllowedIps::parse($tooMany))->toThrow(OpsStatusTokenException::class, 'At most');
 });

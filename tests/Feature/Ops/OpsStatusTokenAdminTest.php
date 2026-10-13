@@ -97,6 +97,10 @@ it('never lets the token, or its hash, reach the audit trail, the log or a notif
     [$page, $plain] = opsGenerate($this->admin);
     $hash = hash('sha256', $plain);
 
+    // Filament moves a notification from `filament.notifications` to `filament.claimed_notifications` in the
+    // same Livewire request that sent it, so the second key is where the toast of generating the token sits.
+    $notifications = [session()->get('filament.notifications'), session()->get('filament.claimed_notifications')];
+
     opsCall($plain);                    // a successful read (audited)
     opsCall(str_repeat('x', 64));       // a rejection (logged)
     opsCall($plain.'tampered');         // another rejection
@@ -104,12 +108,13 @@ it('never lets the token, or its hash, reach the audit trail, the log or a notif
     $everything = collect([
         'audit' => AuditLog::query()->get()->toJson(),
         'log' => implode("\n", $logged),
-        'notifications' => json_encode(session()->get('filament.notifications')),
+        'notifications' => json_encode($notifications),
     ]);
 
     // Names the place on failure: an empty list means none of the three holds either string.
     expect($everything->filter(fn (string $text) => str_contains($text, $plain) || str_contains($text, $hash))->keys()->all())->toBe([])
-        ->and($logged)->not->toBeEmpty();
+        ->and($logged)->not->toBeEmpty()
+        ->and(array_filter($notifications))->not->toBeEmpty();
 });
 
 it('rotates: the old token stops at once, the new one works, and there is still exactly one active', function () {
@@ -149,7 +154,11 @@ it('revokes: the endpoint answers 404 to everyone and the row is kept', function
         ->and(OpsStatusToken::current())->toBeNull();
 
     $audit = AuditLog::query()->where('action', 'ops_status_token.revoked')->sole();
-    expect($audit->actor_user_id)->toBe($this->admin->id);
+    $row = OpsStatusToken::query()->sole();
+
+    expect($audit->actor_user_id)->toBe($this->admin->id)
+        ->and($row->revoked_by)->toBe($this->admin->id)
+        ->and($row->revoked_at)->not->toBeNull();
 });
 
 it('does nothing, and records nothing, when revoking with no active token', function () {
@@ -163,13 +172,25 @@ it('does nothing, and records nothing, when revoking with no active token', func
         ->and(AuditLog::query()->where('action', 'ops_status_token.revoked')->count())->toBe(1);
 });
 
-it('refuses every action to a non-admin', function () {
-    $tutor = User::factory()->tutor()->create();
+it('refuses every action to anyone who is not an admin, and changes nothing', function () {
+    // An active token exists, so the only thing that can refuse each call is the role check itself.
+    $token = OpsStatusToken::factory()->create(['allowed_ips' => ['203.0.113.1']]);
 
-    expect(fn () => app(IssueOpsStatusToken::class)($tutor))->toThrow(OpsStatusTokenException::class)
-        ->and(fn () => app(RevokeOpsStatusToken::class)($tutor))->toThrow(OpsStatusTokenException::class)
-        ->and(fn () => app(UpdateOpsStatusAllowList::class)($tutor, ['203.0.113.1']))->toThrow(OpsStatusTokenException::class)
-        ->and(OpsStatusToken::query()->count())->toBe(0);
+    // The account owner is the default role: the parent, the other person who could be mistaken for an admin.
+    foreach ([User::factory()->tutor()->create(), User::factory()->create()] as $user) {
+        foreach ([
+            fn () => app(IssueOpsStatusToken::class)($user),
+            fn () => app(RevokeOpsStatusToken::class)($user),
+            fn () => app(UpdateOpsStatusAllowList::class)($user, ['198.51.100.9']),
+        ] as $call) {
+            expect($call)->toThrow(OpsStatusTokenException::class, 'Only an admin');
+        }
+    }
+
+    expect(OpsStatusToken::query()->count())->toBe(1)
+        ->and($token->fresh()->revoked_at)->toBeNull()
+        ->and($token->fresh()->allowed_ips)->toBe(['203.0.113.1'])
+        ->and(AuditLog::query()->where('action', 'like', 'ops_status_token.%')->count())->toBe(0);
 });
 
 it('saves the allow-list on the active token, audits the change, and applies it at once', function () {
@@ -235,4 +256,28 @@ it('never exposes the hash when a token row is serialised', function () {
     $row = OpsStatusToken::factory()->create();
 
     expect($row->toArray())->not->toHaveKey('token_hash');
+});
+
+it('does not let the browser call a method that returns the token row', function () {
+    OpsStatusToken::factory()->create();
+
+    expect(fn () => Livewire::actingAs($this->admin)->test(ManageOperations::class)->call('activeToken'))
+        ->toThrow(Exception::class);
+});
+
+it('refuses an allow-list that is not text instead of reading it as "any address"', function () {
+    $token = OpsStatusToken::factory()->create(['allowed_ips' => ['203.0.113.1']]);
+
+    Livewire::actingAs($this->admin)
+        ->test(ManageOperations::class)
+        ->set('data.allowed_ips', ['0.0.0.0/0'])
+        ->call('saveAllowList')
+        ->assertNotified('The allow-list must be text, one address or range per line.')
+        ->callAction('rotate')
+        ->assertNotified('The allow-list must be text, one address or range per line.')
+        ->assertSet('revealedToken', null);
+
+    expect($token->fresh()->allowed_ips)->toBe(['203.0.113.1'])
+        ->and($token->fresh()->revoked_at)->toBeNull()
+        ->and(OpsStatusToken::query()->count())->toBe(1);
 });

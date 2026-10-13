@@ -1,9 +1,4 @@
 <x-filament-panels::page>
-    @php
-        $token = $this->activeToken();
-        $endpoint = url('/ops/status');
-    @endphp
-
     @if ($revealedToken)
         <x-filament::section>
             <x-slot name="heading">Copy the status token now</x-slot>

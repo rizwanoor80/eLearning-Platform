@@ -10,6 +10,7 @@ use App\Services\Ops\OpsStatusReport;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
@@ -84,6 +85,29 @@ it('answers 200 with the status document to a valid token', function () {
         ->assertHeader('Cache-Control', 'no-store, private');
 });
 
+it('holds exactly these keys and no others, in every section', function () {
+    $document = opsGet(opsToken())->assertOk()->json();
+
+    // An allow-list of names: a new key (a host name, a path, a connection detail) fails here until someone
+    // decides it belongs in a document that has no secrets, rows or user data.
+    expect(array_keys($document))->toBe(['schema_version', 'generated_at', 'app', 'migrations', 'horizon', 'queues', 'scheduler', 'ledger', 'video', 'mail', 'settings'])
+        ->and(array_keys($document['app']))->toBe(['environment', 'git_sha', 'release', 'php_version', 'laravel_version', 'debug'])
+        ->and(array_keys($document['migrations']))->toBe(['pending'])
+        ->and(array_keys($document['horizon']))->toBe(['status', 'master_pid', 'supervisors'])
+        ->and(array_keys($document['horizon']['supervisors'][0]))->toBe(['name', 'status', 'process_count', 'processes'])
+        ->and(array_keys($document['queues']))->toBe(['default_size', 'failed_jobs'])
+        ->and(array_keys($document['scheduler']))->toBe(['status', 'last_tick_age_seconds'])
+        ->and(array_keys($document['ledger']))->toBe(['result', 'checked_at', 'age_seconds', 'unbalanced_lessons', 'stranded_payments'])
+        ->and(array_keys($document['video']))->toBe(['active_provider', 'deliveries_24h', 'events_24h'])
+        ->and(array_keys($document['mail']))->toBe(['mailer', 'from_name', 'from_address'])
+        ->and(array_keys($document['settings']))->toBe(['allow_immediate_booking', 'features'])
+        ->and(array_keys($document['settings']['features']))->toBe(['match_requests', 'reviews', 'messaging']);
+});
+
+it('counts the last 24 hours of stored events on an index, because that table is never pruned', function () {
+    expect(Schema::hasIndex('video_webhook_events', ['received_at']))->toBeTrue();
+});
+
 it('sets no cookie and starts no session', function () {
     $response = opsGet(opsToken())->assertOk();
 
@@ -112,7 +136,14 @@ it('answers the identical 404 to every kind of rejection', function () {
 
     $responses->each(fn ($response, $label) => expect($response->getStatusCode())->toBe(404, $label));
 
-    expect($responses->map(fn ($response) => $response->getContent())->unique())->toHaveCount(1)
+    // Everything a prober can see, not just the body: the headers too, minus the two that differ per
+    // request whatever the reason (the clock and the throttle's remaining count).
+    $seen = fn ($response) => [
+        'body' => $response->getContent(),
+        'headers' => collect($response->headers->all())->except(['date', 'x-ratelimit-remaining'])->sortKeys()->all(),
+    ];
+
+    expect($responses->map($seen)->unique()->count())->toBe(1)
         ->and($responses->first()->json())->toBe(['message' => 'Not found.'])
         ->and(AuditLog::query()->where('action', 'ops_status_token.read')->count())->toBe(0);
 });
@@ -188,12 +219,18 @@ it('holds no secret, no row and no user datum', function () {
     VideoProvider::query()->where('code', 'daily')->firstOrFail()->forceFill(['credentials' => ['api_key' => 'sekret-api-key-123', 'webhook_secret' => 'sekret-hook-456']])->save();
     VideoProvider::query()->where('code', 'fake')->firstOrFail()->forceFill(['credentials' => ['webhook_secret' => 'sekret-fake-789']])->save();
 
+    // Set after the connection is open, so they change nothing the request does; they make the probe below
+    // meaningful where the local database has no password.
+    config([
+        'database.connections.pgsql.password' => 'sekret-db-password-321',
+        'database.redis.default.password' => 'sekret-redis-654',
+        'mail.mailers.smtp.password' => 'sekret-smtp-987',
+    ]);
+
     $body = opsGet($plain)->assertOk()->getContent();
 
-    foreach ([$plain, $hash, 'sekret-api-key-123', 'sekret-hook-456', 'sekret-fake-789', $parent->name, $parent->email, (string) config('app.key'), (string) config('database.connections.pgsql.password')] as $secret) {
-        if ($secret !== '') {
-            expect($body)->not->toContain($secret);
-        }
+    foreach (array_filter([$plain, $hash, 'sekret-api-key-123', 'sekret-hook-456', 'sekret-fake-789', 'sekret-db-password-321', 'sekret-redis-654', 'sekret-smtp-987', $parent->name, $parent->email, (string) config('app.key')]) as $secret) {
+        expect($body)->not->toContain($secret);
     }
 });
 
