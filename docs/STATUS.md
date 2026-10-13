@@ -39,13 +39,13 @@ No action is needed from the owner to continue this cycle: CC proceeds to step 2
 **Owner action 2: the Daily retry test (R184), after Owner action 1 is clean.** Keep the real Daily webhook secret open in Daily's dashboard **before you start** (once overwritten it cannot be read back). (1) Admin → Video providers → Daily → Webhook secret: type `bm90LXRoZS1zZWNyZXQ=` → Save. (2) Book another demo-tutor lesson for the next top of the hour inside the tutor's availability, join as the parent, leave. (3) Reply `update`; CC reads `video:webhooks --since=1h` and should see deliveries rejected (401) and no stored events. (4) Paste the real secret back → Save. (5) Reply `update` again after an hour. "No redelivery" is an answer, not a failure.
 
 **Owner action 3: the sender name.**
- 1. (Recommended) In Admin → Settings → Mail set "From name" to `TrusTutor`. Reason: rehearsal sends as "TrusTutor (Support)" today and CC may not write settings.
- 2. Leave "TrusTutor (Support)" and tell the planner it is intended.
+ 1. (Recommended) In Admin → Settings → Mail, set "From name" to `trusTutor Team`. Reason: rehearsal sends as "TrusTutor (Support)" today and CC may not write settings.
+ 2. Leave "TrusTutor (Support)" and tell the planner it is the intended name.
 Reply `update` when done.
 
-**Owner action 4: the SendPulse unsubscribe link (R174(c)).**
- 1. (Recommended) In SendPulse turn off list-unsubscribe and unsubscribe-link insertion for transactional SMTP. Reason: the link is injected by SendPulse, not by us, and these mails are transactional.
- 2. Leave it on and tell the planner.
+**Owner action 4: SendPulse sender display name and unsubscribe link (R174(c); PLAN cycle 15 r1 "Carried forward").**
+ 1. (Recommended) In SendPulse set the sender display name to `TrusTutor` and turn off list-unsubscribe and unsubscribe-link insertion for transactional SMTP. Reason: both are SendPulse account settings, not ours, and these mails are transactional.
+ 2. Leave them as they are and tell the planner.
 Reply `update` when done.
 
 **Owner action 5: the Subjects form.** Open the tutor onboarding Subjects step on rehearsal at 1280 px and 375 px wide and confirm the subject row wraps without overflow. Reply `update` when done.
