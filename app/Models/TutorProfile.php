@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\DB;
  * @property int $user_id
  * @property string|null $country
  * @property string|null $headline
+ * @property string|null $display_name The admin-approved name parents see (R195); null = the first word of the account name. Never mass-assignable: only `ApproveDisplayName` writes it.
+ * @property string|null $display_name_requested A tutor's pending request (R195). Hidden from serialisation; read it only on the tutor's own Settings page and the admin queue.
+ * @property Carbon|null $display_name_requested_at
  * @property string|null $bio
  * @property string|null $intro_video_url
  * @property string|null $linkedin_url
@@ -59,6 +62,15 @@ class TutorProfile extends Model
     /** @use HasFactory<TutorProfileFactory> */
     use HasFactory;
 
+    /**
+     * A pending display name is not shown to anyone until an admin approves it (R195, ADR-027), so a stray
+     * `toArray()` or Inertia prop built from the model must not carry it. The two readers that may see it, the
+     * tutor's own Settings page and the admin queue, read the attribute explicitly.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['display_name_requested', 'display_name_requested_at'];
+
     protected $fillable = [
         'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
         'permit_number', 'permit_expires_at',
@@ -85,6 +97,7 @@ class TutorProfile extends Model
             'bank_verified_at' => 'datetime',
             'approved_at' => 'datetime',
             'submitted_at' => 'datetime',
+            'display_name_requested_at' => 'datetime',
         ];
     }
 
@@ -128,14 +141,22 @@ class TutorProfile extends Model
     }
 
     /**
-     * What a public page or a parent email calls this tutor: the first word of
-     * the account name (R32). Splits on any Unicode whitespace and ignores empty
-     * pieces, so a leading no-break space or tab cannot produce an empty name.
+     * What a public page or a parent email calls this tutor: the admin-approved display name when there
+     * is one (R195), otherwise the first word of the account name (R32). A name the tutor has only
+     * requested (`display_name_requested`) is never read here. Splits on any Unicode whitespace and
+     * ignores empty pieces, so a leading no-break space or tab cannot produce an empty name.
      * The one source — search, the profile and match suggestions all use it;
      * admin screens deliberately keep the full name.
+     *
+     * `display_name` is written only by `ApproveDisplayName`, which runs `DisplayNameRule` at the moment
+     * of approval and takes the value from the request column, so it is not re-validated per call.
      */
     public function displayName(): string
     {
+        if ($this->display_name !== null && $this->display_name !== '') {
+            return $this->display_name;
+        }
+
         // Leading invisible format characters (zero-width space, BOM, direction
         // marks) are dropped with the whitespace, so they cannot become the
         // "first word". Only the LEADING run: an internal zero-width joiner or

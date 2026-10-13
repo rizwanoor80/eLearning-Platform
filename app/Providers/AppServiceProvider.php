@@ -59,6 +59,8 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('video-webhooks', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
         // The operator status document (R193): per address, before the token is checked, so a guessing client is slowed whether or not it is right. 30 a minute is far above a person or a deploy check.
         RateLimiter::for('ops-status', fn (Request $request) => Limit::perMinute(30)->by((string) $request->ip()));
+        // A tutor asking for a display name (R195): each request lands in an admin's queue, so 10 an hour per user.
+        RateLimiter::for('display-name', fn (Request $request) => Limit::perHour(10)->by((string) $request->user()->id));
         // Per user, not per address: 30 messages a minute (R133), and 30 polls a minute for the badge counts (R135).
         RateLimiter::for('messages', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));
         RateLimiter::for('unread-counts', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));

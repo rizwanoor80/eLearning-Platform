@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\Tutor\DisplayNameRejected;
 use App\Events\Tutor\TutorApproved;
 use App\Events\Tutor\TutorChangesRequested;
 use App\Events\Tutor\TutorPermitExpired;
@@ -19,4 +20,5 @@ it('serializes the tutor profile by key on every tutor event', function (string 
     TutorRejected::class,
     TutorPermitExpiring::class,
     TutorPermitExpired::class,
+    DisplayNameRejected::class,
 ]);

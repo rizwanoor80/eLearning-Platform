@@ -89,6 +89,15 @@ class AnonymizeUser
                 ($this->suspendTutor)($actor, $profile, 'Account deleted.');
             }
 
+            // R195: a tutor-chosen display name (approved or pending) is personal data and goes with the account.
+            if ($profile !== null) {
+                $profile->forceFill([
+                    'display_name' => null,
+                    'display_name_requested' => null,
+                    'display_name_requested_at' => null,
+                ])->save();
+            }
+
             MatchRequest::query()
                 ->where('account_user_id', $locked->id)
                 ->where('status', '!=', MatchRequestStatus::Closed)
