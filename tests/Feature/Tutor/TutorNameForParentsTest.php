@@ -37,7 +37,9 @@ it('ignores a display name posted to the personal step: nothing is stored or val
 
     expect($profile->fresh()->country)->toBe('AE')
         ->and($profile->fresh()->displayName())->toBe('Amira')
-        ->and(array_key_exists('display_name', $profile->fresh()->getAttributes()))->toBeFalse();
+        // R195 added the column; the personal step still must not write to it or to the pending request.
+        ->and($profile->fresh()->display_name)->toBeNull()
+        ->and($profile->fresh()->display_name_requested)->toBeNull();
 });
 
 it('sends the onboarding page no display-name props', function () {

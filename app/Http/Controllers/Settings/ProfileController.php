@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\TutorProfile;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,32 @@ class ProfileController extends Controller
         return Inertia::render('settings/Profile', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'tutorDisplayName' => $this->tutorDisplayName($request),
         ]);
+    }
+
+    /**
+     * R195: what a tutor sees about their own display name — the name parents see now, the approved name
+     * (null while parents see the first name) and the request waiting for an admin. Null for anyone without a
+     * tutor profile, so the section does not render. The pending request is shown to its owner only.
+     *
+     * @return array{shown: string, approved: string|null, requested: string|null}|null
+     */
+    private function tutorDisplayName(Request $request): ?array
+    {
+        // A query, not `$user->tutorProfile`: that would load the relation onto the user object, which
+        // `HandleInertiaRequests` shares with every page as `auth.user`, bank fields included.
+        $profile = TutorProfile::query()->where('user_id', $request->user()->id)->first();
+
+        if ($profile === null) {
+            return null;
+        }
+
+        return [
+            'shown' => $profile->displayName(),
+            'approved' => $profile->display_name,
+            'requested' => $profile->display_name_requested,
+        ];
     }
 
     /**

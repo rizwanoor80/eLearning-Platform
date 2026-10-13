@@ -2,6 +2,7 @@
 import { Form, Head, usePage } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import DisplayNameController from '@/actions/App/Http/Controllers/Settings/DisplayNameController';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -21,6 +22,14 @@ defineOptions({
         ],
     },
 });
+
+defineProps<{
+    tutorDisplayName: {
+        shown: string;
+        approved: string | null;
+        requested: string | null;
+    } | null;
+}>();
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
@@ -98,5 +107,60 @@ const user = computed(() => page.props.auth.user);
                 >
             </div>
         </Form>
+
+        <div
+            v-if="tutorDisplayName"
+            class="flex flex-col space-y-6"
+            data-test="display-name-section"
+        >
+            <Heading
+                variant="small"
+                title="Display name"
+                description="Parents see your first name unless an admin approves a display name you ask for"
+            />
+
+            <p class="text-sm" data-test="display-name-shown">
+                Parents currently see: <strong>{{ tutorDisplayName.shown }}</strong>
+            </p>
+
+            <p
+                v-if="tutorDisplayName.requested"
+                class="text-muted-foreground text-sm"
+                data-test="display-name-pending"
+            >
+                Waiting for approval:
+                <strong>{{ tutorDisplayName.requested }}</strong>. Parents do
+                not see it until an admin approves it.
+            </p>
+
+            <Form
+                v-bind="DisplayNameController.store.form()"
+                class="space-y-6"
+                v-slot="{ errors, processing }"
+            >
+                <div class="grid gap-2">
+                    <Label for="display_name">Ask for a display name</Label>
+                    <Input
+                        id="display_name"
+                        class="mt-1 block w-full"
+                        name="display_name"
+                        :default-value="tutorDisplayName.requested ?? ''"
+                        required
+                        autocomplete="off"
+                        placeholder="2 to 30 characters"
+                    />
+                    <InputError
+                        class="mt-2"
+                        :message="errors.display_name"
+                    />
+                </div>
+
+                <Button
+                    :disabled="processing"
+                    data-test="request-display-name-button"
+                    >Send for approval</Button
+                >
+            </Form>
+        </div>
     </div>
 </template>
