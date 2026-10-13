@@ -159,9 +159,21 @@ it('refuses every non-admin: a parent, a tutor, and a suspended admin', function
 })->with([
     'parent' => [fn () => User::factory()->create()],
     'tutor' => [fn () => User::factory()->tutor()->create()],
-    'the tutor who asked' => [fn () => User::factory()->tutor()->create()],
     'suspended admin' => [fn () => User::factory()->admin()->create(['status' => UserStatus::Suspended])],
 ]);
+
+it('does not let the tutor who asked approve or reject their own request', function () {
+    $profile = dnaPending('Ms Amira');
+
+    expect(fn () => app(ApproveDisplayName::class)($profile->user, $profile, 'Ms Amira'))->toThrow(AuthorizationException::class)
+        ->and(fn () => app(RejectDisplayName::class)($profile->user, $profile, 'Ms Amira', 'No'))->toThrow(AuthorizationException::class);
+
+    $fresh = $profile->fresh();
+
+    expect($fresh->display_name)->toBeNull()
+        ->and($fresh->display_name_requested)->toBe('Ms Amira')
+        ->and(AuditLog::query()->count())->toBe(0);
+});
 
 it('refuses to approve or reject a name that is not the one the admin was shown', function () {
     $admin = User::factory()->admin()->create();
