@@ -181,7 +181,7 @@ it('refuses every bypass found in the review rounds, as written and once folded'
     'modifier letters standing for an apostrophe, spelling a domain' => ["mysite\u{02BC}com", "gmail\u{02BB}com", "mysite\u{02BE}com", "mysite\u{02BF}com"],
     'prolonged sound mark between Latin words' => ["Sara\u{30FC}Khan", "sara\u{30FC}gmail\u{30FC}com", "mysite\u{30FC}com"],
     'a mobile number in Han numerals' => ['零五零一二三四五六七', '零五零一二三四'],
-    'a mobile number in Sino-Korean numerals' => ['공일공일이삼사오육칠팔', '영오영 일이삼 사오육칠', '공일공일이삼사'],
+    'a mobile number in Sino-Korean numerals' => ['공일공일이삼사오육칠팔', '영오영 일이삼 사오육칠', '공일공일이삼사', '령일령일이삼사'],
 ]));
 
 function dnrRound4(): array
@@ -266,7 +266,7 @@ it('admits up to six numeral characters, as real Han and Korean names have them,
         expect(DisplayNameRule::accepts($name))->toBeTrue(sprintf('"%s" has six numeral characters or fewer', $name));
     }
 
-    foreach (['零五零一二三四', '공일공일이삼사', '이일오 사육칠팔'] as $name) {
+    foreach (['零五零一二三四', '공일공일이삼사', '령일령일이삼사', '이일오 사육칠팔'] as $name) {
         expect(DisplayNameRule::accepts($name))->toBeFalse(sprintf('"%s" has seven numeral characters', $name));
     }
 });

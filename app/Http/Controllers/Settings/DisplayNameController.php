@@ -10,7 +10,8 @@ use Inertia\Inertia;
 
 /**
  * R195: a tutor asks for a display name from Settings. The request waits for an admin
- * (`ApproveDisplayName` / `RejectDisplayName`); until then parents keep seeing the first name.
+ * (`ApproveDisplayName` / `RejectDisplayName`); until then parents keep seeing the name they see now (the
+ * approved display name, else the first name).
  */
 class DisplayNameController extends Controller
 {
@@ -20,7 +21,7 @@ class DisplayNameController extends Controller
 
         $requestDisplayName($user, $user->tutorProfile, $request->validated('display_name'));
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Display name sent for approval. Parents keep seeing your first name until it is approved.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Display name sent for approval. Parents keep seeing the name they see now until it is approved.')]);
 
         return to_route('profile.edit');
     }

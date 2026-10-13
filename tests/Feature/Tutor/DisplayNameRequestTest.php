@@ -47,6 +47,17 @@ it('stores a request, audits it and changes nothing parents see', function () {
         ->and($log->after)->toBe(['display_name_requested' => 'Amira H.']);
 });
 
+// R195 review round 2, item 3: the toast says what parents keep seeing, which is the approved name when the tutor
+// has one, so it must not promise "your first name".
+it('tells the tutor that parents keep seeing the name they see now, not always the first name', function () {
+    $profile = dnTutor('Amira Haddad', ['display_name' => 'Ms Amira']);
+
+    test()->actingAs($profile->user)->post(route('display-name.store'), ['display_name' => 'Amira H.'])
+        ->assertRedirect(route('profile.edit'))
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'Display name sent for approval. Parents keep seeing the name they see now until it is approved.');
+});
+
 it('folds the name to NFKC before it is checked and stored', function () {
     $profile = dnTutor();
 

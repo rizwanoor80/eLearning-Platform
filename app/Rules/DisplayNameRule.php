@@ -44,8 +44,10 @@ use Normalizer;
  * the Arabic tatweel and other modifier letters, a full stop and space after a word of four letters or more
  * ("Prof. Ali"), two or more marks followed by exactly two closing letters (the masker reads the marks as a dot
  * and the two letters as a country code), a name in two scripts ("Wang 王", Hangul with Hanja), a hyphenated
- * name the masker's country-code heuristic reads as an address ("Mary-Jo"), a name of seven or more numeral
- * characters, and scripts outside LETTER (e.g. Armenian, Ethiopic).
+ * name the masker's country-code heuristic reads as an address ("Mary-Jo"), an apostrophe or a modifier letter
+ * (U+02BB, U+02BC, U+02BE, U+02BF) inside a name followed by exactly two closing letters ("Sa'id", "Isma'il",
+ * "Ka" + U+02BB + "iu": the masker reads the mark as a dot and the two letters as a country code), a name of
+ * seven or more numeral characters, and scripts outside LETTER (e.g. Armenian, Ethiopic).
  */
 class DisplayNameRule implements ValidationRule
 {
@@ -128,8 +130,8 @@ class DisplayNameRule implements ValidationRule
     /** The prolonged sound mark is Common in Unicode, but inside a name it belongs to Japanese. */
     private const PROLONGED_SOUND_MARK = "\u{30FC}";
 
-    /** The digits 0 to 9 in Sino-Korean syllables: ICU gives Hangul syllables no numeric value, so they are listed. */
-    private const HANGUL_NUMERALS = ['공', '영', '일', '이', '삼', '사', '오', '육', '륙', '칠', '팔', '구'];
+    /** The digits 0 to 9 in Sino-Korean syllables, with the variants 령 and 륙: ICU gives Hangul syllables no numeric value, so they are listed. */
+    private const HANGUL_NUMERALS = ['공', '영', '령', '일', '이', '삼', '사', '오', '육', '륙', '칠', '팔', '구'];
 
     /** A name with this many numeral characters or more is refused (a mobile number is ten or eleven digits). */
     private const NUMERAL_LIMIT = 7;
