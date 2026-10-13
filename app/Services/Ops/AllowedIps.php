@@ -7,9 +7,11 @@ use App\Exceptions\OpsStatusTokenException;
 /**
  * The status token's optional IP allow-list (R193): exact addresses and CIDR ranges, typed one per
  * line or separated by commas or spaces. Matching happens in `OpsStatusToken::allowsIp()` against
- * `Request::ip()`. `TRUSTED_PROXIES` is empty by default (`config/trustedproxy.php`), so no
- * `X-Forwarded-For` is believed and that address is the connecting socket's — behind a load balancer it
- * is the balancer's, not the caller's, until `TRUSTED_PROXIES` names the balancer (ADR-026).
+ * `Request::ip()`. `TRUSTED_PROXIES` is empty by default (`config/trustedproxy.php`, `.env.example`), so
+ * no `X-Forwarded-For` is believed and that address is the connecting socket's — behind a load balancer it
+ * is the balancer's, not the caller's, until `TRUSTED_PROXIES` names the balancer. If the variable is
+ * absent altogether, Laravel trusts every proxy on a `*.on-forge.com` or `*.on-vapor.com` host and under
+ * `LARAVEL_CLOUD=1`, so keep it present (ADR-026).
  */
 final class AllowedIps
 {

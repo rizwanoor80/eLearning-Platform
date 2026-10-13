@@ -50,7 +50,8 @@ function opsGet(?string $token = null, array $server = []): TestResponse
 {
     $headers = $token === null ? [] : ['Authorization' => 'Bearer '.$token];
 
-    return test()->withServerVariables($server)->withHeaders($headers)->getJson('/ops/status');
+    // Headers and server variables stick to the test case between calls, so start each call clean.
+    return test()->flushHeaders()->withServerVariables($server)->withHeaders($headers)->getJson('/ops/status');
 }
 
 beforeEach(function () {
@@ -118,21 +119,28 @@ it('answers the identical 404 to every kind of rejection', function () {
     $revoked = Str::random(64);
     OpsStatusToken::factory()->revoked()->create(['token_hash' => OpsStatusToken::hashOf($revoked)]);
 
-    $active = opsToken(['allowed_ips' => ['203.0.113.0/24']]);
-
     $rotatedAway = Str::random(64);
     OpsStatusToken::factory()->revoked()->create(['token_hash' => OpsStatusToken::hashOf($rotatedAway)]);
+
+    // The one active token. It has no allow-list, so the Basic and query-string rows below can only be
+    // refused because of how the token is presented, never because of the caller's address.
+    $active = opsToken();
+
+    $call = fn (array $headers = [], string $query = ''): TestResponse => test()->flushHeaders()->withServerVariables([])->withHeaders($headers)->getJson('/ops/status'.$query);
 
     $responses = collect([
         'no header' => opsGet(),
         'wrong token' => opsGet(Str::random(64)),
         'revoked token' => opsGet($revoked),
         'rotated-away token' => opsGet($rotatedAway),
-        'right token, address not on the list' => opsGet($active, ['REMOTE_ADDR' => '198.51.100.7']),
-        'empty bearer' => test()->withHeaders(['Authorization' => 'Bearer '])->getJson('/ops/status'),
-        'basic scheme' => test()->withHeaders(['Authorization' => 'Basic '.base64_encode('x:'.$active)])->getJson('/ops/status'),
-        'token in the query string' => test()->getJson('/ops/status?token='.$active.'&access_token='.$active),
+        'empty bearer' => $call(['Authorization' => 'Bearer ']),
+        'basic scheme' => $call(['Authorization' => 'Basic '.base64_encode('x:'.$active)]),
+        'token in the query string' => $call([], '?token='.$active.'&access_token='.$active),
     ]);
+
+    // The same token, now allow-listed to a range the caller is outside of.
+    OpsStatusToken::query()->active()->firstOrFail()->update(['allowed_ips' => ['203.0.113.0/24']]);
+    $responses->put('right token, address not on the list', opsGet($active, ['REMOTE_ADDR' => '198.51.100.7']));
 
     $responses->each(fn ($response, $label) => expect($response->getStatusCode())->toBe(404, $label));
 

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
+use Livewire\Exceptions\MethodNotFoundException;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Mockery\MockInterface;
@@ -262,15 +263,15 @@ it('does not let the browser call a method that returns the token row', function
     OpsStatusToken::factory()->create();
 
     expect(fn () => Livewire::actingAs($this->admin)->test(ManageOperations::class)->call('activeToken'))
-        ->toThrow(Exception::class);
+        ->toThrow(MethodNotFoundException::class);
 });
 
-it('refuses an allow-list that is not text instead of reading it as "any address"', function () {
+it('refuses an allow-list that is not text instead of reading it as "any address"', function (mixed $input) {
     $token = OpsStatusToken::factory()->create(['allowed_ips' => ['203.0.113.1']]);
 
     Livewire::actingAs($this->admin)
         ->test(ManageOperations::class)
-        ->set('data.allowed_ips', ['0.0.0.0/0'])
+        ->set('data.allowed_ips', $input)
         ->call('saveAllowList')
         ->assertNotified('The allow-list must be text, one address or range per line.')
         ->callAction('rotate')
@@ -280,4 +281,8 @@ it('refuses an allow-list that is not text instead of reading it as "any address
     expect($token->fresh()->allowed_ips)->toBe(['203.0.113.1'])
         ->and($token->fresh()->revoked_at)->toBeNull()
         ->and(OpsStatusToken::query()->count())->toBe(1);
-});
+})->with([
+    'an array' => [['0.0.0.0/0']],
+    // Without strict types PHP read false as the empty string, which parses to an empty list: any address.
+    'false' => [false],
+]);
