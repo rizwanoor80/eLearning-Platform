@@ -57,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
         // Named, so its counter is its own: an unnamed throttle:N,M shares one with every other unnamed throttle of the same numbers.
         RateLimiter::for('lesson-room', fn (Request $request) => Limit::perMinute(20)->by((string) ($request->user()->id ?? $request->ip())));
         RateLimiter::for('video-webhooks', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
+        // The operator status document (R193): per address, before the token is checked, so a guessing client is slowed whether or not it is right. 30 a minute is far above a person or a deploy check.
+        RateLimiter::for('ops-status', fn (Request $request) => Limit::perMinute(30)->by((string) $request->ip()));
         // Per user, not per address: 30 messages a minute (R133), and 30 polls a minute for the badge counts (R135).
         RateLimiter::for('messages', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));
         RateLimiter::for('unread-counts', fn (Request $request) => Limit::perMinute(30)->by((string) $request->user()->id));

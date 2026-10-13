@@ -43,6 +43,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Deployed Commit
+    |--------------------------------------------------------------------------
+    |
+    | Optional. The commit sha a deploy is on, for GET /ops/status (R193). When it
+    | is empty the status document reads the checkout's own .git files instead,
+    | and says nothing if a release directory has none.
+    |
+    */
+
+    'git_sha' => env('APP_GIT_SHA'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

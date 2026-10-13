@@ -1,7 +1,9 @@
 <?php
 
+use App\Services\Ops\OpsStatusReport;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -51,3 +53,15 @@ Schedule::command('lessons:auto-release-reports')->everyFiveMinutes()->onOneServ
 // Delivery records of the video webhook endpoint (R180) are kept 30 days. Idempotent by itself (a second
 // run finds nothing to delete); onOneServer + withoutOverlapping only stop a second worker starting.
 Schedule::command('video:prune-webhook-deliveries')->dailyAt('03:30')->onOneServer()->withoutOverlapping(10);
+
+// The scheduler's own pulse (R193): `/ops/status` reports how long ago this last ran, which is how a deploy
+// check tells that the scheduler is alive without ssh. In-process (no subprocess every minute), no
+// onOneServer: it must record every server's tick, and a second write the same second is harmless.
+Schedule::call(fn () => Cache::forever(OpsStatusReport::SCHEDULER_TICK_KEY, now()->getTimestamp()))
+    ->name('scheduler:ping')
+    ->everyMinute();
+
+// The ledger line of `/ops/status` (R193): the zero-sum check is done here, off the request path, and the
+// endpoint only reads the entry. Read-only on the database and idempotent (a second run overwrites one cache
+// key); onOneServer + withoutOverlapping only stop a second worker starting. `ledger:verify` stays the gate.
+Schedule::command('ops:record-ledger-check')->everyFiveMinutes()->onOneServer()->withoutOverlapping(10);
