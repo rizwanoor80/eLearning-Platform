@@ -23,11 +23,11 @@ Herd and its services (PostgreSQL, Redis, mail) are started and stopped only by 
 - A single command still running after 10 minutes is a stall: stop it, log a BLOCKER naming the command, work around it. Never wait on it.
 
 ## Cloud sessions
-A session started in Claude Code's cloud environment (`CLAUDE_CODE_REMOTE=true`; setup and variables in `docs/cloud/ENVIRONMENT.md`) differs from a local one in four ways. Everything else in this file applies unchanged.
+A session started in Claude Code's cloud environment (`CLAUDE_CODE_REMOTE=true`; setup and variables in `docs/cloud/ENVIRONMENT.md`) differs from a local one in four ways. Everything else in this file applies, except what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`).
 - **No `/clear`.** Start a new session instead; wherever the method says "`/clear` this session", a cloud session reads "start a new session".
-- **No `CLAUDE.local.md`, so no ssh.** The server allow-list does not exist there. Read a server's state with `GET /ops/status` (bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) or `php artisan ops:status`.
+- **No `CLAUDE.local.md`, so no ssh.** The server allow-list does not exist there. Read a server's state with `GET /ops/status` (bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged). `php artisan ops:status` prints the status of the environment it runs in, so in a cloud session it describes the cloud sandbox and is never evidence about a server.
 - **R178 does not apply.** The `SessionStart` hook (`scripts/cloud-session-start.sh`) starts PostgreSQL and Redis and migrates; it exits at once on a local machine. Do not start or stop services by hand.
-- **Deploys stay push-to-deploy** (fast-forward `rehearsal` to a green `main` commit); verify a deploy through `/ops/status`, not ssh.
+- **Deploys stay push-to-deploy** (fast-forward `rehearsal` to a `main` commit whose CI is green on both PostgreSQL jobs); verify a deploy through `/ops/status`, not ssh.
 
 ## Scope guard
 v1 is: 1-on-1 60-minute lessons · tutor vetting · search + match request · trial lesson · single booking · recurring weekly slot with saved-card auto-charge · escrow ledger · lesson room · progress + trial reports emailed + parent portal · messaging · reviews · report button · two-dial disputes · admin.
