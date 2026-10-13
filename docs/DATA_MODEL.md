@@ -1,4 +1,4 @@
-# DATA MODEL — v1.11
+# DATA MODEL — v1.12
 
 _All money columns are integer fils (AED). All timestamps UTC unless stated. Soft deletes only where noted._
 _v1.2 (owner ruling 2026-09-17, PRD §12): adds `pages` + `page_versions`, `content_blocks`, `document_types`, `payment_gateways`, `video_providers`; `settings` gains a `group`; `tutor_profiles` gains bank details and `agreement_version`; `tutor_documents.type` becomes a foreign key. Encrypted columns use Laravel's `encrypted` cast and are never exposed unmasked._
@@ -17,6 +17,8 @@ _v1.9 (cycle 13, CP3 revision, R179, ADR-025; describes what shipped in 13a): `t
 
 _v1.10 (cycle 13, step 13b, R180, ADR-017 amendment; describes what shipped in 13b): adds `video_webhook_deliveries`, a metadata-only record of every request to the video webhook endpoint (see the section after `video_webhook_events`). `video_webhook_events` is unchanged._
 _v1.11 (cycle 14, step 14a, R185, ADR-024 amendment; describes what shipped in 14a): `tutor_profiles` gains `review_sections` (nullable `jsonb`, cast `array`) beside `review_note` — the list of onboarding sections an admin ticked when requesting changes, as `TutorReviewSection` values (contact, permit, documents, bank, subjects, rate, bio, availability), de-duplicated and in checklist order; null when no section was named, and cleared whenever the profile leaves `changes_requested` (resubmission, rejection, suspension). No other table changes: the new `bookable()` condition (an `availability_rules` row exists) reads existing data. A tutor `display_name` column was planned for 14b (R188(a)); it was built and then removed there under R192, so `tutor_profiles` has no such column and 14b changes no table (there is no v1.12). The idea returns, if at all, as admin-approved display names._
+
+_v1.12 (cycle 15, step 15a, R193, ADR-026; describes what shipped in 15a; numbered v1.12, not the plan's "v1.13" — the file stood at v1.11, so v1.12 is the next number and 15c's `display_name` columns take v1.13, disclosed in STATUS §6): adds `ops_status_tokens`, the one-at-a-time bearer token behind `GET /ops/status` (see the section before `audit_logs`). The only change to an existing table is an index on `video_webhook_events.received_at`._
 
 ## ERD
 
@@ -238,7 +240,7 @@ timestamps
 - Exactly one active row (partial unique index `video_providers_one_active`). Rows are inserted by the migration, never seeded: `daily` (inactive, no credentials, embed and webhooks true) and `fake` (embed and webhooks false; active except when the migration runs in production). There is no create or delete in the admin. `zoom`, `meet` and `teams` are valid codes with no driver and cannot be activated. Activation is refused (action and model `saving` guard) for `fake` in production, a code with no driver, or a driver with missing credentials. Credentials are hidden from serialisation and write-only in the admin. `lessons.room_provider` records which provider created each room, so switching providers never breaks existing lessons. `supports_attendance_webhooks = false` makes the lesson page show "I've joined" buttons that set `tutor_joined_at` / `learner_joined_at` manually.
 
 ### video_webhook_events
-`id, provider_code, event_id, type (joined|left), room_name (`lesson-<id>`), participant (tutor|learner, nullable), occurred_at, received_at` — unique (`provider_code`, `event_id`); index on `room_name`.
+`id, provider_code, event_id, type (joined|left), room_name (`lesson-<id>`), participant (tutor|learner, nullable), occurred_at, received_at` — unique (`provider_code`, `event_id`); index on `room_name`; index on `received_at` (added in 15a, so `/ops/status` can count the last 24 hours without scanning a table that is never pruned).
 - One row per verified, first-seen attendance webhook; a replay inserts nothing and dispatches nothing. Written only by `VideoWebhookController`. 7c's listener applies a row to a lesson only when `lessons.room_provider = provider_code`.
 
 ### video_webhook_deliveries
@@ -246,6 +248,12 @@ timestamps
 - One row per request that reaches the controller for `POST webhooks/video/{code}`, on every path: accepted, replayed, ignored, rejected (401/404/413) and a 500 (a request the throttle, the body-size middleware or routing stops first leaves none). Written only by `RecordWebhookDelivery`, outside the event's transaction; a failure to write is reported and never changes the response.
 - Metadata only. `event_type` and `event_id` are the sender's strings after cleaning to `[A-Za-z0-9_.:-]` and capping; the two key lists hold key *names* (at most 50, each ≤64 chars, from the decoded body only). A body larger than 64 KB, an undecodable body, or a JSON list stores the length alone. Never a body, header, signature, value or credential.
 - Read by `php artisan video:webhooks --since=24h`; rows older than 30 days (`config('video.webhook_delivery_retention_days')`) are deleted by the daily `video:prune-webhook-deliveries`. Not the attendance record — that is `video_webhook_events`, and it is never pruned here.
+
+### ops_status_tokens
+`id, token_hash (string 64, unique), allowed_ips (json, nullable), created_by (users, nullOnDelete), revoked_by (users, nullOnDelete), last_used_at, revoked_at, timestamps`
+- The bearer token behind `GET /ops/status` (R193, ADR-026). `token_hash` is the SHA-256 of a 64-character random token; the plaintext is shown once by `IssueOpsStatusToken` and exists nowhere else — not in this table, the audit log, the application log or a notification. The model hides `token_hash` from serialisation.
+- At most one active row: partial unique index `ops_status_tokens_one_active` on `((true)) WHERE revoked_at IS NULL`. Rotating revokes the active row and inserts the new one in one transaction; revoking sets `revoked_at` and `revoked_by` and keeps the row as history. Nothing deletes a row.
+- `allowed_ips` is a list of exact addresses and CIDR ranges (at most 20); null or empty means any address. `last_used_at` is stamped on each successful read. Written only by `IssueOpsStatusToken`, `RevokeOpsStatusToken`, `UpdateOpsStatusAllowList` and the status controller (`last_used_at`); every change but `last_used_at` has an `audit_logs` row (`ops_status_token.issued|rotated|revoked|allow_list_changed`, and `ops_status_token.read` for a successful read, with the caller address).
 
 ### audit_logs
 `id, actor_user_id, action, subject_type, subject_id, before (json), after (json), created_at`
