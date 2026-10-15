@@ -30,34 +30,79 @@ export function selfHostFonts(env = process.env) {
     return env.VITE_FONTS_INLINE !== '0';
 }
 
+/** What laravel-vite-plugin itself makes of a family (alias, CSS variable): both modes read it, so they cannot drift. */
+function pluginDefinition({ family, weights }) {
+    return bunny(family, { weights });
+}
+
 /** The `fonts` option for laravel-vite-plugin: the Bunny definitions, or none when the flag is '0'. */
 export function fontDefinitions(env = process.env) {
     if (!selfHostFonts(env)) {
         return [];
     }
 
-    return FONT_FAMILIES.map(({ family, weights }) =>
-        bunny(family, { weights }),
-    );
+    return FONT_FAMILIES.map(pluginDefinition);
 }
 
-/** One css2 URL for every family, in the shape Bunny's (and Google's) css2 API takes. */
-export function bunnyStylesheetUrl() {
-    const families = FONT_FAMILIES.map(
+/** One css2 URL for the given families, in the shape Bunny's (and Google's) css2 API takes. */
+export function bunnyStylesheetUrl(families = FONT_FAMILIES) {
+    const params = families.map(
         ({ family, weights }) =>
             `family=${family.replace(/ /g, '+')}:wght@${[...weights].sort((a, b) => a - b).join(';')}`,
     );
 
-    return `https://fonts.bunny.net/css2?${families.join('&')}&display=swap`;
+    return `https://fonts.bunny.net/css2?${params.join('&')}&display=swap`;
 }
 
-/** The fonts-manifest.json (version 1) the framework's ViteFonts reads: no preloads, one inline style. */
+function importRule(families) {
+    return `@import url("${bunnyStylesheetUrl(families)}");`;
+}
+
+function variableDeclaration({ family, variable }) {
+    return `${variable}: "${family}";`;
+}
+
+/**
+ * The fonts-manifest.json (version 1) the framework's ViteFonts reads, with the same keys the self-hosted manifest has,
+ * so every caller works in both modes: `@fonts` (no alias) renders `style.inline`, and `Vite::fonts('<alias>')` (the
+ * Filament admin head) needs the alias under `families` and reads `style.familyStyles[alias]` plus `style.variables`.
+ * No preloads and no font files: the browser fetches Bunny's stylesheet, and the fonts it names, itself.
+ */
 export function fontsByUrlManifest() {
+    const families = {};
+    const familyStyles = {};
+    const variables = {};
+
+    for (const entry of FONT_FAMILIES) {
+        const { alias, family, variable, weights } = pluginDefinition(entry);
+
+        families[alias] = {
+            family,
+            variable,
+            variants: Object.fromEntries(
+                [...weights]
+                    .sort((a, b) => a - b)
+                    .map((weight) => [`${weight}:normal`, { files: [] }]),
+            ),
+        };
+        familyStyles[alias] = importRule([entry]);
+        variables[alias] = variableDeclaration({ family, variable });
+    }
+
+    const declarations = Object.values(variables).map((line) => `  ${line}`);
+
     return {
         version: 1,
+        style: {
+            inline: [
+                importRule(FONT_FAMILIES),
+                `:root {\n${declarations.join('\n')}\n}`,
+            ].join('\n\n'),
+            familyStyles,
+            variables,
+        },
         preloads: [],
-        families: {},
-        style: { inline: `@import url("${bunnyStylesheetUrl()}");` },
+        families,
     };
 }
 
@@ -93,6 +138,8 @@ if (
             definitions: fontDefinitions().map(
                 ({
                     family,
+                    alias,
+                    variable,
                     provider,
                     weights,
                     styles,
@@ -101,6 +148,8 @@ if (
                     preload,
                 }) => ({
                     family,
+                    alias,
+                    variable,
                     provider,
                     weights,
                     styles,
