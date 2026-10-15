@@ -20,6 +20,7 @@ CLAUDE.local.md
 /resources/js/routes
 /resources/js/wayfinder
 /vendor
+/tools/
 .DS_Store
 .env
 .env.backup

@@ -41,6 +41,9 @@
             "Tests\\": "tests/"
         }
     },
+    "replace": {
+        "phpstan/phpstan": "2.2.14"
+    },
     "scripts": {
         "setup": [
             "composer install",
@@ -67,7 +70,7 @@
             "@test"
         ],
         "types:check": [
-            "phpstan analyse --memory-limit=512M"
+            "@php tools/phpstan.phar analyse --memory-limit=512M"
         ],
         "rtl:check": [
             "bash scripts/rtl-check.sh"
@@ -85,10 +88,15 @@
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi",
-            "@php artisan filament:upgrade"
+            "@php artisan filament:upgrade",
+            "@php artisan wayfinder:generate --with-form"
+        ],
+        "post-install-cmd": [
+            "@php scripts/fetch-phpstan.php"
         ],
         "post-update-cmd": [
-            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
+            "@php scripts/fetch-phpstan.php"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
