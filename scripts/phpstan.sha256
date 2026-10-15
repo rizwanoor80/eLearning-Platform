@@ -1,4 +1,4 @@
 ; The PHPStan phar that tools/phpstan.phar must be (ADR-028, R200).
-; Bump `version`, `sha256` and composer.json "replace" together, refresh composer.lock's content hash (`composer update --lock`, then `composer validate --check-lock`), in one commit; tests/Unit/ComposerLockPortabilityTest.php fails if the first three drift.
+; Bump `version`, `sha256` and composer.json "replace" together, refresh composer.lock's content hash (`composer update --lock --no-install --no-scripts`, then `composer validate --check-lock`; read the lock diff, because `--lock` also refreshes source URLs, e.g. vlucas/phpdotenv's mirror), in one commit; tests/Unit/ComposerLockPortabilityTest.php fails if the first three drift.
 version=2.2.14
 sha256=a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1

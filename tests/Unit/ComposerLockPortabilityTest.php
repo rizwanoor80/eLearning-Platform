@@ -169,7 +169,12 @@ it('refuses a malformed pin before it touches the network', function (string $pi
     'version with a path in it' => ["version=../../evil\nsha256=".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n"],
     'checksum too short' => ["version=2.2.14\nsha256=abc\n"],
     'no checksum' => ["version=2.2.14\n"],
-    'checksum with a newline inside quotes' => ["version=2.2.14\nsha256=\"".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n\"\n"],
+    'checksum one character too long' => ["version=2.2.14\nsha256=".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."0\n"],
+    'checksum with a prefix' => ["version=2.2.14\nsha256=x".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n"],
+    'version with a suffix' => ["version=1.2.3/../x\nsha256=".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n"],
+    'version with a prefix' => ["version=x1.2.3\nsha256=".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n"],
+    'four-part version' => ["version=1.2.3.4\nsha256=".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n"],
+    'checksum with a newline inside quotes (the INI parser rejects the file)' => ["version=2.2.14\nsha256=\"".'a7d45c01d3bd5aceb2cb9e596a67e50ff9f12b8757a373b93c0761deb8cd77e1'."\n\"\n"],
 ]);
 
 it('installs a download whose checksum matches the pin', function () {
@@ -229,6 +234,7 @@ it('removes a stale phar when the refresh fails or does not match, so types:chec
 
 it('sweeps temporary files an earlier killed run left behind, and only old ones', function () {
     $phar = 'the pinned phar';
+    $old = time() - 7200;
 
     [$exit, , , $root] = runFetchScript(
         [
@@ -236,12 +242,16 @@ it('sweeps temporary files an earlier killed run left behind, and only old ones'
             'source/phpstan.phar' => $phar,
             'tools/phpstan.phar.111.tmp' => 'killed download',
             'tools/phpstan.phar.222.tmp' => 'another install still running',
+            'tools/notes.txt' => 'not ours',
+            'tools/phpstan.phar.333.keep' => 'not a temporary file',
         ],
         ['PHPSTAN_PHAR_URL' => 'source/phpstan.phar'],
-        ['tools/phpstan.phar.111.tmp' => time() - 7200],
+        ['tools/phpstan.phar.111.tmp' => $old, 'tools/notes.txt' => $old, 'tools/phpstan.phar.333.keep' => $old],
     );
 
     expect($exit)->toBe(0)
         ->and(file_exists($root.'/tools/phpstan.phar.111.tmp'))->toBeFalse()
-        ->and(file_exists($root.'/tools/phpstan.phar.222.tmp'))->toBeTrue();
+        ->and(file_exists($root.'/tools/phpstan.phar.222.tmp'))->toBeTrue()
+        ->and(file_exists($root.'/tools/notes.txt'))->toBeTrue()
+        ->and(file_exists($root.'/tools/phpstan.phar.333.keep'))->toBeTrue();
 });
