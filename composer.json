@@ -120,7 +120,6 @@
     },
     "config": {
         "optimize-autoloader": true,
-        "preferred-install": "dist",
         "sort-packages": true,
         "platform": {
             "ext-pcntl": "8.4.0",
