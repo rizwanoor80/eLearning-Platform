@@ -24,7 +24,8 @@ it('seeds 21 year groups from one source, each with a tier its curriculum has (R
     expect(YearGroup::query()->count())->toBe(21);
 
     $byCurriculum = YearGroup::query()->with('curriculum')->get()->groupBy(fn (YearGroup $g) => $g->curriculum->code->value);
-    expect($byCurriculum->map->count()->all())->toBe(['GCSE' => 5, 'A_LEVEL' => 2, 'IB_MYP' => 5, 'IB_DP' => 2, 'CBSE' => 7]);
+    // The query has no ORDER BY, so PostgreSQL may return the rows (and so the groups) in any order: compare the counts by sorted key.
+    expect($byCurriculum->map->count()->sortKeys()->all())->toBe(['A_LEVEL' => 2, 'CBSE' => 7, 'GCSE' => 5, 'IB_DP' => 2, 'IB_MYP' => 5]);
 
     foreach (YearGroup::query()->with('curriculum')->get() as $group) {
         expect($group->curriculum->code->tiers())->toContain($group->level_tier);
