@@ -11,8 +11,9 @@ Local Herd stays the fallback. Cloud sessions clone `rizwanoor80/eLearning-Platf
 ppa.launchpadcontent.net
 keyserver.ubuntu.com
 rehearsal.trustutor.com
-api.daily.co
+fonts.bunny.net
 ```
+(2026-10-15: `api.daily.co` dropped — unused; `fonts.bunny.net` added — the Vite fonts plugin fetches it at build time.)
 (`ppa.*` and `keyserver.*` are only for installing PHP 8.4; `rehearsal.trustutor.com` lets CC curl the site for smoke checks; `api.daily.co` is unused by CC and may be left out.)
 
 **Environment variables** (visible to anyone using the environment — no secrets here; these are the local-test values, same as `.env.example`):
@@ -35,6 +36,7 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 MAIL_MAILER=log
 ADMIN_SEED_PASSWORD=cloud-test-only
+COMPOSER_ALLOW_SUPERUSER=1
 BASH_DEFAULT_TIMEOUT_MS=600000
 BASH_MAX_TIMEOUT_MS=1800000
 ```
@@ -42,18 +44,25 @@ BASH_MAX_TIMEOUT_MS=1800000
 
 **Setup script** (runs once as root, cached ~7 days; must finish in ~5 minutes):
 ```bash
-set -euo pipefail
+set -uo pipefail
 export DEBIAN_FRONTEND=noninteractive
-add-apt-repository -y ppa:ondrej/php
+export COMPOSER_ALLOW_SUPERUSER=1
+apt-get update -q
+apt-get install -y -q ca-certificates curl gnupg
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x14aa40ec0831756756d7f66c4f4ea0aae5267a6c" | gpg --dearmor -o /etc/apt/keyrings/ondrej-php.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ondrej-php.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu noble main" > /etc/apt/sources.list.d/ondrej-php.list
 apt-get update -q
 apt-get install -y -q php8.4-cli php8.4-pgsql php8.4-redis php8.4-mbstring php8.4-xml php8.4-curl php8.4-zip php8.4-intl php8.4-bcmath php8.4-gd php8.4-sqlite3
-update-alternatives --set php /usr/bin/php8.4
+update-alternatives --set php /usr/bin/php8.4 || true
 php -v
-composer install --no-interaction --prefer-dist --no-progress &
-npm ci --no-audit --no-fund &
-wait
+# The cloud GitHub proxy serves only this repository: Composer must clone packages over git, not download zipballs (R199a).
+composer config -g preferred-install source
+composer install --no-interaction --no-progress || echo "composer install failed; the session will retry it"
+npm ci --no-audit --no-fund || echo "npm ci failed; the session will retry it"
 cp -n .env.example .env || true
-php artisan key:generate --force
+php artisan key:generate --force || echo "key:generate failed; the session will retry it"
+exit 0
 ```
 
 ## 2. Per-session start (SessionStart hook — services are not cached)
@@ -80,13 +89,20 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='elearning'" 
 php artisan migrate --force --no-interaction >/dev/null 2>&1 || true
 ```
 
-## 3. Known differences from local (accepted for the pilot)
+## 3. Pilot findings 2026-10-15 (R199) and what changed
+- Composer zipballs from api.github.com are 403 in the cloud → `preferred-install source` in the setup script. PHPStan had no git source → cycle 16 moves it to `tools/phpstan.phar` fetched from raw.githubusercontent.com with a pinned checksum.
+- Composer as root needs `COMPOSER_ALLOW_SUPERUSER=1` (now in the variables) or Pest's `--parallel` is missing.
+- Wayfinder route modules are generated on `composer install` from cycle 16; before that run `php artisan wayfinder:generate --with-form` by hand.
+- `npm run build` needs `fonts.bunny.net` (now in the allow-list); cycle 16 also makes the build survive without it.
+- `add-apt-repository` is broken on the VM (missing `apt_pkg`); the PPA is added by hand in the script above.
+
+## 4. Known differences from local (accepted for the pilot)
 - PostgreSQL **16** in the cloud VM, 18 locally and on rehearsal; Redis 7 both. If a test depends on a PG-18 feature, switch the hook to `docker compose up -d postgres` with `postgres:18` (Docker is pre-installed).
 - `CLAUDE.local.md` does not exist in the cloud: no ssh to rehearsal, so the R91 server checks cannot run there. Until the status endpoint (cycle 15) exists, **deploy + verify steps run in a local session**; cloud sessions build, test, open and merge PRs.
 - `/clear` is not a cloud command — start a new session instead; the method's "clear at END" means "new session".
 - R178 (start Herd services) does not apply; the hook above is its cloud equivalent.
 
-## 4. Pilot order
+## 5. Pilot order
 1. Install the Claude GitHub App on the account (all repositories) — once.
 2. Create the environment above; start a session with the task "Run `composer test` and report" to prove the toolchain. Fix the environment until it is green.
 3. Run one small cycle in the cloud end to end except deploy; deploy from a local session.
