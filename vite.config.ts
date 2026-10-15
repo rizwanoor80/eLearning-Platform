@@ -3,8 +3,8 @@ import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig, lazyPlugins } from 'vite-plus';
+import { fontDefinitions, fontsByUrlPlugins } from './scripts/vite-fonts.js';
 
 export default defineConfig({
     plugins: lazyPlugins(() => [
@@ -15,18 +15,10 @@ export default defineConfig({
                 'resources/css/filament/admin/theme.css',
             ],
             refresh: true,
-            fonts: [
-                bunny('Schibsted Grotesk', {
-                    weights: [400, 500, 700],
-                }),
-                bunny('Quicksand', {
-                    weights: [600],
-                }),
-                bunny('IBM Plex Mono', {
-                    weights: [400, 500],
-                }),
-            ],
+            // Self-hosted Bunny fonts; VITE_FONTS_INLINE=0 swaps them for a by-URL manifest (scripts/vite-fonts.js).
+            fonts: fontDefinitions(),
         }),
+        ...fontsByUrlPlugins(),
         inertia(),
         tailwindcss(),
         vue({
