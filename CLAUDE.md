@@ -12,7 +12,7 @@ Video via `App\Services\Video\VideoRoomProvider` (driver: Daily). Payments via `
 
 ## Local environment
 Native Windows via Laravel Herd Pro — no Docker, no Sail, no WSL (D-07 / ADR-001; Docker Desktop crash-loops here, see docker/desktop-feedback #460). PHP 8.4 everywhere (local, CI, servers) — no 8.3 fallback. Composer/Node from Herd; PostgreSQL 18 and Redis on localhost, plus a Herd mail catcher. Horizon is installed but never run locally (`php artisan queue:work redis` in dev); Reverb likewise may be deferred to CP7 if it cannot boot on Windows. Local service details live only in `CLAUDE.local.md` under `## Local services` and in `.env` — both git-ignored; never quote a password, connection string or password-bearing URL in any log entry, STATUS.md, commit, report or PR.
-Herd and its services (PostgreSQL, Redis, mail) are started and stopped only by the owner in the Herd app. Never launch, restart or "clean-relaunch" Herd or a service from this shell; if a service is down, halt with an Owner action.
+Herd and its services (PostgreSQL, Redis, mail). **Owner ruling R178 (2026-10-07, restated here 2026-10-15 because the old wording caused a needless halt):** when 5432 or 6379 refuses connections, first try to start the services yourself — `herd services start` if the `herd` CLI is on PATH, otherwise launch the Herd app (`Start-Process` on `%LOCALAPPDATA%\Programs\Herd\Herd.exe` from PowerShell) and wait up to 60 s for the ports — then continue. Never stop a service, never change Herd's PHP or site settings, never install anything. Halt with an Owner action only if the ports are still closed after that.
 
 ## Commands
 - `composer test` → full Pest suite. Must be green before any checkpoint closes.
