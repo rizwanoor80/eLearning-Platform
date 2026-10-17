@@ -82,7 +82,7 @@ If a task or a "helpful" abstraction would introduce one of these, do not build 
 The owner, the planning seat (a separate Claude session that writes only docs/PLAN.md) and
 Claude Code work in one fixed loop: owner says "go ahead" → planner writes docs/PLAN.md into the
 checkout at C:\project elearning, uncommitted → owner tells Claude Code `update` → Claude Code works,
-logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repeat.
+logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repeat. (R215, 2026-10-17: the planner commits its own docs — PLAN.md, docs/cloud/ENVIRONMENT.md, .claude/settings.json — straight to `main` as docs-only `[skip ci]` fast-forward commits, so the plan is on `origin/main`, not uncommitted in the checkout.)
 1. On every `update`: git fetch; fast-forward main; read docs/PLAN.md; if newer than the
    committed one, commit it as "PLAN.md cycle NN rN" before any other work; refuse a revision
    that already has an END in docs/CYCLE-LOG.md; execute from the first unfinished step. No new

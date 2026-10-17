@@ -100,8 +100,20 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      # The Vite fonts plugin fetches fonts.bunny.net at build time; a timeout there is an infrastructure
+      # red (R209), so the build is tried up to three times, 20 seconds apart, and fails only after the third.
       - name: Build frontend assets
-        run: npm run build
+        run: |
+          for attempt in 1 2 3; do
+            if npm run build; then
+              exit 0
+            fi
+            echo "npm run build failed (attempt ${attempt} of 3)" >&2
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 20
+            fi
+          done
+          exit 1
 
       # `artisan test --parallel` migrates only its per-process databases, so the base database that the
       # closing `ledger:verify` step reads must be migrated here (R128).
