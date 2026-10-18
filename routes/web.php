@@ -43,7 +43,7 @@ Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-
 
 // CP7 8d (R137): filing a report against a tutor's profile. Named `abuse-reports.*`, never
 // `tutors.*`: TutorProfilePolicy::reportAbuse is the authorisation, a non-party gets a 404.
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'throttle:account-writes'])->group(function () {
     Route::post('tutors/{tutor}/abuse-reports', [AbuseReportController::class, 'storeForTutor'])
         ->where('tutor', '[0-9]{1,18}')
         ->middleware('throttle:abuse-reports')
@@ -51,7 +51,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 // CP6 7c/7d: the lesson page and room, for the lesson's own tutor or parent. LessonPolicy::attend is the authorisation.
-Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['lesson' => '[0-9]{1,18}'])->group(function () {
+Route::middleware(['auth', 'verified', 'throttle:account-writes'])->prefix('lessons/{lesson}')->where(['lesson' => '[0-9]{1,18}'])->group(function () {
     Route::get('/', [LessonRoomController::class, 'show'])->name('lessons.show');
     Route::post('room', [LessonRoomController::class, 'join'])->middleware('throttle:lesson-room')->name('lessons.room');
     Route::post('joined', [LessonRoomController::class, 'joined'])->name('lessons.joined');
@@ -81,7 +81,7 @@ Route::middleware(['auth', 'verified'])->prefix('lessons/{lesson}')->where(['les
 
 // CP7 8b (R133, R135): Messages for both portals — an account holder and a tutor each see their own
 // conversations; ConversationPolicy answers anyone else with a 404. The badge counts are one JSON endpoint.
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'throttle:account-writes'])->group(function () {
     Route::get('unread-counts', UnreadCountsController::class)->middleware('throttle:unread-counts')->name('unread-counts');
 
     // CP7 8e (R139): the notification centre. Deliberately NOT added to
@@ -111,13 +111,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 });
 
-Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(function () {
+Route::middleware(['auth', 'verified', 'can:access-parent-area', 'throttle:account-writes'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
     // R186: where a new parent lands after verifying their email; see ParentGetStarted.
     Route::get('get-started', GetStartedController::class)->name('get-started');
     // R114: the single-booking screen. The GET is the parent's page for one chosen slot; a guest is sent to login and returned here.
     Route::get('tutors/{tutor}/book', [BookLessonController::class, 'create'])->where('tutor', '[0-9]{1,18}')->name('tutors.book');
-    Route::post('lessons', [BookLessonController::class, 'store'])->name('lessons.store');
+    Route::post('lessons', [BookLessonController::class, 'store'])->middleware('throttle:bookings')->name('lessons.store');
     Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
     Route::resource('learners', LearnerController::class);
@@ -127,7 +127,7 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
     Route::post('payment-methods', [TestCardController::class, 'store'])->name('payment-methods.store');
 
     Route::get('weekly-slots/create', [WeeklySlotController::class, 'create'])->name('weekly-slots.create');
-    Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->name('weekly-slots.store');
+    Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->middleware('throttle:bookings')->name('weekly-slots.store');
     Route::get('weekly-slots/{slot}/end', [WeeklySlotController::class, 'endShow'])->whereNumber('slot')->name('weekly-slots.end.show');
     Route::post('weekly-slots/{slot}/end', [WeeklySlotController::class, 'end'])->whereNumber('slot')->name('weekly-slots.end');
     Route::post('weekly-slots/{slot}/resume', [WeeklySlotController::class, 'resume'])->whereNumber('slot')->name('weekly-slots.resume');
@@ -135,7 +135,7 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area'])->group(functio
     Route::middleware('feature:match_requests')->group(function () {
         Route::get('match-requests', [MatchRequestController::class, 'index'])->name('match-requests.index');
         Route::get('match-requests/create', [MatchRequestController::class, 'create'])->name('match-requests.create');
-        Route::post('match-requests', [MatchRequestController::class, 'store'])->name('match-requests.store');
+        Route::post('match-requests', [MatchRequestController::class, 'store'])->middleware('throttle:bookings')->name('match-requests.store');
     });
 });
 
@@ -144,10 +144,11 @@ Route::middleware('guest')->group(function () {
         ->name('tutor.register');
 
     Route::post('tutor/register', [TutorRegisteredUserController::class, 'store'])
+        ->middleware('throttle:registration')
         ->name('tutor.register.store');
 });
 
-Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function () {
+Route::middleware(['auth', 'verified', 'can:access-tutor-area', 'throttle:account-writes'])->group(function () {
     Route::get('tutor/dashboard', [TutorDashboardController::class, 'show'])->name('tutor.dashboard');
     Route::post('tutor/booking-lead-time', [TutorLeadTimeController::class, 'update'])->name('tutor.lead-time.update');
 
@@ -156,8 +157,8 @@ Route::middleware(['auth', 'verified', 'can:access-tutor-area'])->group(function
 
     Route::get('tutor/onboarding', [TutorOnboardingController::class, 'show'])->name('tutor.onboarding');
     Route::post('tutor/onboarding/personal', [TutorOnboardingController::class, 'storePersonal'])->name('tutor.onboarding.personal');
-    Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->name('tutor.onboarding.permit');
-    Route::post('tutor/onboarding/documents', [TutorOnboardingController::class, 'storeDocument'])->name('tutor.onboarding.documents');
+    Route::post('tutor/onboarding/permit', [TutorOnboardingController::class, 'storePermit'])->middleware('throttle:onboarding-uploads')->name('tutor.onboarding.permit');
+    Route::post('tutor/onboarding/documents', [TutorOnboardingController::class, 'storeDocument'])->middleware('throttle:onboarding-uploads')->name('tutor.onboarding.documents');
     Route::post('tutor/onboarding/linkedin', [TutorOnboardingController::class, 'storeLinkedin'])->name('tutor.onboarding.linkedin');
     Route::post('tutor/onboarding/bank', [TutorOnboardingController::class, 'storeBank'])->name('tutor.onboarding.bank');
     Route::post('tutor/onboarding/subjects', [TutorOnboardingController::class, 'storeSubjects'])->name('tutor.onboarding.subjects');

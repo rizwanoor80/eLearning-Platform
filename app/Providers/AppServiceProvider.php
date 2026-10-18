@@ -71,6 +71,15 @@ class AppServiceProvider extends ServiceProvider
         // One dispute per lesson is enforced by the unique index; this only bounds open attempts (CP8, R150) —
         // per hour, matching abuse-reports, since a dispute is a similarly rare, consequential action.
         RateLimiter::for('disputes', fn (Request $request) => Limit::perHour(5)->by((string) $request->user()->id));
+        // Booking-shaped actions that create a lesson, a match request or a standing slot (R226): 10 a minute per user, one shared counter.
+        RateLimiter::for('bookings', fn (Request $request) => Limit::perMinute(10)->by((string) $request->user()->id));
+        // The tutor's onboarding uploads, the permit and the documents (R226): 10 a minute per user.
+        RateLimiter::for('onboarding-uploads', fn (Request $request) => Limit::perMinute(10)->by((string) $request->user()->id));
+        // The baseline for every other account write (R226): generous, per user (per address for a guest), and only for unsafe
+        // methods, so it can sit on a whole route group without counting page views.
+        RateLimiter::for('account-writes', fn (Request $request) => $request->isMethodSafe()
+            ? Limit::none()
+            : Limit::perMinute(60)->by((string) ($request->user()->id ?? $request->ip())));
     }
 
     /**
