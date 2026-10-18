@@ -53,7 +53,10 @@ class EnsureAccountActive
             $request->session()->regenerateToken();
 
             // R227: this ends a session too, so the login page it lands on clears the browser's history (after the invalidate, which would drop the flag).
-            Inertia::clearHistory();
+            // Not for a background fetch (the unread-count poll): it would follow the redirect and use the flag up on a page nobody sees.
+            if (! $request->expectsJson()) {
+                Inertia::clearHistory();
+            }
 
             return redirect()->route('login')->with('status', 'This account is no longer active.');
         }

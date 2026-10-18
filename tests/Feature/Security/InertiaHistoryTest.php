@@ -39,3 +39,11 @@ it('clears the history when a suspended session is ended', function () {
 
     expect(test()->get(route('login'))->viewData('page'))->toHaveKey('clearHistory', true);
 });
+
+it('leaves the flag for a real page when a background request ends a suspended session', function () {
+    $user = User::factory()->create(['status' => UserStatus::Suspended]);
+
+    test()->actingAs($user)->getJson(route('profile.edit'))->assertRedirect(route('login'));
+
+    expect(test()->get(route('login'))->viewData('page'))->not->toHaveKey('clearHistory');
+});
