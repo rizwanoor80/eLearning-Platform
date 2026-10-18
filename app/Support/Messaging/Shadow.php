@@ -122,6 +122,24 @@ final class Shadow
     }
 
     /**
+     * The original-text range that the bytes `$start` to `$end` (exclusive) of this copy came from.
+     *
+     * @return array{int, int}
+     */
+    public function originalSpan(int $start, int $end): array
+    {
+        $low = PHP_INT_MAX;
+        $high = 0;
+
+        for ($index = $start; $index < $end; $index++) {
+            $low = min($low, $this->from[$index]);
+            $high = max($high, $this->to[$index]);
+        }
+
+        return [$low, $high];
+    }
+
+    /**
      * @param  list<int>  $from
      * @param  list<int>  $to
      * @param  list<int>  $placeholder

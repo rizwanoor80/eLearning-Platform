@@ -20,12 +20,15 @@ use App\Exceptions\MessageMaskingFailedException;
  *  - `at`, `(at)`, `[at]`, `{at}` become "@" only when the text after it has the SHAPE of a mail target, built
  *    from the chain's own constants (`MessageMasker::AT_TARGET`: a mail provider, or labels and a recognised
  *    ending): "I am at home. Also fine" is untouched, "sara at gmail" is not.
- *  - A run of five or more English digit words becomes digits, one digit per word, the gaps kept ("double five" is
- *    two digits), so the chain's phone-run budget applies exactly as it does to typed digits. Four words or fewer
- *    are left alone: they could not reach the chain's seven-digit floor on their own.
- *  - A messenger name followed within three words by a handle or a run of five or more digits is hidden outright
+ *  - A run of digit words and typed numbers ("zero five 0 one two three four") becomes digits, one digit per word
+ *    ("double five" is two digits), the gaps kept, so the chain's phone-run budget applies exactly as it does to
+ *    typed digits. The run needs at least one word and seven digits in all (the chain's own floor); anything
+ *    shorter could not be hidden by the chain anyway.
+ *  - A zero-width joiner between two letters or digits is dropped from the copy, so "th\u{200D}ree" reads as "three".
+ *  - A messenger name followed within three words by a handle or a run of seven or more digits is hidden outright
  *    (`messengerSpans`), not rewritten to a marker: a marker placed after "-", "." or "+" falls outside EMAIL's
- *    lookbehind and would leave the handle visible.
+ *    lookbehind and would leave the handle visible. Names that are also ordinary words ("signal", "imo", "snap")
+ *    only count when the handle or number comes straight after them.
  *
  * Pure; no I/O. A PCRE failure refuses the message exactly as it does in the chain.
  */
@@ -39,17 +42,20 @@ final class SpelledOutPrePass
 
     private const DIGIT_WORDS = ['zero' => '0', 'oh' => '0', 'one' => '1', 'two' => '2', 'three' => '3', 'four' => '4', 'five' => '5', 'six' => '6', 'seven' => '7', 'eight' => '8', 'nine' => '9'];
 
-    private const MIN_DIGIT_WORDS = 5;
+    /** The chain's phone floor (`MessageMasker::MIN_PHONE_DIGITS`): fewer digits than this are never a phone number. */
+    private const MIN_DIGITS = 7;
 
-    private const MESSENGERS = 'whatsapp|whats\h?app|telegram|signal|discord|skype|instagram|insta|ig|snapchat|snap|facebook|fb|messenger|botim|imo|viber|wechat|kik|tiktok';
+    /** Messenger names that are not ordinary words: a handle or number may follow after up to three words. */
+    private const MESSENGERS = 'whatsapp|whats\h?app|telegram|discord|skype|instagram|snapchat|facebook|fb|messenger|botim|viber|wechat|tiktok';
 
-    private const MIN_HANDLE_DIGITS = 5;
+    /** Messenger names that are also ordinary words ("signal", "imo", "snap"): only a handle or number right after them. */
+    private const AMBIGUOUS_MESSENGERS = 'signal|insta|ig|snap|imo|kik';
 
     private const WORD_END = '(?![\p{L}\p{Nd}])';
 
-    private const DOT_LEFT_GAP = '[\h(\[{<_*\-]{1,4}';
+    private const DOT_LEFT_GAP = '[\h\v(\[{<_*\-]{1,4}';
 
-    private const DOT_RIGHT_GAP = '[\h)\]}>_*\-]{1,4}';
+    private const DOT_RIGHT_GAP = '[\h\v)\]}>_*\-]{1,4}';
 
     /**
      * The text after a "dot" that makes it part of a domain: a recognised ending, one of COUNTRY_CODES, or a label
@@ -60,15 +66,27 @@ final class SpelledOutPrePass
 
     private const DOT = '~(?<![\p{L}\p{Nd}])([\p{L}\p{Nd}]++)('.self::DOT_LEFT_GAP.'dot'.self::DOT_RIGHT_GAP.')'.self::DOT_RIGHT.'~iu';
 
-    private const AT = '~(?<=[\p{L}\p{Nd}])(?:\h++at\h++|\h{0,3}[(\[{]\h*at\h*[)\]}]\h{0,3})(?='.MessageMasker::AT_TARGET.')~iu';
+    private const AT = '~(?<=[\p{L}\p{Nd}])(?:[\h\v]++at[\h\v]++|[\h\v]{0,3}[(\[{][\h\v]*at[\h\v]*[)\]}][\h\v]{0,3})(?='.MessageMasker::AT_TARGET.')~iu';
 
-    private const DIGIT_WORD = '(?:(?:double|triple)\h++)?(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)'.self::WORD_END;
+    /** A zero-width joiner between two letters or digits splits a word the sender meant whole ("th\u{200D}ree"). */
+    private const JOINER = '~(?<=[\p{L}\p{Nd}])\x{200D}(?=[\p{L}\p{Nd}])~u';
 
-    private const DIGIT_RUN = '~(?<![\p{L}\p{Nd}])'.self::DIGIT_WORD.'(?:[\h,.\-]{1,3}+'.self::DIGIT_WORD.'){'.(self::MIN_DIGIT_WORDS - 1).',}~iu';
+    private const DIGIT_WORD = '(?:(?:double|triple)[\h\v]++)?(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)'.self::WORD_END;
 
-    private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:'.self::MESSENGERS.')'.self::WORD_END.'~iu';
+    private const NUMBER = '\p{Nd}++(?!\p{L})';
 
-    private const MESSENGER_TAIL = '~\G[^\p{L}\p{Nd}@]*+(?:\p{L}++[^\p{L}\p{Nd}@]*+){0,3}?(?:@[\p{L}_][\p{L}\p{Nd}._]{2,}|\p{Nd}{'.self::MIN_HANDLE_DIGITS.',})~u';
+    /** Digit words and typed numbers, up to three separator characters apart; `digits` keeps the runs with a word in them. */
+    private const DIGIT_RUN = '~(?<![\p{L}\p{Nd}])(?:'.self::DIGIT_WORD.'|'.self::NUMBER.')(?:[\h\v,.\-/]{1,3}+(?:'.self::DIGIT_WORD.'|'.self::NUMBER.'))*+~iu';
+
+    private const HANDLE_OR_NUMBER = '(?:@[\p{L}_][\p{L}\p{Nd}._]{2,}|\p{Nd}{'.self::MIN_DIGITS.',}+(?!\p{L}))';
+
+    private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:'.self::MESSENGERS.'|'.self::AMBIGUOUS_MESSENGERS.')'.self::WORD_END.'~iu';
+
+    private const MESSENGER_AMBIGUOUS = '~^(?:'.self::AMBIGUOUS_MESSENGERS.')$~iu';
+
+    private const MESSENGER_TAIL = '~\G[^\p{L}\p{Nd}@]*+(?:\p{L}++[^\p{L}\p{Nd}@]*+){0,3}?'.self::HANDLE_OR_NUMBER.'~u';
+
+    private const MESSENGER_TAIL_NEAR = '~\G[^\p{L}\p{Nd}@]*+'.self::HANDLE_OR_NUMBER.'~u';
 
     /**
      * The copy of `$text` with every spelled-out "dot", "at" and digit word rewritten, or null when nothing was.
@@ -79,7 +97,7 @@ final class SpelledOutPrePass
         $shadow = Shadow::identity($text);
         $changed = false;
 
-        foreach (['dots', 'ats', 'digits'] as $step) {
+        foreach (['joiners', 'dots', 'ats', 'digits'] as $step) {
             $edits = self::$step($shadow->text);
 
             if ($edits !== []) {
@@ -110,7 +128,8 @@ final class SpelledOutPrePass
                 continue;
             }
 
-            $tail = preg_match(self::MESSENGER_TAIL, $text, $found, PREG_OFFSET_CAPTURE, $end);
+            $near = preg_match(self::MESSENGER_AMBIGUOUS, $name) === 1;
+            $tail = preg_match($near ? self::MESSENGER_TAIL_NEAR : self::MESSENGER_TAIL, $text, $found, PREG_OFFSET_CAPTURE, $end);
 
             if ($tail === false) {
                 throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
@@ -123,6 +142,15 @@ final class SpelledOutPrePass
         }
 
         return $spans;
+    }
+
+    /** @return list<array{int, int, list<array{string, int, int}>}> */
+    private static function joiners(string $text): array
+    {
+        return array_map(
+            static fn (array $match): array => [$match[1], strlen($match[0]), []],
+            self::matches(self::JOINER, $text),
+        );
     }
 
     /** @return list<array{int, int, list<array{string, int, int}>}> */
@@ -159,8 +187,23 @@ final class SpelledOutPrePass
         $edits = [];
 
         foreach (self::matches(self::DIGIT_RUN, $text) as [$run, $runOffset]) {
-            foreach (self::matches('~'.self::DIGIT_WORD.'~iu', $run) as [$word, $offset]) {
-                $edits[] = [$runOffset + $offset, strlen($word), [[self::digitsOf($word), 0, strlen($word)]]];
+            $edit = [];
+            $digits = 0;
+
+            foreach (self::matches('~'.self::DIGIT_WORD.'|'.self::NUMBER.'~iu', $run) as [$token, $offset]) {
+                if (preg_match('~^\p{Nd}~u', $token) === 1) {
+                    $digits += mb_strlen($token);
+
+                    continue;
+                }
+
+                $value = self::digitsOf($token);
+                $digits += strlen($value);
+                $edit[] = [$runOffset + $offset, strlen($token), [[$value, 0, strlen($token)]]];
+            }
+
+            if ($edit !== [] && $digits >= self::MIN_DIGITS) {
+                array_push($edits, ...$edit);
             }
         }
 
@@ -169,7 +212,7 @@ final class SpelledOutPrePass
 
     private static function digitsOf(string $word): string
     {
-        if (preg_match('~^(?:(double|triple)\h++)?([a-z]+)$~', strtolower($word), $parts) !== 1) {
+        if (preg_match('~^(?:(double|triple)[\h\v]++)?([a-z]+)$~u', strtolower($word), $parts) !== 1) {
             throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
         }
 

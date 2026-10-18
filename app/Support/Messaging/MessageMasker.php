@@ -180,23 +180,29 @@ use Normalizer;
  * without capping or touching the local part. Measured before and after in CYCLE-LOG VERIFICATION entries.
  *
  * R231, the spelled-out pre-pass: with `$spelledOut` (the default) the body is also read through
- * `SpelledOutPrePass` — "sara at gmail dot com", five or more digit words, a messenger name followed by a
- * handle or digits. That never adds a pattern to the chain above. The chain runs twice, once over the text
- * as it stands (exactly what it hid before R231) and once over a `Shadow` copy with the spelled-out words
- * rewritten to "@", "." and digits; what either run hides, plus the messenger spans, is mapped back onto the
- * ORIGINAL text and each merged stretch becomes one PLACEHOLDER. So the result hides everything the chain
- * alone would (never less), and a body the pre-pass finds nothing in takes the old path byte for byte
- * (`maskPlain`). Disclosed: a messenger span is hidden directly rather than through a marker; a body the
- * pre-pass rewrites costs about twice the chain's time; the pre-pass is deliberately narrow, so "we are at
- * zoom.us" and "meet me at 5.pm" also hide the word before the domain (the chain already hid the domain),
- * "dot" is rewritten only before a recognised ending or a short list of country codes and never after a
- * plain word such as "the" or "red" ("dot in" and "dot is" are left alone), and a digit word run needs five
- * words with at most three separator characters between them. `DisplayNameRule` calls `mask($form, false)`:
- * a display name is never rejected on the strength of a spelled-out shape (R218, no new rejection).
+ * `SpelledOutPrePass` — "sara at gmail dot com", digit words, a messenger name followed by a handle or digits.
+ * That never adds a pattern to the chain above. The chain runs twice, once over the text as it stands (exactly
+ * what it hid before R231) and once over a `Shadow` copy with the spelled-out words rewritten to "@", "." and
+ * digits; what either run hides, plus the messenger spans, is mapped back onto the ORIGINAL text and each
+ * merged stretch becomes one PLACEHOLDER. So the result hides everything the chain alone would (never less), and
+ * a body the pre-pass finds nothing in takes the old path byte for byte (`maskPlain`). Disclosed: a messenger
+ * span is hidden directly rather than through a marker; a body the pre-pass rewrites costs several times the
+ * chain's time (about 1-2 ms at 2,000 characters, against about 0.1 ms); a zero-width joiner between two
+ * letters is dropped from the copy, so Indic and Persian text with joiners takes the tracked path; the
+ * pre-pass is deliberately narrow, so "we are at zoom.us" and "meet me at 5.pm" also hide the word before the
+ * domain (the chain already hid the domain), "she works at yahoo" and "I am at outlook" read as an address,
+ * "one, two, three, four, five, six, seven" reads as a number, "dot" is rewritten only before a recognised
+ * ending or a short list of country codes and never after a plain word such as "the" or "red" ("dot in" and
+ * "dot is" are left alone), a run of digit words and typed numbers needs seven digits in all (the chain's
+ * phone floor) with at most three separator characters between tokens, and a messenger name that is also an
+ * ordinary word ("signal", "imo", "snap") only counts when the handle or number is right behind it. Words glued
+ * together ("zerofivezero") are not split. `DisplayNameRule` calls `mask($form, false)`: a display name is never
+ * rejected on the strength of a spelled-out shape (R218, no new rejection). Review comments and counterpart
+ * names call `mask()` with the default, so they get the pre-pass too.
  *
  * Known limits, disclosed in ADR-019 and narrowed by R231: spelled-out shapes the pre-pass does not
- * recognise (a digit word run broken by more than three characters, a country code off its list, a handle
- * far from a messenger name), digits split by whole words or
+ * recognise (a digit word run broken by more than three characters, a country code off its list, a punctuation
+ * mark before "at", a handle with no "@" or far from a messenger name, look-alike letters), digits split by whole words or
  * replaced by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
  * four family emoji, get through — phone-gap limits are unchanged by R144, disclosed as out of scope),
  * a `:` between digits, an address whose provider is not on the short MAIL_PROVIDER list and whose domain
@@ -415,6 +421,12 @@ class MessageMasker
         if ($spelledOut) {
             $rewritten = SpelledOutPrePass::rewrite($text);
             $direct = SpelledOutPrePass::messengerSpans($text);
+
+            if ($rewritten !== null) {
+                foreach (SpelledOutPrePass::messengerSpans($rewritten->text) as [$start, $end]) {
+                    $direct[] = $rewritten->originalSpan($start, $end);
+                }
+            }
 
             if ($rewritten !== null || $direct !== []) {
                 return $this->maskTracked($text, $rewritten, $direct);

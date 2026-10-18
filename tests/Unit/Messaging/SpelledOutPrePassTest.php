@@ -90,12 +90,65 @@ it('finds a messenger name and the handle or digits after it', function (string 
 })->with([
     'handle' => ['hi whatsapp @sara_k ok', [[3, 19]]],
     'digits' => ['telegram 0501234', [[0, 16]]],
-    'two words between' => ['my insta is the @sara_k', [[3, 23]]],
+    'two words between' => ['my whatsapp is the @sara_k', [[3, 26]]],
+    'ambiguous name, handle right after' => ['my insta @sara_k', [[3, 16]]],
+    'ambiguous name, number right after' => ['signal 0501234', [[0, 14]]],
+    'ambiguous name, words between' => ['my insta is the @sara_k', []],
+    'ambiguous name as a plain word' => ['a signal is sent at 0501234', []],
     'four words between is too far' => ['telegram a b c d @sara_k', []],
     'short number' => ['whatsapp 1234', []],
     'bare word' => ['telegram sara_k', []],
     'inside a longer word' => ['a signalman @sara_k', []],
 ]);
+
+it('hides the review round-1 shapes', function (string $body) {
+    $result = (new MessageMasker)->mask($body);
+
+    expect($result->masked)->toBeTrue()
+        ->and($result->text)->not->toContain('sara')
+        ->and($result->text)->not->toContain('one')
+        ->and($result->text)->not->toContain('five');
+})->with([
+    'ogham space round an at' => ["mail sara\u{1680}at\u{1680}gmail.com"],
+    'newline between digit words' => ["call zero five zero\none two three four"],
+    'joiner inside a digit word' => ["call th\u{200D}ree one two three four five six"],
+    'typed digits, words and double' => ['call 0 5 zero one two double three'],
+    'typed number beside words' => ['call 05 zero one 234'],
+    'ambiguous messenger with a handle' => ['signal @sara_k'],
+]);
+
+it('leaves an ambiguous messenger word and a letter-glued number alone', function (string $body) {
+    expect((new MessageMasker)->mask($body)->text)->toBe($body);
+})->with([
+    'signal as a word' => ['my signal is great'],
+    'number glued to letters' => ['ring fb 12345ty'],
+]);
+
+it('is idempotent on the review round-1 shapes', function (string $body) {
+    $masker = new MessageMasker;
+    $once = $masker->mask($body)->text;
+
+    expect($masker->mask($once)->text)->toBe($once);
+})->with([
+    'glued number' => ['ring fb 12345ty'],
+    'messenger and words' => ['call zero five zero one two three four then whatsapp @sara_k'],
+    'joiner' => ["call th\u{200D}ree one two three four five six"],
+]);
+
+it('masks exactly as the recorded main output without the pre-pass (every corpus input)', function () {
+    $outputs = MaskerCorpus::recorded()['outputs'];
+    $different = [];
+
+    foreach (MaskerCorpus::inputs() as $index => $input) {
+        $recorded = $outputs[MaskerCorpus::keyOf($input)] ?? null;
+
+        if ($recorded !== null && (new MessageMasker)->mask($input, false)->text !== $recorded) {
+            $different[] = $index;
+        }
+    }
+
+    expect($different)->toBe([], 'mask(spelledOut: false) differs from main on corpus input(s): '.implode(', ', array_slice($different, 0, 10)));
+});
 
 it('rewrites nothing in ordinary prose', function (string $text) {
     expect(SpelledOutPrePass::rewrite($text))->toBeNull();
@@ -136,6 +189,18 @@ it('still fails closed on a PCRE failure inside the pre-pass', function () {
 
     try {
         expect(fn () => (new MessageMasker)->mask('sara at gmail dot com'))->toThrow(MessageMaskingFailedException::class);
+    } finally {
+        ini_set('pcre.backtrack_limit', $original);
+    }
+});
+
+it('fails closed when the pre-pass itself hits a PCRE failure', function () {
+    $original = ini_get('pcre.backtrack_limit');
+    ini_set('pcre.backtrack_limit', '1');
+
+    try {
+        expect(fn () => SpelledOutPrePass::rewrite('sara at gmail dot com zero one two three four five six'))
+            ->toThrow(MessageMaskingFailedException::class);
     } finally {
         ini_set('pcre.backtrack_limit', $original);
     }
