@@ -297,4 +297,13 @@ question 12
     // Documented over-masking (R231): the chain already hid the domain; the rewrite makes the word before "at" part of the address
     'R231 over-mask: at a domain with a country code' => ['we are at zoom.us', 'we '.MessageMasker::PLACEHOLDER],
     'R231 over-mask: a time written with a dot' => ['meet me at 5.pm', 'meet '.MessageMasker::PLACEHOLDER],
+    'R231 over-mask: dot net in prose' => ['I teach dot net programming', 'I '.MessageMasker::PLACEHOLDER.' programming'],
+    'R231 over-mask: counting prose with seven digit words' => ['Score: one 100, two 95, three 90', 'Score: '.MessageMasker::PLACEHOLDER],
+
+    // Round 2: punctuation between spelled-out digits and the South Asian spelling of "@"
+    'R231 digit words with brackets' => ['zero five zero (one two three) four five six seven', MessageMasker::PLACEHOLDER],
+    'R231 typed digits and words with brackets' => ['050 (one two three) 4567', MessageMasker::PLACEHOLDER],
+    'R231 digit words with a semicolon' => ['zero five zero; one two three four five six', MessageMasker::PLACEHOLDER],
+    'R231 digit words with bars' => ['zero five zero | one two three | four five six seven', MessageMasker::PLACEHOLDER],
+    'R231 at the rate' => ['sara at the rate gmail dot com', MessageMasker::PLACEHOLDER],
 ];

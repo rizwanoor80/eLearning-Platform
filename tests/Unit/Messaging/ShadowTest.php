@@ -8,8 +8,8 @@ it('maps an untouched copy onto itself', function () {
     $shadow = Shadow::identity('abc');
 
     expect($shadow->text)->toBe('abc')
-        ->and($shadow->from)->toBe([0, 1, 2])
-        ->and($shadow->to)->toBe([1, 2, 3])
+        ->and($shadow->fromList())->toBe([0, 1, 2])
+        ->and($shadow->toList())->toBe([1, 2, 3])
         ->and($shadow->placeholderSpans())->toBe([])
         ->and(Shadow::identity('')->text)->toBe('');
 });
@@ -19,8 +19,8 @@ it('lets a replacement stand for every byte it replaced', function () {
     $shadow = Shadow::identity('a at b')->apply([[1, 4, [['@', 0, 4]]]]);
 
     expect($shadow->text)->toBe('a@b')
-        ->and($shadow->from)->toBe([0, 1, 5])
-        ->and($shadow->to)->toBe([1, 5, 6]);
+        ->and($shadow->fromList())->toBe([0, 1, 5])
+        ->and($shadow->toList())->toBe([1, 5, 6]);
 });
 
 it('returns a placeholder span in original-text bytes, widened over a rewritten stretch', function () {

@@ -201,7 +201,7 @@ use Normalizer;
  * names call `mask()` with the default, so they get the pre-pass too.
  *
  * Known limits, disclosed in ADR-019 and narrowed by R231: spelled-out shapes the pre-pass does not
- * recognise (a digit word run broken by more than three characters, a country code off its list, a punctuation
+ * recognise (a digit word run broken by more than six characters, teens and tens ("twelve", "thirty"), the first name before "dot" in "john dot smith at gmail dot com", a country code off its list, a punctuation
  * mark before "at", a handle with no "@" or far from a messenger name, look-alike letters), digits split by whole words or
  * replaced by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
  * four family emoji, get through — phone-gap limits are unchanged by R144, disclosed as out of scope),
@@ -216,7 +216,9 @@ use Normalizer;
  * mixed junk run) are masked too — a label is not distinguished from a spelled-out separator word,
  * deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead; the
  * variation selectors and every format character (bar the ZWJ, see above) are stripped from the stored
- * text; 16:00-17:00 and ordinary sentence ends are left alone.
+ * text; 16:00-17:00 and ordinary sentence ends are left alone. R231 adds to the over-masking: "we are at zoom.us",
+ * "meet me at 5.pm", "I teach dot net programming" (any label + "dot" + a recognised ending), and counting prose with
+ * seven or more digit words or numbers.
  */
 class MessageMasker
 {

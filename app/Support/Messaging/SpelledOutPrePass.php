@@ -21,7 +21,7 @@ use App\Exceptions\MessageMaskingFailedException;
  *    from the chain's own constants (`MessageMasker::AT_TARGET`: a mail provider, or labels and a recognised
  *    ending): "I am at home. Also fine" is untouched, "sara at gmail" is not.
  *  - A run of digit words and typed numbers ("zero five 0 one two three four") becomes digits, one digit per word
- *    ("double five" is two digits), the gaps kept, so the chain's phone-run budget applies exactly as it does to
+ *    ("double five" is two digits), the gaps (up to six non-letter characters, as in the chain) kept, so the chain's phone-run budget applies exactly as it does to
  *    typed digits. The run needs at least one word and seven digits in all (the chain's own floor); anything
  *    shorter could not be hidden by the chain anyway.
  *  - A zero-width joiner between two letters or digits is dropped from the copy, so "th\u{200D}ree" reads as "three".
@@ -66,7 +66,7 @@ final class SpelledOutPrePass
 
     private const DOT = '~(?<![\p{L}\p{Nd}])([\p{L}\p{Nd}]++)('.self::DOT_LEFT_GAP.'dot'.self::DOT_RIGHT_GAP.')'.self::DOT_RIGHT.'~iu';
 
-    private const AT = '~(?<=[\p{L}\p{Nd}])(?:[\h\v]++at[\h\v]++|[\h\v]{0,3}[(\[{][\h\v]*at[\h\v]*[)\]}][\h\v]{0,3})(?='.MessageMasker::AT_TARGET.')~iu';
+    private const AT = '~(?<=[\p{L}\p{Nd}])(?:[\h\v]++at[\h\v]++(?:the[\h\v]++rate[\h\v]++(?:of[\h\v]++)?)?|[\h\v]{0,3}[(\[{][\h\v]*at[\h\v]*[)\]}][\h\v]{0,3})(?='.MessageMasker::AT_TARGET.')~iu';
 
     /** A zero-width joiner between two letters or digits splits a word the sender meant whole ("th\u{200D}ree"). */
     private const JOINER = '~(?<=[\p{L}\p{Nd}])\x{200D}(?=[\p{L}\p{Nd}])~u';
@@ -75,8 +75,11 @@ final class SpelledOutPrePass
 
     private const NUMBER = '\p{Nd}++(?!\p{L})';
 
-    /** Digit words and typed numbers, up to three separator characters apart; `digits` keeps the runs with a word in them. */
-    private const DIGIT_RUN = '~(?<![\p{L}\p{Nd}])(?:'.self::DIGIT_WORD.'|'.self::NUMBER.')(?:[\h\v,.\-/]{1,3}+(?:'.self::DIGIT_WORD.'|'.self::NUMBER.'))*+~iu';
+    /**
+     * Digit words and typed numbers, up to six separator characters apart (the chain's own phone gap; a separator is
+     * anything but a letter, a digit or ":"); `digits` keeps the runs with a word in them.
+     */
+    private const DIGIT_RUN = '~(?<![\p{L}\p{Nd}])(?:'.self::DIGIT_WORD.'|'.self::NUMBER.')(?:[^\p{L}\p{Nd}:]{1,6}+(?:'.self::DIGIT_WORD.'|'.self::NUMBER.'))*+~iu';
 
     private const HANDLE_OR_NUMBER = '(?:@[\p{L}_][\p{L}\p{Nd}._]{2,}|\p{Nd}{'.self::MIN_DIGITS.',}+(?!\p{L}))';
 

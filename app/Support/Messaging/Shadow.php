@@ -11,22 +11,21 @@ use LogicException;
  * the sender's own words everywhere else.
  *
  * Every byte carries `from`/`to` (a half-open byte range of the original text) and `placeholder` (0, or the id
- * of the placeholder it belongs to). A replacement's bytes all carry the smallest range covering the bytes they
+ * of the placeholder it belongs to), each held as a packed run of 32-bit integers so a copy is a `substr` rather than
+ * an array rebuild (a 2,000-character body can grow to tens of kilobytes under NFKC). A replacement's bytes all carry the smallest range covering the bytes they
  * replaced, so a placeholder that later swallows part of another placeholder, or part of a rewritten word,
  * widens to the whole of it — never to a fragment. Pure; no I/O.
  */
 final class Shadow
 {
-    /**
-     * @param  list<int>  $from
-     * @param  list<int>  $to
-     * @param  list<int>  $placeholder
-     */
+    /** One packed 32-bit little-endian integer per byte of `$text`. */
+    private const WIDTH = 4;
+
     private function __construct(
         public readonly string $text,
-        public readonly array $from,
-        public readonly array $to,
-        public readonly array $placeholder,
+        private readonly string $from,
+        private readonly string $to,
+        private readonly string $placeholder,
         private readonly int $nextId,
     ) {}
 
@@ -35,7 +34,25 @@ final class Shadow
     {
         $length = strlen($text);
 
-        return new self($text, $length === 0 ? [] : range(0, $length - 1), $length === 0 ? [] : range(1, $length), array_fill(0, $length, 0), 1);
+        return new self(
+            $text,
+            $length === 0 ? '' : pack('V*', ...range(0, $length - 1)),
+            $length === 0 ? '' : pack('V*', ...range(1, $length)),
+            str_repeat(pack('V', 0), $length),
+            1,
+        );
+    }
+
+    /** @return list<int> */
+    public function fromList(): array
+    {
+        return self::unpacked($this->from);
+    }
+
+    /** @return list<int> */
+    public function toList(): array
+    {
+        return self::unpacked($this->to);
     }
 
     /**
@@ -53,9 +70,9 @@ final class Shadow
         }
 
         $text = '';
-        $from = [];
-        $to = [];
-        $placeholder = [];
+        $from = '';
+        $to = '';
+        $placeholder = '';
         $position = 0;
         $id = $this->nextId;
 
@@ -71,20 +88,13 @@ final class Shadow
                     throw new LogicException('A shadow piece must stand for at least one replaced byte.');
                 }
 
-                $low = PHP_INT_MAX;
-                $high = 0;
-
-                for ($index = $offset + $start; $index < $offset + $end; $index++) {
-                    $low = min($low, $this->from[$index]);
-                    $high = max($high, $this->to[$index]);
-                }
-
+                [$low, $high] = $this->originalSpan($offset + $start, $offset + $end);
                 $size = strlen($piece);
 
                 $text .= $piece;
-                array_push($from, ...array_fill(0, $size, $low));
-                array_push($to, ...array_fill(0, $size, $high));
-                array_push($placeholder, ...array_fill(0, $size, $asPlaceholder ? $id : 0));
+                $from .= str_repeat(pack('V', $low), $size);
+                $to .= str_repeat(pack('V', $high), $size);
+                $placeholder .= str_repeat(pack('V', $asPlaceholder ? $id : 0), $size);
             }
 
             if ($asPlaceholder) {
@@ -106,16 +116,29 @@ final class Shadow
      */
     public function placeholderSpans(): array
     {
+        // Only the runs of non-zero bytes can belong to a placeholder; skip the (usually far larger) rest.
+        if (preg_match_all('~[^\x00]++~', $this->placeholder, $runs, PREG_OFFSET_CAPTURE) === false) {
+            throw new LogicException('Shadow could not scan its placeholders.');
+        }
+
         $spans = [];
 
-        foreach ($this->placeholder as $index => $id) {
-            if ($id === 0) {
-                continue;
-            }
+        foreach ($runs[0] as [$run, $offset]) {
+            $first = intdiv($offset, self::WIDTH);
+            $count = intdiv($offset + strlen($run) - 1, self::WIDTH) - $first + 1;
+            $ids = self::unpacked(substr($this->placeholder, $first * self::WIDTH, $count * self::WIDTH));
+            $from = self::unpacked(substr($this->from, $first * self::WIDTH, $count * self::WIDTH));
+            $to = self::unpacked(substr($this->to, $first * self::WIDTH, $count * self::WIDTH));
 
-            $spans[$id] = isset($spans[$id])
-                ? [min($spans[$id][0], $this->from[$index]), max($spans[$id][1], $this->to[$index])]
-                : [$this->from[$index], $this->to[$index]];
+            foreach ($ids as $index => $id) {
+                if ($id === 0) {
+                    continue;
+                }
+
+                $spans[$id] = isset($spans[$id])
+                    ? [min($spans[$id][0], $from[$index]), max($spans[$id][1], $to[$index])]
+                    : [$from[$index], $to[$index]];
+            }
         }
 
         return array_values($spans);
@@ -128,31 +151,37 @@ final class Shadow
      */
     public function originalSpan(int $start, int $end): array
     {
-        $low = PHP_INT_MAX;
-        $high = 0;
+        $from = self::unpacked(substr($this->from, $start * self::WIDTH, ($end - $start) * self::WIDTH));
+        $to = self::unpacked(substr($this->to, $start * self::WIDTH, ($end - $start) * self::WIDTH));
 
-        for ($index = $start; $index < $end; $index++) {
-            $low = min($low, $this->from[$index]);
-            $high = max($high, $this->to[$index]);
-        }
-
-        return [$low, $high];
+        return [$from === [] ? PHP_INT_MAX : min($from), $to === [] ? 0 : max($to)];
     }
 
-    /**
-     * @param  list<int>  $from
-     * @param  list<int>  $to
-     * @param  list<int>  $placeholder
-     */
-    private function copy(int $start, int $end, string &$text, array &$from, array &$to, array &$placeholder): void
+    private function copy(int $start, int $end, string &$text, string &$from, string &$to, string &$placeholder): void
     {
         if ($end <= $start) {
             return;
         }
 
         $text .= substr($this->text, $start, $end - $start);
-        array_push($from, ...array_slice($this->from, $start, $end - $start));
-        array_push($to, ...array_slice($this->to, $start, $end - $start));
-        array_push($placeholder, ...array_slice($this->placeholder, $start, $end - $start));
+        $from .= substr($this->from, $start * self::WIDTH, ($end - $start) * self::WIDTH);
+        $to .= substr($this->to, $start * self::WIDTH, ($end - $start) * self::WIDTH);
+        $placeholder .= substr($this->placeholder, $start * self::WIDTH, ($end - $start) * self::WIDTH);
+    }
+
+    /** @return list<int> */
+    private static function unpacked(string $packed): array
+    {
+        if ($packed === '') {
+            return [];
+        }
+
+        $values = unpack('V*', $packed);
+
+        if ($values === false) {
+            throw new LogicException('Shadow could not read its byte map.');
+        }
+
+        return array_values($values);
     }
 }

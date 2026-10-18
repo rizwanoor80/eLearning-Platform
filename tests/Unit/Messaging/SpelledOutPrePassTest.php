@@ -180,10 +180,11 @@ it('stays fast on its own worst shapes', function (string $label, string $body) 
     'dot and 2000-space gaps' => ['dot gaps', 'a'.str_repeat(' ', 2000).'dot'.str_repeat(' ', 2000).'com'],
     'bracketed ats' => ['brackets', str_repeat('(at)', 500)],
     'dash runs round an at' => ['dash at', str_repeat('a-', 1000).' at '.str_repeat('b-', 1000).'.com'],
+    'a body that grows under NFKC' => ['nfkc', str_repeat("\u{FDFA}", 1850)." a\u{200D}b x dot com y at gmail one two three four five six seven a@b.com http://x www.y z.com q.shop r.uk s@gmail 1234567 whatsapp @abc"],
     'everything at once' => ['all', str_repeat('sara (at) a-b dot co dot uk zero one two three four five whatsapp @x_yz ', 40)],
 ]);
 
-it('still fails closed on a PCRE failure inside the pre-pass', function () {
+it('refuses the message on a PCRE failure', function () {
     $original = ini_get('pcre.backtrack_limit');
     ini_set('pcre.backtrack_limit', '1');
 
@@ -200,6 +201,18 @@ it('fails closed when the pre-pass itself hits a PCRE failure', function () {
 
     try {
         expect(fn () => SpelledOutPrePass::rewrite('sara at gmail dot com zero one two three four five six'))
+            ->toThrow(MessageMaskingFailedException::class);
+    } finally {
+        ini_set('pcre.backtrack_limit', $original);
+    }
+});
+
+it('fails closed when the messenger scan hits a PCRE failure', function () {
+    $original = ini_get('pcre.backtrack_limit');
+    ini_set('pcre.backtrack_limit', '1');
+
+    try {
+        expect(fn () => SpelledOutPrePass::messengerSpans('hi whatsapp a b @sara_k and more text'))
             ->toThrow(MessageMaskingFailedException::class);
     } finally {
         ini_set('pcre.backtrack_limit', $original);
