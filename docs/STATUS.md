@@ -1,47 +1,36 @@
-# STATUS — cycle 18 r3 — programme "steady state" COMPLETE: 18a, 18c, 18d, 18e, 18f merged and deployed (18b closed, R223); END; written 2026-10-18 17:32
-Tests: **2689 passed / 13928 assertions** (measured on the 18f head `e79c94e`; `main` is `8c64d6f`, its squash; PR CI green on both PostgreSQL jobs, push CI run 39149429196 green) · Advisor: consulted 0 times this session (0 confirmed); cycle 18 total 4 (18a, 18b design, 18d lock order, 18e limiter design; Fable 5.1), 0 in 18f · Review: 18a 11 verdicts, 0 M/H (merged); 18b closed unmerged (R223); 18c round 1: 13 verdicts, 0 M/H, 2 Low (fixed); round 2: 9 verdicts, 0 M/H, 1 Low (carried) — merged; 18d round 1: 15 verdicts, 0 M/H, 2 Low (fixed, docs only) — merged; 18e round 1: 16 verdicts, 0 M/H, 2 Low (fixed) — merged; 18f round 1: 12 verdicts, 0 M/H, 1 Low (fixed) — merged · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 5. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 15:14).
+# STATUS — cycle 19 r1 — programme "steady state II", 19a in progress; written 2026-10-18 19:41
+Tests: **2689 passed / 13928 assertions** on `main` `40869ec` (cycle 18's last measured count; 19a not yet built) · Advisor: consulted 0 times this session (0 confirmed); cycle 19 total 0 · Review: n/a (no PR yet) · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 0. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 19:40).
 
 ## §1 Git state
-- `origin/main` = the log commits on top of `8c64d6f` (PR #60, 18f, squash); before it `c815be8`, `c423145`, `e0c2e8a` (PR #59). Push CI on `8c64d6f` (run 39149429196): success. `rehearsal` = `8c64d6f` (fast-forwarded 17:28:37; R213 green, CYCLE-LOG VERIFICATION 17:30).
-- PR #56 closed without merge (R223); `cp/18b-masker-spelled` (`5d89910`), `hold/18b-fix`, `hold/18b-fix2`, `hold/18b-fix3` (`303dd44`) untouched on the remote. `cp/18c-low-notes`, `cp/18d-display-name-races` (`0ffc4d9`), `cp/18e-rate-limits` (`ebb1e83`) and `cp/18f-history-encryption` (`e79c94e`) are merged and stay (no branch deleted). No open PRs. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
+- `origin/main` = `40869ec` (PLAN.md cycle 19 r1, planner, R215) plus this session's log commits; code on `main` is `8c64d6f`; `rehearsal` = `8c64d6f`. No open PR. Branch for 19a: `cp/19a-masker-corpus`, cut from `origin/main`. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
 
 ## §2 Step map
-1. START — [done]. 2. 18a, PR #55 `feab912` — [done]. 3. R222 entry, PR #56 closed (R223) — [done].
-4. 18c under R219 + R224(7), PR #57 merged `c986be3` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done].
-5. 18d under R225, PR #58 merged `6b2a1c8` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done].
-6. 18e under R226, PR #59 merged `e0c2e8a` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done]. 7. 18f under R227, PR #60 merged `8c64d6f` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done]. 8. END — [done] (HANDOFF and END in CYCLE-LOG 17:31).
+1. START, R222 check, this header — [done]. 2. 19a under R230 — [in progress]. 3. 19b under R231 — [not started]. 4. 19c under R232 — [not started]. 5. 19d under R233 — [not started]. 6. END — [not started].
 
 ## §3 What changed this run
-- PR #60 (18f, R227), 5 files: `config/inertia.php` gained `history.encrypt` (env `INERTIA_ENCRYPT_HISTORY`, default on), so every Inertia page is sent with `encryptHistory` (vendor `ResponseFactory.php:383`, `Response.php:234`); a new `App\Http\Responses\LogoutResponse`, bound over Fortify's contract in `FortifyServiceProvider`, calls `Inertia::clearHistory()` and then delegates to Fortify's own response (the flag is set after Fortify's `invalidate()`, so it lands in the new session and rides on the first page after the redirect); `EnsureAccountActive` does the same after its own invalidate, only for a non-JSON request (review Low 6: a background poll would otherwise use the flag up on a page nobody sees). `tests/Feature/Security/InertiaHistoryTest.php` (6 tests): 4 red on the old code. Filament untouched, no migration, no front-end change.
-- CYCLE-LOG: 17:24 NOTE (advisor not consulted), VERIFICATION, REVIEW, DECISION (fix loop), DECISION (merge); 17:28 NOTE (post-merge) and DECISION (deploy); 17:30 VERIFICATION (rehearsal at `8c64d6f`, R213 green); 17:31 HANDOFF; 17:31 END.
+- CYCLE-LOG 19:40 START and VERIFICATION (R222). No code yet.
 
 ## §4 Decisions and by whom
-- Owner (PLAN r3): R223 closes 18b; R224 programme mode; R225–R228 queue 18d–18f and the per-merge rehearsal deploy. CC: executed R223; merged 18c, 18d, 18e and 18f under R224(2)/R147 with the conditions quoted in the log; fixed every review Low under R224(1). Advisor (Fable 5.1): 18d lock order and 18e limiter design (both adopted except as logged). 18f: advisor not consulted, with the reason logged (17:24 NOTE).
-- **Decided by default under R224, reversible (18e):** the route walk's allow-list names four vendor routes instead of only webhooks and `ops/status` (the advisor asked for the baseline middleware on Horizon, Filament and broadcasting instead; not taken because Filament polls and those files are outside 18e). Option 1 (taken, Recommended): keep the allow-list. Option 2: a later cycle adds the middleware and shrinks the list.
+- Owner (PLAN r1): R229–R233 and the queue 19a–19d. No decision of CC's own yet.
 
 ## §5 Why stopping
-Stopped at the end of the queue (R224(5)): 18a–18f are all merged (18b closed by R223), rehearsal is at `8c64d6f` with R213 green, no PR is open or parked. Handoff: done — everything the plan authorises; next — a new plan from the planning seat; ruled out — anything past 18f, a production deploy, any frozen-file change.
+Not stopping: working 19a.
 
 ## §6 Mismatches
-- None new. Carried from cycle 17/18 (re-confirmed by the 18c round-2 reviewer, Low, doc-only, left for a planner wording choice): HOW-WE-WORK §17:327 says "four lines … CLAUDE.md carries the same four" while CLAUDE.md lists four differences plus the `/clear` clarification and a toolchain bullet HOW-WE-WORK has no line for; the advisor model basis; the empty-`DB_PASSWORD` mismatch; `mail.from_name` reads `trusTutor Team` (Owner action 5).
+- None new. Carried: HOW-WE-WORK §17 wording (19d item 5 closes it); the advisor model basis; the empty-`DB_PASSWORD` mismatch (19d item 4); `mail.from_name` reads `trusTutor Team` (Owner action 5).
 
 ## §7 Next step / Owner actions
-**Owner action 17: next plan.** The queue is finished; CC has no authorised work. 1. (Recommended) Ask the planning seat "where are we?" and take its next PLAN.md; reason: cycle 18's six sub-cycles are closed and the board is final, so the next cycle needs a plan. 2. Leave the project idle. Then `/clear` this session and reply `update — <answer>`. Nothing parked, nothing decided by default that blocks.
-
-**Owner action 5 (reopened by R214): the mail sender name.** `/ops/status` reports `mail.from_name` = `trusTutor Team`; ADR-006 spells the brand `TrusTutor`. 1. (Recommended) In the admin mail settings set the sender name to `TrusTutor Team`; if that field is blank, set `MAIL_FROM_NAME` in Forge's environment for rehearsal; reason: it keeps your wording and fixes only the capital, and the surface that renders it is the status endpoint, which CC re-reads at the last deploy. 2. Leave it. Reply `update` when done. (Not blocking.)
-
-Owner action 16 is closed by R223. Carried unchanged (full text: `git show 467f057:docs/STATUS.md` §7): **Owner action 2**, **3**, **4**, **6**, **7**, **8**, **9**, **10** (option 1 Recommended: keep as built), **12**. Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
+Nothing for the owner now. Owner action 5 (`mail.from_name`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 18a | `cp/18a-privacy-props` | #55 | 11 verdicts, 0 M/H | merged `feab912` |
-| 18b | `cp/18b-masker-spelled` | #56 | 3 rounds, last 6 Medium | closed unmerged (R223) |
-| 18c | `cp/18c-low-notes` | #57 | R1 13 verdicts, R2 9, 0 M/H | merged `c986be3`, deployed, R213 green |
-| 18d | `cp/18d-display-name-races` | #58 | R1 15 verdicts, 0 M/H | merged `6b2a1c8`, deployed, R213 green |
-| 18e | `cp/18e-rate-limits` | #59 | R1 16 verdicts, 0 M/H | merged `e0c2e8a`, deployed, R213 green |
-| 18f | `cp/18f-history-encryption` | #60 | R1 12 verdicts, 0 M/H | merged `8c64d6f`, deployed, R213 green |
-Resume cap 12, 0 used. Board final: no parked PR.
+| 19a | `cp/19a-masker-corpus` | — | — | in progress |
+| 19b | `cp/19b-masker-prepass` | — | — | not started (depends on 19a) |
+| 19c | `cp/19c-suspension-video` | — | — | not started |
+| 19d | `cp/19d-hygiene` | — | — | not started |
+Resume cap 12, 0 used.
+
 
 ## Deferred
 - **Cycle-17 follow-ups found by the 17a review (the twins and the hook lines closed in 18c):** a `::warning::` annotation when the build only goes green on a retry; the empty-`DB_PASSWORD` mismatch between the role and Laravel; `APP_ENV`/`DB_CONNECTION` and the two published passwords in `docs/cloud/ENVIRONMENT.md` (planner's file).
