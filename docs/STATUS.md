@@ -1,24 +1,26 @@
-# STATUS — cycle 18 r3 — programme "steady state", 18d done (merged, deployed, R213 green), 18e next; written 2026-10-18 16:44
-Tests: **2665 passed / 13532 assertions** (measured on the 18d head `0ffc4d9`; `main` is now `6b2a1c8`, the squash of it; PR CI green on both PostgreSQL jobs) · Advisor: consulted 0 times this session (0 confirmed); cycle 18 total 3 (18a, 18b design, 18d lock order; Fable 5.1) · Review: 18a 11 verdicts, 0 M/H (merged); 18b closed unmerged (R223); 18c round 1: 13 verdicts, 0 M/H, 2 Low (fixed); round 2: 9 verdicts, 0 M/H, 1 Low (carried) — merged; 18d round 1: 15 verdicts, 0 M/H, 2 Low (fixed, docs only) — merged · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 3. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 15:14).
+# STATUS — cycle 18 r3 — programme "steady state", 18e done (merged, deployed, R213 green), 18f next; written 2026-10-18 17:12
+Tests: **2683 passed / 13912 assertions** (measured on the 18e head `ebb1e83`; `main` is now `e0c2e8a`, the squash of it; PR CI green on both PostgreSQL jobs, push CI green) · Advisor: consulted 0 times this session (0 confirmed); cycle 18 total 4 (18a, 18b design, 18d lock order, 18e limiter design; Fable 5.1) · Review: 18a 11 verdicts, 0 M/H (merged); 18b closed unmerged (R223); 18c round 1: 13 verdicts, 0 M/H, 2 Low (fixed); round 2: 9 verdicts, 0 M/H, 1 Low (carried) — merged; 18d round 1: 15 verdicts, 0 M/H, 2 Low (fixed, docs only) — merged; 18e round 1: 16 verdicts, 0 M/H, 2 Low (fixed) — merged · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 4. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 15:14).
 
 ## §1 Git state
-- `origin/main` = `6b2a1c8` (PR #58, 18d, squash) plus this docs commit; before it `5465d96` (18d log), `24a9f95`. Push CI on `6b2a1c8` (run 39145926484): success. `rehearsal` = `6b2a1c8` (fast-forwarded 16:42:06; R213 green, CYCLE-LOG VERIFICATION 16:43).
-- PR #56 closed without merge (R223); `cp/18b-masker-spelled` (`5d89910`), `hold/18b-fix`, `hold/18b-fix2`, `hold/18b-fix3` (`303dd44`) untouched on the remote. `cp/18c-low-notes` (`28b67a6`) and `cp/18d-display-name-races` (`0ffc4d9`) are merged and stay (no branch deleted). No open PRs. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
+- `origin/main` = `e0c2e8a` (PR #59, 18e, squash) plus this docs commit; before it the 18e log commits (`3a11489` and the post-merge record), `131d7f6`. Push CI on `e0c2e8a` (run 39148002406): success. `rehearsal` = `e0c2e8a` (fast-forwarded 17:10:29; R213 green, CYCLE-LOG VERIFICATION 17:12).
+- PR #56 closed without merge (R223); `cp/18b-masker-spelled` (`5d89910`), `hold/18b-fix`, `hold/18b-fix2`, `hold/18b-fix3` (`303dd44`) untouched on the remote. `cp/18c-low-notes`, `cp/18d-display-name-races` (`0ffc4d9`) and `cp/18e-rate-limits` (`ebb1e83`) are merged and stay (no branch deleted). No open PRs. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
 
 ## §2 Step map
 1. START — [done]. 2. 18a, PR #55 `feab912` — [done]. 3. R222 entry, PR #56 closed (R223) — [done].
-4. 18c under R219 + R224(7), PR #57 merged `c986be3` — [done]; post-merge record — [done] (this commit); rehearsal deploy and R213 (R228) — [done].
-5. 18d under R225, PR #58 merged `6b2a1c8` — [done]; post-merge record — [done] (this commit); rehearsal deploy and R213 (R228) — [done]. 6. 18e under R226 — [not started]. 7. 18f under R227 — [not started]. 8. END — [not started].
+4. 18c under R219 + R224(7), PR #57 merged `c986be3` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done].
+5. 18d under R225, PR #58 merged `6b2a1c8` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done].
+6. 18e under R226, PR #59 merged `e0c2e8a` — [done]; post-merge record — [done]; rehearsal deploy and R213 (R228) — [done]. 7. 18f under R227 — [not started]. 8. END — [not started].
 
 ## §3 What changed this run
-- PR #57 (18c), 8 files: `phpunit.xml` gets a `<server … force="true"/>` twin under each of its 14 `<env>` lines (single-process runs are protected too); `scripts/vite-fonts.js` guards the by-URL manifest plugin on `isSsrBuild` as well as `config.build.ssr`; `ViteFontsFallbackTest` loses its self-comparison (the variant keys are now checked against the sorted weights), gains `fontCallArguments()` (facade, instance and directive shapes) with positive and negative fixture rows and an `ssr_flag` assertion; `YearGroupMigrationTest` looks `y8` up inside GCSE; the stale comment in `AdminPanelProvider` is corrected; the cloud hook prints one line when PostgreSQL is down and creates `elearning_testing`; CLAUDE.md and HOW-WE-WORK carry R224 (CLAUDE.md as Owner-loop rule 15) and the corrected `/clear` line.
-- CYCLE-LOG: 15:14 START and R222 VERIFICATION; 16:04 REVIEW (round 1), DECISION (fix loop), REVIEW (round 2), DECISION (merge under R224(2)), VERIFICATION; 16:06 DECISION (deploy authorisation), 16:08 VERIFICATION (rehearsal at `c986be3`, R213 green).
+- PR #59 (18e, R226), 7 files: new limiters `password-reset` and `password-reset-use` (5/min each per e-mail + address), `registration` (5/min per address; the parent form through Fortify and the tutor form through its route have a counter each), `bookings` (10/min per user, shared by lesson, weekly slot and match request), `onboarding-uploads` (10/min per user, permit and documents routes), `account-writes` (60/min per user, GETs never counted) applied to every other authenticated write group, and a dispatching `fortify` limiter in `config/fortify.php` so Fortify's own routes are covered; two-factor is now keyed by the pending login (address when the session has none); login and reset keys are lower-cased, transliterated and array-safe; `Route::redirect('settings')` became `Route::get` (it was `any` by accident). `tests/Feature/Security/RateLimitingTest.php` (18 tests): a 429 test per limiter and a walk over the live router that fails on any unthrottled write route outside a four-entry allow-list (Horizon, `broadcasting/auth`, Livewire update, `admin/logout`, each with a reason). CHECKPOINTS: the compound hardening line is split and the rate-limit line ticked.
+- CYCLE-LOG: 16:50 ADVISOR, DECISION (allow-list), DEVIATION (placement); 16:52 VERIFICATION (red/green, gate); 17:00 REVIEW (round 1); 17:02 DECISION (fix loop); 17:05 DECISION (merge); 17:11 NOTE and DECISION (deploy); 17:12 VERIFICATION (rehearsal at `e0c2e8a`, R213 green).
 
 ## §4 Decisions and by whom
-- Owner (PLAN r3): R223 closes 18b; R224 programme mode; R225–R228 queue 18d–18f and the per-merge rehearsal deploy. CC: executed R223; fixed the two round-1 Lows under R224(1); merged under R224(2)/R147 with the conditions quoted in the log. Advisor: not consulted in 18c (0 times; nothing in it was auth, money or frozen).
+- Owner (PLAN r3): R223 closes 18b; R224 programme mode; R225–R228 queue 18d–18f and the per-merge rehearsal deploy. CC: executed R223; merged 18c, 18d and 18e under R224(2)/R147 with the conditions quoted in the log; fixed every review Low under R224(1). Advisor (Fable 5.1): 18d lock order and 18e limiter design (both adopted except as logged).
+- **Decided by default under R224, reversible (18e):** the route walk's allow-list names four vendor routes instead of only webhooks and `ops/status` (the advisor asked for the baseline middleware on Horizon, Filament and broadcasting instead; not taken because Filament polls and those files are outside 18e). Option 1 (taken, Recommended): keep the allow-list. Option 2: a later cycle adds the middleware and shrinks the list.
 
 ## §5 Why stopping
-Not stopped: programme running. Next halt is only per R224(5).
+Not stopped: programme running (next: 18f under R227). Next halt is only per R224(5).
 
 ## §6 Mismatches
 - None new. Carried from cycle 17/18 (re-confirmed by the 18c round-2 reviewer, Low, doc-only, left for a planner wording choice): HOW-WE-WORK §17:327 says "four lines … CLAUDE.md carries the same four" while CLAUDE.md lists four differences plus the `/clear` clarification and a toolchain bullet HOW-WE-WORK has no line for; the advisor model basis; the empty-`DB_PASSWORD` mismatch; `mail.from_name` reads `trusTutor Team` (Owner action 5).
@@ -35,13 +37,14 @@ Owner action 16 is closed by R223. Carried unchanged (full text: `git show 467f0
 | 18b | `cp/18b-masker-spelled` | #56 | 3 rounds, last 6 Medium | closed unmerged (R223) |
 | 18c | `cp/18c-low-notes` | #57 | R1 13 verdicts, R2 9, 0 M/H | merged `c986be3`, deployed, R213 green |
 | 18d | `cp/18d-display-name-races` | #58 | R1 15 verdicts, 0 M/H | merged `6b2a1c8`, deployed, R213 green |
-| 18e | `cp/18e-rate-limits` | — | — | pending |
+| 18e | `cp/18e-rate-limits` | #59 | R1 16 verdicts, 0 M/H | merged `e0c2e8a`, deployed, R213 green |
 | 18f | `cp/18f-history-encryption` | — | — | pending |
 Resume cap 12, 0 used.
 
 ## Deferred
 - **Cycle-17 follow-ups found by the 17a review (the twins and the hook lines closed in 18c):** a `::warning::` annotation when the build only goes green on a retry; the empty-`DB_PASSWORD` mismatch between the role and Laravel; `APP_ENV`/`DB_CONNECTION` and the two published passwords in `docs/cloud/ENVIRONMENT.md` (planner's file).
 - **`max_participants: 2` on Daily rooms** — a Daily property that cannot be run from here.
+- **18e review notes (REVIEW 2026-10-18 17:00):** behind a load balancer `$request->ip()` is the balancer's address until `TRUSTED_PROXIES` is set (R130, already under production hardening) — then registration is about 5 sign-ups a minute site-wide per form; the walk counts a Fortify own-limiter route as throttled through `throttle:fortify` although the dispatcher returns none for it (a null `fortify.limiters.login` would not turn it red); Horizon, Filament/Livewire and broadcasting auth carry no baseline limiter (allow-listed); the two sign-up forms have a counter each.
 - **Inertia history encryption** — app-wide; page props (including the lesson title) stay in the browser's history state on a shared device.
 - **English title literals in `LessonRoomView`** — "with" and "for" not yet translated; wait for the i18n pass.
 - **A screen in our own markup** (R189(a) as worded) — only if the planner accepts the cost recorded in cycle 14 r2 §6.
