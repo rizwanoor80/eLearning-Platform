@@ -115,8 +115,8 @@ export function fontsByUrlPlugins(env = process.env) {
     return [
         {
             name: 'trustutor:fonts-by-url',
-            apply: (config, { command }) =>
-                command === 'build' && !config.build?.ssr,
+            apply: (config, { command, isSsrBuild }) =>
+                command === 'build' && !config.build?.ssr && !isSsrBuild,
             generateBundle() {
                 this.emitFile({
                     type: 'asset',

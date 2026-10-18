@@ -217,6 +217,8 @@ Off by default. Once the loop is trusted, the owner may authorise a **programme*
 - the **programme board** in STATUS.md §8 so "where are we?" is answerable at any moment;
 - a review with the owner after ~24 hours or when the board says the programme is done.
 
+**R224 (standing programme mode, 2026-10-18):** from cycle 18 r3 every cycle runs as a programme unless its PLAN says "halt mode": the fix loop covers every severity below High (at most 2 re-review rounds per PR), a PR meeting the merge rule merges without asking and one that cannot is parked and skipped, questions go to the advisor with option 1 taken as a logged default, and the only halts are a High finding, a failed post-deploy check, a rule 8 gate, a frozen-file change, a failed compaction, the resume cap, `stop` and the end of the queue.
+
 A programme runs unattended, and nobody is there to clear. On a 200k window that is fine: auto-compaction carries it between sub-cycles, and STATUS.md is rewritten at every sub-cycle boundary so nothing a compaction drops is lost. Two things are stop conditions: a compaction that fails, and the automatic-resume cap in the plan being reached. When the programme finishes or stops, it raises the clear action like any cycle END.
 
 ---
@@ -324,7 +326,7 @@ Then paste Appendix A into the planning project's instructions. Only the project
 
 When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for four lines. The repository's `CLAUDE.md` carries the same four in its own "Cloud sessions" section.
 
-- **No `/clear`.** Start a new session instead. Wherever §15 or Appendix A or B says "`/clear` this session", a cloud session reads "start a new session"; the files carry the state either way.
+- **`/clear` exists and keeps the container.** A new session is needed only after the environment dialog changes; the files carry the state either way.
 - **No `CLAUDE.local.md`, so no ssh.** The allow-list in §11 does not exist there. Read a server's state through the project's status endpoint (TrusTutor: `GET /ops/status` with the bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) and not through a shell. A command that prints the status of the environment it runs in (TrusTutor: `php artisan ops:status`) describes the cloud sandbox there, never a server, and is not evidence about one.
 - **R178 does not apply.** The `SessionStart` hook starts PostgreSQL and Redis and migrates; it exits at once on a local machine. The cloud session does not start or stop services by hand.
 - **Deploys stay push-to-deploy.** A deploy is a fast-forward of the deploy branch to a green `main` commit (TrusTutor: green on both CI jobs, PostgreSQL 16 and 18), and it is verified through the status endpoint.
