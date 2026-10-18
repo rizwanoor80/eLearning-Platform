@@ -29,6 +29,7 @@ use App\Models\User;
 use App\Services\Scheduling\BookingLeadTime;
 use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Services\Tutors\TutorRateBands;
+use App\Services\Tutors\TutorStatusTransitions;
 use App\Services\Tutors\TutorSubmissionReadiness;
 use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
@@ -190,6 +191,9 @@ class TutorOnboardingController extends Controller
             || $profile->permit_expires_at?->toDateString() !== $oldExpiry;
 
         DB::transaction(function () use ($profile, $permitChanged): void {
+            // R225(b): the reset's audit row references this tutor's `users` row, so lock it before the profile write.
+            TutorStatusTransitions::lockOwner($profile);
+
             $profile->save();
 
             // R36 (g): an accepted scan vouches for the old number and date.

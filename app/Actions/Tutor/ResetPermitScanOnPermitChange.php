@@ -19,6 +19,9 @@ class ResetPermitScanOnPermitChange
      * otherwise a new expiry date would ride on an old approval. A rejected or
      * already pending scan is left alone, and so is a profile with no permit
      * document type or scan. Returns whether a scan was reset.
+     *
+     * Lock order (R225(b)): the audit row references the tutor's `users` row, so the caller's outermost transaction
+     * must already hold `TutorStatusTransitions::lockOwner($profile)`, taken before any write to the profile row.
      */
     public function __invoke(TutorProfile $profile): bool
     {
