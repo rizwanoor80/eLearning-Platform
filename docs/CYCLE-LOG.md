@@ -7979,3 +7979,6 @@ Run 39161181974 re-run at 20:06 UTC: PostgreSQL 16 success (completed 20:09:13),
 
 ### 2026-10-18 20:10 — DECISION (19a: merge PR #61 under R224(2)/R147, authorisation quoted before acting, CC)
 Authorisation (rule 8), PLAN cycle 19 r1 / R224(2): a PR whose last review has 0 Medium and 0 High, with CI green on both PostgreSQL jobs, that touches no frozen file or migration and whose diff stays in the named files plus tests and docs, merges without asking (one attempt, R147). Conditions met: last review (re-review of `d4baf94`) 5 verdicts, Medium 0, High 0; round 1's Medium fixed in `d4baf94`; CI on `d4baf94` green on both jobs (above); the diff is `tests/` only (corpus class, fixture, dataset move, recorder, test), with `app/` unchanged and no migration, frozen file, `docs/cloud/ENVIRONMENT.md` or `.claude/settings.json`. Method: squash with `expectedHeadSha` `d4baf94` (full SHA read from the PR). Test-only: no deploy, no R213.
+
+### 2026-10-18 20:14 — NOTE (19a: merged, post-merge record, CC)
+PR #61 squash-merged under R224(2)/R147 as `70f6034` (`expectedHeadSha` `d4baf94`), one attempt. Test-only: `app/` unchanged, so no rehearsal deploy and no R213 (rehearsal stays at `8c64d6f`). Suite on the merged tree: 2701 tests / 13956 assertions (measured on the PR head; the squash adds nothing else). Next: 19b.
