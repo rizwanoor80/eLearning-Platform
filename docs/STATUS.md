@@ -1,30 +1,34 @@
-# STATUS — cycle 19 r1 — programme "steady state II", 19a merged, 19b parked, 19c next; written 2026-10-18 21:12
-Tests: **2810 passed / 21136 assertions** on 19b head `eb2a92e` (base `main` 2701 / 13956) · Advisor: consulted 1 time this session (1 confirmed: Fable 5.1 on 19b; 19b minimum 1 met); cycle 19 total 1 · Review: 19b rounds 1–3: 21 verdicts (4 Medium), then 3 Medium, then 1 Medium, 0 High; fix cap 2 spent · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 2. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 19:40).
+# STATUS — cycle 19 r1 — programme "steady state II", 19a and 19c merged, 19b parked, 19d in progress; written 2026-10-18 22:08
+Tests: **2722 passed / 14023 assertions** on `main` `c0fa72d` (19c PR head; 19b's parked head `eb2a92e` runs 2810 / 21136 on its own base) · Advisor: consulted 4 times this cycle, all confirmed (Fable 5.1: 19b 1, 19c 2, 19d 1; every minimum met) · Review: 19b rounds 1–3: 21 verdicts (4 Medium), 3 Medium, 1 Medium, fix cap spent; 19c rounds 1–3 merged with rule 0 Medium, 0 High (one plan-inherent Medium disclosed, §6) · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 3. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
 
 ## §1 Git state
-- `origin/main` = `70f6034` (19a) plus docs records; `app/` on `main` is still `8c64d6f`; `rehearsal` = `8c64d6f`. Open PR: [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) (19b, branch `cp/19b-masker-prepass`, head `eb2a92e`, 3 commits, CI green on both PostgreSQL jobs, **parked**). The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
+- `origin/main` = `082a026` (docs record on `c0fa72d`, the 19c squash); `rehearsal` = `c0fa72d`. Open PR: [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) (19b, branch `cp/19b-masker-prepass`, head `eb2a92e`, CI green, **parked**). Branch `cp/19d-hygiene` is about to be cut from `origin/main`. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
 
 ## §2 Step map
-1. START, R222 check — [done]. 2. 19a under R230 — [merged `70f6034`]. 3. 19b under R231 — [built, 3 reviews, **parked**: cap 2 spent, 1 Medium open]. 4. 19c under R232 — [starting]. 5. 19d under R233 — [not started]. 6. END — [not started].
+1. START, R222 check — [done]. 2. 19a under R230 — [merged `70f6034`]. 3. 19b under R231 — [parked: cap 2 spent, 1 Medium open]. 4. 19c under R232 — [merged `c0fa72d` (PR #63); rehearsal deployed and verified, CYCLE-LOG 22:05]. 5. 19d under R233 — [in progress, five items]. 6. END — [not started].
 
 ## §3 What changed this run
-- 19b (PR #62, not merged): `SpelledOutPrePass` (dot, at, digit words, ZWJ, messenger spans), `Shadow` (per-byte origin map, packed), `MessageMasker::mask($body, bool $spelledOut = true)` with a tracked path that unions the chain's placeholder spans over the identity copy and the rewritten copy and builds the output from the original text (monotonic versus `main` by construction; a body with no spelled-out shape takes the byte-identical plain path); `DisplayNameRule` calls `mask($form, false)` (R218). Tests: 304 in `tests/Unit/Messaging`; dataset 25+ positive and 13+ negative new rows; the 19a corpus green.
-- CYCLE-LOG 21:11: ADVISOR, DEVIATION, REVIEW x3, VERIFICATION, DECISION (park).
+- 19c (PR #63): a suspension ends video access. `AccountSuspended` event, `CloseRoomsOfSuspendedAccount` listener and `CloseSuspendedAccountRooms` action close the suspended party's open rooms (`room_closed_at`); `IssueJoinToken::assertRoomOpen` refuses further tokens and re-closes a room the race recreated; `ApplyAttendanceEvent` ignores joins after the suspension instant (`AccountSuspensions::wasSuspendedAt`); the lesson page shows no join button. 378 lines of feature tests.
+- Rehearsal: fast-forwarded to `c0fa72d`; R213 healthy (0 pending migrations, queues 0 / 0, ledger ok, four public pages 200, unauthenticated `/ops/status` 404, `mail.from_name` = `trusTutor Team`). The manifest hash differs although `resources/` is unchanged (CYCLE-LOG 22:05).
+- 19b (PR #62, not merged): see Owner action 13.
 
 ## §4 Decisions and by whom
-- Owner (PLAN r1): R229–R233 and the queue. CC: messenger spans hidden outright instead of a marker (DEVIATION); 19b parked rather than a third fix round beyond the cap (DECISION 21:11).
+- Owner (PLAN r1): R229–R233 and the queue. CC: messenger spans hidden outright (19b DEVIATION); 19b parked (DECISION 21:11); 19c merged with its plan-inherent Medium disclosed rather than hidden (CYCLE-LOG 21:4x); 19d item 1 designed with the advisor: the owner-row lock opts in at the two tutor-actor sites, never inside `transition()`.
 
 ## §5 Why stopping
-Not stopping: 19b is parked on the cap; the programme continues with 19c.
+Not stopping: 19d runs next.
 
 ## §6 Mismatches
-- **19b open Medium (review 3):** `Shadow::placeholderSpans` unpacks per byte on placeholder-heavy NFKC bodies (a performance edge, not a leak; fuzz max 5.4 ms). Fix: unpack the placeholder map once, or record each placeholder's range in `apply()`. Lows: stale "at most three separator characters" docblock in `MessageMasker` (about line 197); code points versus graphemes in the digit count; add a placeholder-heavy timing row and `Shadow` property tests with ids above 255.
+- **19c plan-inherent Medium (Owner action 14):** on Daily, a parent suspended after the room opens and before the tutor joins closes the room, the innocent tutor cannot join, and `SettleEndedLesson::unattended` refunds the lesson as `no_show_both`. Before 19c the suspended parent was charged. Fixing it needs `LessonSettlement`/`MarkNoShow`, which this plan forbids.
+- **19c gaps, no code change permitted:** (1) a tutor suspended after both joins are set still has the lesson completed and paid, and the 72 h auto-release also pays; the `lesson.room_closed_suspension` audit row is the only trace. (2) A tutor suspended with `tutor_joined_at` set and the learner not yet in: the parent cannot join or mark a no-show, so the lesson stays in progress until an admin acts. (3) Clock skew of a few seconds around the suspension instant (a tie reads as suspended). (4) A strikes-only suspension (`SuspendTutorForStrikes`, profile only) is neither closed nor ignored. (5) `max_participants: 2` counts connections: two tabs or a lingering dropped connection can lock the other party out; rooms that already exist keep their old properties; the payload is built and tested but unverified against live Daily. (6) `afterCommit` ordering: a failure in `SuspendTutor`'s nested sweep outside its per-lesson handling skips the dispatch (rooms then close only through `lessons:close-rooms`). (7) The provider-close versus mark race (a token issued just before, a join within milliseconds) is narrowed by the re-read, not eliminated. (8) A failed re-close inside the `IssueJoinToken` guard leaves the recreated room until its own expiry.
+- **19b open Medium (review 3):** `Shadow::placeholderSpans` unpacks per byte on placeholder-heavy NFKC bodies (performance edge, not a leak). Fix list, stale "at most three separator characters" docblock at about `MessageMasker.php:197`, grapheme note, timing row and `Shadow` property tests with ids above 255: all in Owner action 13.
 - **Known over-masks, documented in the dataset:** zoom.us, "5.pm", "dot net", counting prose with 7+ digits in words.
 - **`LessonPageTest` Dubai-midnight flake** (19:55–20:00 UTC) — a later plan: freeze the clock in that test.
-- Carried: HOW-WE-WORK §17 wording (19d item 5); the empty-`DB_PASSWORD` mismatch (19d item 4); `mail.from_name` reads `trusTutor Team` (Owner action 5).
+- Carried: HOW-WE-WORK §17 wording, the empty-`DB_PASSWORD` mismatch, the two lock inversions, the `broadcasting/auth` limiter (all 19d items); `mail.from_name` reads `trusTutor Team` (Owner action 5).
 
 ## §7 Next step / Owner actions
 Owner action 13: authorise a third fix round for PR #62 (19b) — (Recommended: the one Medium is a small, understood change and every safety property already holds); to take it, reply `update — fix round 3` and the next run applies the fix list in §6, re-reviews, and merges under R224(2). Declining: reply `update — leave 19b parked`. Reply `update` when done.
+Owner action 14: decide the policy for a lesson whose room a suspension closed before the tutor joined — (1) (Recommended: it protects an innocent tutor and needs one small, reviewed change) exclude suspension-closed rooms from the unattended auto-refund (`SettleEndedLesson::unattended`) and give the admin a pay-or-refund path; this touches `LessonSettlement`/`MarkNoShow` and needs your GO plus the frozen-file protocol; (2) accept the behaviour as built (the tutor is unpaid, the parent refunded) and record it in the PRD. Reply `update — action 14: 1` or `update — action 14: 2`.
 Owner action 5 (`mail.from_name`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
@@ -32,15 +36,15 @@ Owner action 5 (`mail.from_name`) stays open and non-blocking; Owner actions 2, 
 |---|---|---|---|---|
 | 19a | `cp/19a-masker-corpus` | [#61](https://github.com/rizwanoor80/eLearning-Platform/pull/61) | r1 12 verdicts (1 Medium fixed), re-review 0 FAIL | merged `70f6034` |
 | 19b | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | r1 21 (4 Medium), r2 3 Medium, r3 1 Medium | parked, Owner action 13 |
-| 19c | `cp/19c-suspension-video` | — | — | starting |
-| 19d | `cp/19d-hygiene` | — | — | not started |
+| 19c | `cp/19c-suspension-video` | [#63](https://github.com/rizwanoor80/eLearning-Platform/pull/63) | three rounds, 0 High | merged `c0fa72d`, rehearsal verified |
+| 19d | `cp/19d-hygiene` | — | — | in progress |
 Resume cap 12, 0 used.
 
 
 ## Deferred
 - **19a corpus follow-ups (REVIEW 2026-10-18 20:08):** the garbled nested placeholders in 218 baseline outputs (a masker defect; 19b may fix it); the placeholder-for-everything and unchecked `masked` limits; the `LessonPageTest` Dubai-midnight flake (planner).
 - **Cycle-17 follow-ups found by the 17a review (the twins and the hook lines closed in 18c):** a `::warning::` annotation when the build only goes green on a retry; the empty-`DB_PASSWORD` mismatch between the role and Laravel; `APP_ENV`/`DB_CONNECTION` and the two published passwords in `docs/cloud/ENVIRONMENT.md` (planner's file).
-- **`max_participants: 2` on Daily rooms** — a Daily property that cannot be run from here.
+- **`max_participants: 2` on Daily rooms** — built and tested in 19c, unverified against live Daily (connection-count caveats in §6 gap 5).
 - **18e review notes (REVIEW 2026-10-18 17:00):** behind a load balancer `$request->ip()` is the balancer's address until `TRUSTED_PROXIES` is set (R130, already under production hardening) — then registration is about 5 sign-ups a minute site-wide per form; the walk counts a Fortify own-limiter route as throttled through `throttle:fortify` although the dispatcher returns none for it (a null `fortify.limiters.login` would not turn it red); Horizon, Filament/Livewire and broadcasting auth carry no baseline limiter (allow-listed); the two sign-up forms have a counter each.
 - **18f review notes (REVIEW 2026-10-18 17:24):** history is cleared on an explicit sign-out or a surviving suspended session only (the usual suspension and `AnonymizeUser` delete the user's `sessions` rows, so the other device arrives as a guest with no flag, and an expired session is the same); the Filament admin sign-out does not clear it (panel out of scope: an admin who opened an Inertia page such as settings in a tab keeps that tab's key); over plain HTTP on a non-localhost host the browser has no `crypto.subtle` and stores unencrypted with a console warning, so the protection is real only over HTTPS (rehearsal is HTTPS; confirm for production); no test for Fortify's JSON 204 sign-out.
 - **English title literals in `LessonRoomView`** — "with" and "for" not yet translated; wait for the i18n pass.
