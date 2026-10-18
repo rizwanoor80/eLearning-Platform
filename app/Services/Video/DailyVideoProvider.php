@@ -34,6 +34,8 @@ class DailyVideoProvider implements VideoRoomProvider
                 'enable_chat' => true,
                 // The camera, microphone and device check Daily shows before anyone enters the call (R189(a)).
                 'enable_prejoin_ui' => true,
+                // A lesson has exactly one tutor and one account holder (invariants 7 and 10): a third connection is a leak (R232).
+                'max_participants' => 2,
             ],
         ]);
 

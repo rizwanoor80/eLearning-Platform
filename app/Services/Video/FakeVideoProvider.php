@@ -13,10 +13,24 @@ use Carbon\CarbonInterface;
  */
 class FakeVideoProvider implements VideoRoomProvider
 {
+    /** @var list<string> the rooms closed through any instance, in order — for tests (R232) */
+    private static array $closed = [];
+
     /**
      * @param  array<string, string>  $credentials
      */
     public function __construct(private readonly array $credentials) {}
+
+    /** @return list<string> */
+    public static function closedRooms(): array
+    {
+        return self::$closed;
+    }
+
+    public static function forgetClosedRooms(): void
+    {
+        self::$closed = [];
+    }
 
     public function createRoom(string $roomName, CarbonInterface $expiresAt): VideoRoom
     {
@@ -28,7 +42,10 @@ class FakeVideoProvider implements VideoRoomProvider
         return 'fake.'.$roomName.'.'.$participant->value;
     }
 
-    public function closeRoom(string $roomName): void {}
+    public function closeRoom(string $roomName): void
+    {
+        self::$closed[] = $roomName;
+    }
 
     public function verifyWebhook(string $payload, array $headers): bool
     {
