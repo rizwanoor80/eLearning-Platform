@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Actions\Tutor\RequestDisplayName;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\RequestDisplayNameRequest;
+use App\Models\TutorProfile;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 
@@ -19,7 +20,10 @@ class DisplayNameController extends Controller
     {
         $user = $request->user();
 
-        $requestDisplayName($user, $user->tutorProfile, $request->validated('display_name'));
+        // 18d: a local variable, not `$user->tutorProfile`, so the profile is never loaded onto the request user.
+        $profile = TutorProfile::query()->where('user_id', $user->id)->firstOrFail();
+
+        $requestDisplayName($user, $profile, $request->validated('display_name'));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Display name sent for approval. Parents keep seeing the name they see now until it is approved.')]);
 

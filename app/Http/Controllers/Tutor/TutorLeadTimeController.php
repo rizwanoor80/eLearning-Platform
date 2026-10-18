@@ -23,7 +23,7 @@ class TutorLeadTimeController extends Controller
         $user = $request->user();
 
         /** @var TutorProfile|null $profile */
-        $profile = $user->tutorProfile;
+        $profile = TutorProfile::query()->where('user_id', $user->id)->first();
 
         abort_unless($profile !== null && $profile->status === TutorProfileStatus::Approved, 403);
 

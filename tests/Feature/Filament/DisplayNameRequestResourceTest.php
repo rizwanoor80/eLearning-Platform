@@ -75,6 +75,17 @@ it('shows the pending count as the navigation badge to an admin and nothing to a
     expect(DisplayNameRequestResource::getNavigationBadge())->toBeNull();
 });
 
+it('leaves an anonymised tutor out of the navigation badge count (18d, R225(d))', function () {
+    dnqRequest('Ms Amira');
+    $gone = dnqRequest('Mr Omar', 'Omar Khan');
+    $gone->user->delete();
+
+    test()->actingAs($this->admin);
+
+    expect(DisplayNameRequestResource::getEloquentQuery()->count())->toBe(1)
+        ->and(DisplayNameRequestResource::getNavigationBadge())->toBe('1');
+});
+
 it('approves a request from the queue: the name goes live, the row leaves, the action is audited', function () {
     $profile = dnqRequest('Ms Amira');
 
