@@ -3,12 +3,15 @@
 namespace App\Listeners\Video;
 
 use App\Actions\Lessons\RecordAttendance;
+use App\Actions\RecordAuditLog;
 use App\Enums\VideoEventType;
 use App\Enums\VideoParticipant;
 use App\Events\Video\VideoWebhookReceived;
 use App\Models\Lesson;
+use App\Services\Video\AccountSuspensions;
 use App\Services\Video\VideoRoom;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Turns a stored attendance webhook into a join time. Deliberately synchronous — not queued, not
@@ -21,10 +24,18 @@ use Illuminate\Support\Facades\Date;
  * else — an unknown room, another provider's event, a participant that is not ours, a `left` —
  * returns without effect and without an exception (an exception would make the provider retry
  * something that can never apply).
+ *
+ * R232: a join whose participant was suspended at the event's own timestamp is ignored (logged and audited as
+ * `attendance.ignored_suspended`), so a suspended party cannot start the clock that pays a lesson; a join stamped
+ * before the suspension stands, and so does one delivered late. Attendance is the only thing decided here — the
+ * settlement and no-show paths are untouched.
  */
 class ApplyAttendanceEvent
 {
-    public function __construct(private RecordAttendance $recordAttendance) {}
+    public function __construct(
+        private RecordAttendance $recordAttendance,
+        private RecordAuditLog $recordAuditLog,
+    ) {}
 
     public function handle(VideoWebhookReceived $received): void
     {
@@ -47,6 +58,22 @@ class ApplyAttendanceEvent
             return;
         }
 
-        ($this->recordAttendance)($lesson, $participant, Date::instance($event->occurred_at));
+        $occurredAt = Date::instance($event->occurred_at);
+        $userId = $participant === VideoParticipant::Tutor
+            ? $lesson->tutorProfile?->user_id
+            : $lesson->learner?->account_user_id;
+
+        if ($userId !== null && AccountSuspensions::wasSuspendedAt((int) $userId, $occurredAt)) {
+            Log::info('Attendance join ignored: participant was suspended.', ['lesson_id' => $lesson->id, 'participant' => $participant->value]);
+            ($this->recordAuditLog)(null, 'attendance.ignored_suspended', $lesson, null, [
+                'participant' => $participant->value,
+                'user_id' => (int) $userId,
+                'occurred_at' => $occurredAt->toIso8601String(),
+            ]);
+
+            return;
+        }
+
+        ($this->recordAttendance)($lesson, $participant, $occurredAt);
     }
 }

@@ -7,6 +7,7 @@ use App\Actions\Tutor\SuspendTutor;
 use App\Enums\Role;
 use App\Enums\TutorProfileStatus;
 use App\Enums\UserStatus;
+use App\Events\Safeguarding\AccountSuspended;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,7 +20,8 @@ use RuntimeException;
  * request already in flight, and every one after, on any session that somehow survives.
  *
  * If the account is a tutor's own approved profile, `SuspendTutor` runs too — one suspension, one
- * cascade, not two independent ones racing the same lessons. `CancelSuspendedAccountLessons` (the
+ * cascade, not two independent ones racing the same lessons. `AccountSuspended` goes to a queued listener that
+ * closes the account's open video rooms (R232). `CancelSuspendedAccountLessons` (the
  * parent-side sweep: free `reserved` lessons, list `confirmed` ones for the admin, pause active
  * slots) fires via `DB::afterCommit`, the same reasoning `SuspendTutor` already applies to its own
  * cascade (CYCLE-LOG 2026-09-27 18:12) — a single lesson's failure must not unwind the suspension.
@@ -63,6 +65,12 @@ class SuspendAccount
                 'status' => UserStatus::Suspended->value,
                 'suspended_reason' => $reason,
             ]);
+
+            // Registered before this action's own sweep, so a failure there cannot skip it. `SuspendTutor`'s sweep is
+            // registered inside its own nested transaction and runs before either (Laravel runs a nested transaction's
+            // callbacks first); a failure outside its per-lesson handling would skip this dispatch, and the rooms would then
+            // close only at the end of the lesson window (`lessons:close-rooms`).
+            DB::afterCommit(fn () => AccountSuspended::dispatch($locked->id, $actor->id));
 
             $profile = $locked->tutorProfile;
 

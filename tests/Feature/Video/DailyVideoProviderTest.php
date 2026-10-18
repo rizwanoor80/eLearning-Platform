@@ -52,6 +52,14 @@ it('creates a private room named for the lesson', function () {
         && $r['name'] === 'lesson-7' && $r['privacy'] === 'private');
 });
 
+it('caps the room at the lesson\'s two parties (R232)', function () {
+    Http::fake(['api.daily.co/v1/rooms' => Http::response(['name' => 'lesson-7', 'url' => 'https://x.daily.co/lesson-7'])]);
+
+    daily()->createRoom('lesson-7', now()->addHour());
+
+    Http::assertSent(fn (Request $r) => $r->method() === 'POST' && $r['properties']['max_participants'] === 2);
+});
+
 it('asks for the pre-join check on the room and on every token (R189)', function () {
     Http::fake([
         'api.daily.co/v1/rooms' => Http::response(['name' => 'lesson-7', 'url' => 'https://x.daily.co/lesson-7']),
