@@ -23,6 +23,9 @@ use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
 {
+    /** Fortify routes that carry a limiter of their own (config/fortify.php `limiters`), so the dispatcher leaves them alone. */
+    private const OWN_LIMITER = ['login.store', 'two-factor.login.store', 'verification.send', 'verification.verify', 'passkey.login', 'passkey.confirm', 'passkey.store'];
+
     /**
      * Register any application services.
      */
@@ -104,14 +107,13 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureRateLimiting(): void
     {
+        // Keyed by the session's pending login; a session-less post falls back to the address, never to one shared key.
         RateLimiter::for('two-factor', function (Request $request) {
-            return Limit::perMinute(5)->by($request->session()->get('login.id'));
+            return Limit::perMinute(5)->by((string) ($request->session()->get('login.id') ?? $request->ip()));
         });
 
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
-
-            return Limit::perMinute(5)->by($throttleKey);
+            return Limit::perMinute(5)->by($this->emailAndAddress($request));
         });
 
         RateLimiter::for('passkeys', function (Request $request) {
@@ -119,5 +121,36 @@ class FortifyServiceProvider extends ServiceProvider
                 ($request->input('credential.id') ?: $request->session()->getId()).'|'.$request->ip(),
             );
         });
+
+        // R226: asking for a reset link and using one, 5 a minute each for an e-mail and address (two counters, so a slow
+        // mailbox that needs a few requests does not lock out the form that sets the new password).
+        RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(5)->by('password-reset|'.$this->emailAndAddress($request)));
+        RateLimiter::for('password-reset-use', fn (Request $request) => Limit::perMinute(5)->by('password-reset-use|'.$this->emailAndAddress($request)));
+        // R226: 5 sign-ups a minute per address; the tutor form uses this limiter on its own route, so the two forms have a counter each.
+        RateLimiter::for('registration', fn (Request $request) => Limit::perMinute(5)->by('registration|'.$request->ip()));
+
+        // Fortify's route file takes only a handful of per-route limiters from config, so every other route it registers
+        // gets this one through `fortify.middleware`. A named limiter hashes its counter under the limiter's own name, which
+        // is why each branch below carries its own key prefix (above); a safe method, and the routes that already have a
+        // limiter of their own, pass untouched; every other write falls to the account baseline.
+        RateLimiter::for('fortify', function (Request $request) {
+            $name = $request->route()?->getName();
+
+            return match (true) {
+                $request->isMethodSafe(), in_array($name, self::OWN_LIMITER, true) => Limit::none(),
+                $name === 'password.email' => RateLimiter::limiter('password-reset')($request),
+                $name === 'password.update' => RateLimiter::limiter('password-reset-use')($request),
+                $name === 'register.store' => RateLimiter::limiter('registration')($request),
+                default => RateLimiter::limiter('account-writes')($request),
+            };
+        });
+    }
+
+    /** The lower-cased, transliterated sign-in name and the address; a non-string input (an array) counts as empty. */
+    private function emailAndAddress(Request $request): string
+    {
+        $username = $request->input(Fortify::username());
+
+        return Str::transliterate(Str::lower(is_string($username) ? $username : '').'|'.$request->ip());
     }
 }

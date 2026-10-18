@@ -99,9 +99,12 @@ return [
     | that it registers with the application. If necessary, you may change
     | these middleware but typically this provided default is preferred.
     |
+    | `throttle:fortify` (CP8 18e, R226) is the dispatching limiter in FortifyServiceProvider: Fortify takes
+    | per-route limiters from `limiters` below for only a few routes, so this gives the rest theirs.
+    |
     */
 
-    'middleware' => ['web'],
+    'middleware' => ['web', 'throttle:fortify'],
 
     /*
     |--------------------------------------------------------------------------
