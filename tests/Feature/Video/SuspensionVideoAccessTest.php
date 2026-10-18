@@ -17,9 +17,11 @@ use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Models\VideoProvider;
+use App\Services\Lessons\LessonRoomView;
 use App\Services\Video\AccountSuspensions;
 use App\Services\Video\FakeVideoProvider;
 use App\Services\Video\VideoProviderException;
+use App\Services\Video\VideoProviderManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Carbon;
 
@@ -211,6 +213,37 @@ it('refuses a join token once the room has been closed, and does not recreate it
 
     app(SuspendAccount::class)($admin, $tutor->user, 'Safeguarding concern upheld.');
     $lesson = $lesson->fresh()->load('learner', 'tutorProfile');
+
+    expect(fn () => app(IssueJoinToken::class)($parent, $lesson))
+        ->toThrow(AttendanceException::class, 'The room for this lesson has closed.')
+        ->and(FakeVideoProvider::closedRooms())->toBe(['lesson-'.$lesson->id]);
+});
+
+it('shows no join button for a closed room, with the closed reason', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent, 'admin' => $admin] = suspLesson();
+
+    app(SuspendAccount::class)($admin, $tutor->user, 'Safeguarding concern upheld.');
+
+    expect(LessonRoomView::for($lesson->fresh(), $parent))
+        ->can_join->toBeFalse()
+        ->join_problem->toBe('The room for this lesson has closed.');
+});
+
+it('closes the room again when a suspension sweep wins the race against a token request', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = suspLesson(withRoom: true);
+    $lesson = $lesson->load('learner', 'tutorProfile');
+
+    $inner = new FakeVideoProvider([]);
+    $provider = Mockery::mock($inner)->makePartial();
+    $provider->shouldReceive('createRoom')->once()->andReturnUsing(function ($name, $expiresAt) use ($lesson, $inner) {
+        // the sweep marks the lesson closed after the guard but before the provider answers
+        Lesson::query()->whereKey($lesson->id)->update(['room_closed_at' => now()]);
+
+        return $inner->createRoom($name, $expiresAt);
+    });
+    $manager = Mockery::mock(VideoProviderManager::class)->makePartial();
+    $manager->shouldReceive('forCode')->andReturn($provider);
+    app()->instance(VideoProviderManager::class, $manager);
 
     expect(fn () => app(IssueJoinToken::class)($parent, $lesson))
         ->toThrow(AttendanceException::class, 'The room for this lesson has closed.')

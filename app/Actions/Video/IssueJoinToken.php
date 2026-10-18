@@ -21,6 +21,8 @@ use App\Services\Video\VideoRoom;
  */
 class IssueJoinToken
 {
+    private const ROOM_CLOSED = 'The room for this lesson has closed.';
+
     public function __construct(private VideoProviderManager $providers) {}
 
     /**
@@ -37,12 +39,9 @@ class IssueJoinToken
         self::assertJoinable($lesson);
         self::assertParticipantJoinable($lesson, $participant);
 
-        // Closed early (a suspension, R232): `createRoom` below would make the room again, and a token issued before the
-        // close would open it. Only the token is refused, not `assertJoinable`: the other party's manual "I've joined" and
-        // no-show paths share that check and must stay open (see `assertParticipantJoinable`).
-        if ($lesson->room_closed_at !== null) {
-            throw new AttendanceException('The room for this lesson has closed.');
-        }
+        // Only the token is refused for a room closed early, not `assertJoinable`: the other party's manual "I've joined"
+        // and no-show paths share that check and must stay open (see `assertParticipantJoinable`).
+        self::assertRoomOpen($lesson);
 
         $provider = $this->providers->forCode((string) $lesson->room_provider);
         $expiresAt = $lesson->ends_at->copy()->addMinutes((int) config('video.close_grace_minutes'));
@@ -50,6 +49,14 @@ class IssueJoinToken
         // Creating a room that exists returns it (the interface's contract), which is how the URL is
         // recovered without storing it.
         $room = $provider->createRoom(VideoRoom::nameFor($lesson->id), $expiresAt);
+
+        // The suspension sweep can win between the check above and the call just made, which would have recreated the
+        // room it closed: look again, and close it again.
+        if (Lesson::query()->whereKey($lesson->id)->whereNotNull('room_closed_at')->exists()) {
+            $provider->closeRoom($room->name);
+
+            throw new AttendanceException(self::ROOM_CLOSED);
+        }
         $name = $participant === VideoParticipant::Tutor ? $lesson->tutorProfile->displayName() : $lesson->learner->display_name;
 
         return [
@@ -57,6 +64,19 @@ class IssueJoinToken
             'token' => $provider->joinToken($room->name, $participant, $name, $expiresAt),
             'participant' => $participant,
         ];
+    }
+
+    /**
+     * R232: a room closed early (a suspension) gives no further tokens — `createRoom` would make it again, and a token
+     * issued before the close opens a room of the same name. The lesson page reads this too, so it shows no join button.
+     *
+     * @throws AttendanceException
+     */
+    public static function assertRoomOpen(Lesson $lesson): void
+    {
+        if ($lesson->room_closed_at !== null) {
+            throw new AttendanceException(self::ROOM_CLOSED);
+        }
     }
 
     /**
@@ -79,7 +99,7 @@ class IssueJoinToken
         }
 
         if (now()->greaterThanOrEqualTo($lesson->ends_at->copy()->addMinutes((int) config('video.close_grace_minutes')))) {
-            throw new AttendanceException('The room for this lesson has closed.');
+            throw new AttendanceException(self::ROOM_CLOSED);
         }
     }
 
