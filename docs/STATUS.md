@@ -1,14 +1,14 @@
-# STATUS — cycle 18 r3 — programme "steady state", 18d merged (rehearsal deploy pending push CI), 18e next; written 2026-10-18 16:45
+# STATUS — cycle 18 r3 — programme "steady state", 18d done (merged, deployed, R213 green), 18e next; written 2026-10-18 16:44
 Tests: **2665 passed / 13532 assertions** (measured on the 18d head `0ffc4d9`; `main` is now `6b2a1c8`, the squash of it; PR CI green on both PostgreSQL jobs) · Advisor: consulted 0 times this session (0 confirmed); cycle 18 total 3 (18a, 18b design, 18d lock order; Fable 5.1) · Review: 18a 11 verdicts, 0 M/H (merged); 18b closed unmerged (R223); 18c round 1: 13 verdicts, 0 M/H, 2 Low (fixed); round 2: 9 verdicts, 0 M/H, 1 Low (carried) — merged; 18d round 1: 15 verdicts, 0 M/H, 2 Low (fixed, docs only) — merged · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 3. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 15:14).
 
 ## §1 Git state
-- `origin/main` = `6b2a1c8` (PR #58, 18d, squash) plus this docs commit; before it `5465d96` (18d log), `24a9f95`. Push CI on `6b2a1c8`: read at the deploy step (CYCLE-LOG). `rehearsal` = `c986be3` until the 18d deploy (R228) is logged.
+- `origin/main` = `6b2a1c8` (PR #58, 18d, squash) plus this docs commit; before it `5465d96` (18d log), `24a9f95`. Push CI on `6b2a1c8` (run 39145926484): success. `rehearsal` = `6b2a1c8` (fast-forwarded 16:42:06; R213 green, CYCLE-LOG VERIFICATION 16:43).
 - PR #56 closed without merge (R223); `cp/18b-masker-spelled` (`5d89910`), `hold/18b-fix`, `hold/18b-fix2`, `hold/18b-fix3` (`303dd44`) untouched on the remote. `cp/18c-low-notes` (`28b67a6`) and `cp/18d-display-name-races` (`0ffc4d9`) are merged and stay (no branch deleted). No open PRs. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
 
 ## §2 Step map
 1. START — [done]. 2. 18a, PR #55 `feab912` — [done]. 3. R222 entry, PR #56 closed (R223) — [done].
 4. 18c under R219 + R224(7), PR #57 merged `c986be3` — [done]; post-merge record — [done] (this commit); rehearsal deploy and R213 (R228) — [done].
-5. 18d under R225, PR #58 merged `6b2a1c8` — [done]; post-merge record — [done] (this commit); rehearsal deploy and R213 (R228) — [next]. 6. 18e under R226 — [not started]. 7. 18f under R227 — [not started]. 8. END — [not started].
+5. 18d under R225, PR #58 merged `6b2a1c8` — [done]; post-merge record — [done] (this commit); rehearsal deploy and R213 (R228) — [done]. 6. 18e under R226 — [not started]. 7. 18f under R227 — [not started]. 8. END — [not started].
 
 ## §3 What changed this run
 - PR #57 (18c), 8 files: `phpunit.xml` gets a `<server … force="true"/>` twin under each of its 14 `<env>` lines (single-process runs are protected too); `scripts/vite-fonts.js` guards the by-URL manifest plugin on `isSsrBuild` as well as `config.build.ssr`; `ViteFontsFallbackTest` loses its self-comparison (the variant keys are now checked against the sorted weights), gains `fontCallArguments()` (facade, instance and directive shapes) with positive and negative fixture rows and an `ssr_flag` assertion; `YearGroupMigrationTest` looks `y8` up inside GCSE; the stale comment in `AdminPanelProvider` is corrected; the cloud hook prints one line when PostgreSQL is down and creates `elearning_testing`; CLAUDE.md and HOW-WE-WORK carry R224 (CLAUDE.md as Owner-loop rule 15) and the corrected `/clear` line.
@@ -34,7 +34,7 @@ Owner action 16 is closed by R223. Carried unchanged (full text: `git show 467f0
 | 18a | `cp/18a-privacy-props` | #55 | 11 verdicts, 0 M/H | merged `feab912` |
 | 18b | `cp/18b-masker-spelled` | #56 | 3 rounds, last 6 Medium | closed unmerged (R223) |
 | 18c | `cp/18c-low-notes` | #57 | R1 13 verdicts, R2 9, 0 M/H | merged `c986be3`, deployed, R213 green |
-| 18d | `cp/18d-display-name-races` | #58 | R1 15 verdicts, 0 M/H | merged `6b2a1c8`, deploy pending |
+| 18d | `cp/18d-display-name-races` | #58 | R1 15 verdicts, 0 M/H | merged `6b2a1c8`, deployed, R213 green |
 | 18e | `cp/18e-rate-limits` | — | — | pending |
 | 18f | `cp/18f-history-encryption` | — | — | pending |
 Resume cap 12, 0 used.
