@@ -13,7 +13,8 @@ use Illuminate\Validation\ValidationException;
  * R195: an admin approves the display name a tutor requested. `$expectedName` is the name the admin was shown;
  * if the tutor has since replaced it (or the request is gone), nothing is approved, so an admin never approves a
  * name they did not read. The validator runs again at this moment, so a request stored under an older rule
- * cannot reach `display_name`. Approval copies the request to `display_name`, clears it, and writes the audit row.
+ * cannot reach `display_name`, and a request on a closed (anonymised) account is refused (R217). Approval copies
+ * the request to `display_name`, clears it, and writes the audit row.
  */
 class ApproveDisplayName
 {
@@ -25,6 +26,8 @@ class ApproveDisplayName
 
         DB::transaction(function () use ($admin, $profile, $expectedName): void {
             $locked = TutorProfile::query()->whereKey($profile->getKey())->lockForUpdate()->firstOrFail();
+
+            DisplayNameRequests::assertAccountOpen($locked, 'This tutor\'s account has been closed, so the name cannot be approved.');
 
             $requested = DisplayNameRequests::current($locked, $expectedName);
 

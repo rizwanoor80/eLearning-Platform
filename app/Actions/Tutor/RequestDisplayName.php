@@ -13,7 +13,8 @@ use Illuminate\Validation\ValidationException;
  * R195: a tutor asks for a display name. It is stored as `display_name_requested` and shown to no one — not to
  * parents, not on the tutor's own profile page — until an admin approves it (`ApproveDisplayName`). The
  * rule-based validator (R192) runs here as well as in the Form Request, so the admin only ever sees names that
- * already passed it. A second request replaces the first; the audit row keeps the one it replaced.
+ * already passed it. A second request replaces the first; the audit row keeps the one it replaced. A closed
+ * (anonymised) account takes none (R217).
  */
 class RequestDisplayName
 {
@@ -35,6 +36,8 @@ class RequestDisplayName
 
         DB::transaction(function () use ($tutor, $profile, $name): void {
             $locked = TutorProfile::query()->whereKey($profile->getKey())->lockForUpdate()->firstOrFail();
+
+            DisplayNameRequests::assertAccountOpen($locked, 'This account has been closed, so a display name cannot be requested.');
 
             if ($name === $locked->display_name) {
                 throw ValidationException::withMessages(['display_name' => 'That is already your display name.']);

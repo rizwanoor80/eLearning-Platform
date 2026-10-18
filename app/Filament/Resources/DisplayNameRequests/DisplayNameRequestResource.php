@@ -12,6 +12,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 /**
  * R195 (15c): the queue of display names tutors have asked for. A request is "pending" while
@@ -38,6 +39,12 @@ class DisplayNameRequestResource extends Resource
     {
         return parent::getEloquentQuery()
             ->whereNotNull('display_name_requested')
+            // R217: an anonymised tutor is never in the queue. Checked against `users.deleted_at` directly, as
+            // `TutorProfile::scopeBookable()` does, because the `user()` relation includes trashed rows.
+            ->whereExists(fn ($query) => $query->select(DB::raw(1))
+                ->from('users')
+                ->whereColumn('users.id', 'tutor_profiles.user_id')
+                ->whereNull('users.deleted_at'))
             ->with('user');
     }
 

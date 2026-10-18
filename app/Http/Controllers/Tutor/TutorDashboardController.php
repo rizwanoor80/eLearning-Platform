@@ -27,8 +27,9 @@ class TutorDashboardController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        /** @var TutorProfile|null $tutorProfile */
-        $tutorProfile = $user->tutorProfile;
+        // A query, not `$user->tutorProfile`: that would load the relation onto the user object, which
+        // `HandleInertiaRequests` shares with every page as `auth.user` (R217; same as ProfileController).
+        $tutorProfile = TutorProfile::query()->where('user_id', $user->id)->first();
 
         // A profile row is created lazily on first visit to onboarding (see
         // TutorOnboardingController::profileFor()); a tutor who has never
