@@ -254,6 +254,12 @@ question 12
     'R218 spelled email, literal at sign and a spelled dot' => ['sara@gmail dot com', MessageMasker::PLACEHOLDER],
     'R218 spelled email, spaced at sign and a bracketed dot' => ['sara @ gmail [dot] com', MessageMasker::PLACEHOLDER],
     'R218 spelled email inside a sentence leaves the sentence' => ['write to sara at example dot org please', 'write to '.MessageMasker::PLACEHOLDER.' please'],
+    'R218 spelled email, a comma after the local part' => ['sara, at gmail dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, a comma before the dot word' => ['sara at gmail, dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, a colon after the local part' => ['sara: at gmail dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, punctuation after at' => ['sara at. gmail dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, an ellipsis before the dot word' => ['sara at gmail... dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, brackets and commas together' => ['sara (at), gmail (dot), com', MessageMasker::PLACEHOLDER],
     'R218 digit words, hyphens' => ['zero-five-zero-one-two-three', MessageMasker::PLACEHOLDER],
     'R218 digit words, oh for zero' => ['oh five oh one two three four', MessageMasker::PLACEHOLDER],
     'R218 digit words, wide separators (no cap to fail open)' => ['zero  five   zero    one two', MessageMasker::PLACEHOLDER],
@@ -261,7 +267,7 @@ question 12
     'R218 digit words, semicolons' => ['zero;five;zero;one;two;three;four', MessageMasker::PLACEHOLDER],
     'R218 digit words, commas' => ['zero five zero, one two three', MessageMasker::PLACEHOLDER],
     'R218 messenger name and a grouped number' => ['whatsapp me on 050 123 4567', 'whatsapp me on '.MessageMasker::PLACEHOLDER],
-    'R218 messenger name and a grouped number' => ['whatsapp us on 0501 234', 'whatsapp us on '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a short grouped number' => ['whatsapp us on 0501 234', 'whatsapp us on '.MessageMasker::PLACEHOLDER],
     'R218 messenger name, a plus and groups' => ['WhatsApp +971 50 123 4567', 'WhatsApp '.MessageMasker::PLACEHOLDER],
     'R218 messenger name and a plain number' => ['whatsapp 0501234567', 'whatsapp '.MessageMasker::PLACEHOLDER],
     'R218 messenger name and an at-handle' => ['add me on snapchat @sara', 'add me on '.MessageMasker::PLACEHOLDER],
@@ -288,6 +294,8 @@ question 12
     'R218 negative: the word signal after a noun' => ['the signal at the lights', 'the signal at the lights'],
     'R218 negative: a place and a sentence end' => ['she is at Oxford. Online lessons are fine', 'she is at Oxford. Online lessons are fine'],
     'R218 negative: a long punctuated run after a messenger name stays readable' => ['discord: '.str_repeat('a,', 99), 'discord: '.str_repeat('a,', 99)],
+    'R218 negative: a comma and a sentence end around at' => ['I will be at school, then home. Dot is my dog', 'I will be at school, then home. Dot is my dog'],
+    'R218 negative: a messenger name and an underscore word' => ['whatsapp_ is not an app', 'whatsapp_ is not an app'],
     'R218 negative: at between two single letters' => ['a at b', 'a at b'],
 
     // R218, accepted over-masking (the safe side, disclosed in the class docblock): the word before a spelled "at"
@@ -387,6 +395,9 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
     'R218 messenger name, a repeated abbreviation (was cubic and refused)' => ['messenger abbreviations', 'Signal: '.str_repeat('i.e.', 60)],
     'R218 messenger name, a dotted run (was cubic and refused)' => ['messenger dots', 'whatsapp '.str_repeat('a.', 95)],
     'R218 messenger name, four such runs' => ['messenger repeated', str_repeat('discord: a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z ', 4)],
+    'R218 a spelled email with a long punctuated gap' => ['punctuated gap', 'sara'.str_repeat(',', 3000).' at gmail dot com'],
+    'R218 a spelled email with a long punctuated gap and no ending' => ['punctuated gap, no ending', 'sara at gmail'.str_repeat('. ', 1500).'x'],
+    'R218 a messenger name, an underscore run' => ['messenger underscores', 'whatsapp'.str_repeat('_', 3000)],
     'R218 a messenger name and a long digit run with gaps' => ['digit gaps', 'whatsapp '.str_repeat('1 ', 2000)],
 ]);
 

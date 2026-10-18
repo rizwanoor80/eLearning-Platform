@@ -183,10 +183,11 @@ use Normalizer;
  * (each becomes one `PLACEHOLDER`, counted like any other hidden span; masking is the only effect):
  *  - a spelled-out e-mail, `<token> at <token> dot <tld>`, where "at" is the word, `[at]`, `(at)` or a literal `@`
  *    and "dot" is the word, `[dot]`, `(dot)` or a tight literal `.`, with up to two interior dot segments, spaces
- *    or hyphens between the parts, and the ending drawn from the same lists as the bare-domain patterns. With a
+ *    or punctuation between the parts, and the ending drawn from the same lists as the bare-domain patterns. With a
  *    literal `@` every dot must be spelled (a plain `sara@example.com` stays with EMAIL, so spans do not change);
- *    a literal `.` is tight only, so "look at it. Me too" is left alone. These run first, before EMAIL, so
- *    "sara (at) gmail (dot) com" is hidden whole and not as "sara (at) " plus a hidden domain.
+ *    a literal `.` is tight only, so "look at it. Me too" is left alone. A gap may hold any run of characters
+ *    that are not a letter, digit, `_` or `@` ("sara, at gmail... dot com"). These run first, before EMAIL; it is
+ *    the gap, not the order, that hides "sara (at) gmail (dot) com" whole.
  *  - a run of five or more digit words (zero, oh, o, one to nine) with separators between them, masked as a phone
  *    candidate. A strictly counting run ("one two three four five", "five four three two one") and a run of one
  *    repeated word are left alone: that is primary-maths chat, not a number.
@@ -208,7 +209,8 @@ use Normalizer;
  * decision (cycle 14 r2), not a masker rule. The safe side is over-masking: dates (27-09-2026, 27/09/2026),
  * "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a bare domain whose
  * ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates its labels,
- * "(at)"/"(dot)" with any punctuation around them, an arbitrarily long run of junk punctuation between labels
+ * "(at)"/"(dot)" with any punctuation around them, a spelled address with any punctuation run between its parts
+ * ("look at it, dot com" hides "look at it, dot com" as an address; an underscore or `@` in the gap ends it), an arbitrarily long run of junk punctuation between labels
  * (fifty or five hundred dots, or a mixed junk run) — a label is not distinguished from a spelled-out separator
  * word, deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead — and, from
  * R218, the word before a spelled "at" ("see you at school dot com" hides "you at school dot com"), a year or a
@@ -372,8 +374,13 @@ class MessageMasker
 
     private const SPELLED_DOT = '(?:\[\s*dot\s*\]|\(\s*dot\s*\)|(?<![\p{L}\p{Nd}])dot(?![\p{L}\p{Nd}]))';
 
-    /** Spaces and hyphens between the parts of a spelled-out address; possessive, so a long gap never backtracks. */
-    private const SPELL_GAP = '[\s\-]*+';
+    /**
+     * Anything between the parts of a spelled-out address that is not a letter, digit, `_` or `@` (spaces, hyphens,
+     * commas, colons, brackets, full stops): "sara, at gmail... dot com" is still an address. It is disjoint from
+     * SPELL_LABEL (letters, digits, `_`), so possessive matching commits to nothing a greedy match would find and a
+     * long gap never backtracks.
+     */
+    private const SPELL_GAP = '[^\p{L}\p{Nd}@_]*+';
 
     /** No hyphen, so a hyphen can be the gap ("sara-at-gmail-dot-com"); no `.` either, so a dot is always a separator. */
     private const SPELL_LABEL = '[\p{L}\p{Nd}_]++';
@@ -410,12 +417,12 @@ class MessageMasker
     /**
      * A messenger name, up to three words, then an `@handle` or four or more digits (grouped the way PHONE_RUN groups
      * them, taking the whole run so no sub-threshold tail is left behind). A gap is "anything that is not a letter,
-     * digit or `@`" and a filler word is letters, digits and `_` only, so the two are disjoint: every position belongs
+     * digit or `@`" and a filler word is letters and digits only (no `_`: an underscore is a gap character too), so the two are disjoint: every position belongs
      * to exactly one side, which keeps the match linear (a filler "token" that could also contain gap characters made
      * it cubic, and a 200-character punctuated run after the name exhausted `pcre.backtrack_limit`).
      */
     private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:whatsapp|telegram|signal|instagram|insta|snapchat|snap|tiktok|discord)(?![\p{L}\p{Nd}])'
-        .'(?:[^\p{L}\p{Nd}@]++[\p{L}\p{Nd}_]++){0,3}?[^\p{L}\p{Nd}@]*+'
+        .'(?:[^\p{L}\p{Nd}@]++[\p{L}\p{Nd}]++){0,3}?[^\p{L}\p{Nd}@]*+'
         .'(?:@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+|\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+)~iu';
 
     /**
@@ -437,8 +444,8 @@ class MessageMasker
         $hidden = 0;
         $masked = $text;
 
-        // R218: the spelled-out shapes first, so "sara (at) gmail (dot) com" is hidden whole before the
-        // bare-domain patterns take only its domain.
+        // R218: the spelled-out shapes first. They hide a spelled address as one span; what keeps
+        // "sara (at) gmail (dot) com" whole is SPELL_GAP accepting the brackets, not this ordering.
         $masked = $this->replace(self::SPELLED_EMAIL_AT_WORD, self::PLACEHOLDER, $masked, $hidden);
         $masked = $this->replace(self::SPELLED_EMAIL_AT_SYMBOL, self::PLACEHOLDER, $masked, $hidden);
         $masked = $this->replaceCallback(self::NUMBER_WORDS, function (array $match) use (&$hidden): string {
@@ -486,7 +493,7 @@ class MessageMasker
             $masked,
         );
 
-        // After the phone pass: a full number is already a placeholder, which the messenger name then absorbs.
+        // After the phone pass: a full number is already a placeholder, so the name is left in front of it.
         $masked = $this->replace(self::MESSENGER, self::PLACEHOLDER, $masked, $hidden);
 
         // "masked" means something was hidden, not that NFKC, digit-folding or the invisible-character strip changed the text.
