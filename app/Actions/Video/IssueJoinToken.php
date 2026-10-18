@@ -67,6 +67,12 @@ class IssueJoinToken
             throw new AttendanceException('The room for this lesson is not ready yet.');
         }
 
+        // Closed early (a suspension, R232): `createRoom` below would make the room again, and a token issued before the
+        // close would open it.
+        if ($lesson->room_closed_at !== null) {
+            throw new AttendanceException('The room for this lesson has closed.');
+        }
+
         if (now()->lessThan($lesson->starts_at->copy()->subMinutes((int) config('video.join_lead_minutes')))) {
             throw new AttendanceException('The room opens '.config('video.join_lead_minutes').' minutes before the lesson.');
         }
