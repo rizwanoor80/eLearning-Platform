@@ -5,6 +5,7 @@ namespace App\Services\Tutors;
 use App\Enums\TutorProfileStatus;
 use App\Exceptions\TutorStatusTransitionException;
 use App\Models\TutorProfile;
+use App\Models\User;
 use Closure;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +70,12 @@ final class TutorStatusTransitions
      * attributes are current when `$work` mutates and saves it.
      * The caller dispatches events after this returns — after commit.
      *
+     * Lock order (R225(b), see `RequestDisplayName`): this takes the profile row first. A caller whose `$work` inserts
+     * a row that references the TUTOR's `users` row (an audit row with the tutor as actor) must take `lockOwner()`
+     * BEFORE it, in the outermost transaction — a helper called from in here runs inside a savepoint and cannot fix the
+     * order. It is deliberately not taken here: callers that already hold the profile lock (`SuspendTutorForStrikes`,
+     * `ReviewTutorDocument`) would invert it, and their audit rows reference an admin or no user.
+     *
      * @template T
      *
      * @param  Closure(TutorProfile): T  $work
@@ -86,5 +93,15 @@ final class TutorStatusTransitions
 
             return $work($profile);
         });
+    }
+
+    /**
+     * Locks the tutor's `users` row `FOR SHARE` (it waits for an `AnonymizeUser` in flight and keeps `deleted_at`
+     * stable until commit). Call it first in the outermost transaction, before any lock on the tutor's profile row.
+     * `withTrashed`: a closed account is locked too, not a 404.
+     */
+    public static function lockOwner(TutorProfile $profile): User
+    {
+        return User::withTrashed()->whereKey($profile->user_id)->sharedLock()->firstOrFail();
     }
 }
