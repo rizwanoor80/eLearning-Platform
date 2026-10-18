@@ -134,8 +134,16 @@ it('names the same aliases and CSS variables the self-hosted plugin does, so the
         ->and(array_column($families, 'variable'))->toBe(array_column($built['definitions'], 'variable'))
         ->and(array_column($families, 'family'))->toBe(array_column($built['definitions'], 'family'))
         ->and(array_keys($built['manifest']['style']['familyStyles']))->toBe(array_keys($families))
-        ->and(array_keys($built['manifest']['style']['variables']))->toBe(array_keys($families))
-        ->and($built['manifest'])->toBe(viteFontsNode('0')['manifest']);
+        ->and(array_keys($built['manifest']['style']['variables']))->toBe(array_keys($families));
+
+    // The weights too: each alias's manifest variants are exactly the "{weight}:normal" keys of the plugin's definition.
+    foreach ($built['definitions'] as $definition) {
+        $weights = $definition['weights'];
+        sort($weights);
+
+        expect(array_keys($families[$definition['alias']]['variants']))
+            ->toBe(array_map(fn (int $weight): string => "{$weight}:normal", $weights));
+    }
 });
 
 it('renders Vite::fonts() with no alias as one stylesheet import plus the CSS variables, like the layout\'s @fonts', function () {
@@ -187,6 +195,40 @@ it('still refuses an alias the manifest does not carry, so the alias tests above
     }
 });
 
+/**
+ * The font calls in one source file: [aliased, unaliased] argument lists. Three shapes render fonts: the facade
+ * `Vite::fonts(...)`, an instance `$vite->fonts(...)` or `app(Vite::class)->fonts(...)`, and the Blade `@fonts` /
+ * `@fonts (...)` directive (Blade allows whitespace before the parenthesis).
+ *
+ * @return list<string> the raw argument text of each call ('' for a bare `@fonts`)
+ */
+function fontCallArguments(string $source): array
+{
+    preg_match_all('/Vite::fonts\s*\(([^)]*)\)/', $source, $facade);
+    preg_match_all('/(?:\$vite|app\(\s*Vite::class\s*\))\s*->\s*fonts\s*\(([^)]*)\)/', $source, $instance);
+    preg_match_all('/@fonts\b(?:\s*\(([^)]*)\))?/', $source, $directive);
+
+    return array_merge($facade[1], $instance[1], $directive[1]);
+}
+
+it('recognises every shape of font call the consumer scan has to find', function () {
+    $calls = fontCallArguments(<<<'PHP'
+        Vite::fonts('quicksand');
+        Vite::fonts ( );
+        $vite->fonts("ibm-plex-mono");
+        app(Vite::class)->fonts('schibsted-grotesk');
+        app( Vite::class )->fonts();
+        @fonts
+        @fonts ('quicksand')
+        PHP);
+
+    expect($calls)->toBe([
+        "'quicksand'", ' ',
+        '"ibm-plex-mono"', "'schibsted-grotesk'", '',
+        '', "'quicksand'",
+    ]);
+});
+
 it('covers every font consumer in app/ and resources/views: each alias they ask for is in the manifest', function () {
     $root = realpath(__DIR__.'/../..');
     $aliases = [];
@@ -194,12 +236,7 @@ it('covers every font consumer in app/ and resources/views: each alias they ask 
     $unaliased = 0;
 
     foreach ((new Finder)->files()->in([$root.'/app', $root.'/resources/views'])->name('*.php') as $file) {
-        $source = $file->getContents();
-
-        preg_match_all('/Vite::fonts\(([^)]*)\)/', $source, $facade);
-        preg_match_all('/@fonts\b(?:\(([^)]*)\))?/', $source, $directive);
-
-        foreach (array_merge($facade[1], $directive[1]) as $arguments) {
+        foreach (fontCallArguments($file->getContents()) as $arguments) {
             preg_match_all('/[\'"]([a-z0-9-]+)[\'"]/', $arguments, $named);
 
             if ($named[1] === []) {
@@ -227,13 +264,14 @@ it('emits fonts-manifest.json into the build only for a client build, only with 
         const emitted = [];
         plugin.generateBundle.call({ emitFile: (file) => emitted.push(file) });
 
-        const applies = (config, command) => plugin.apply(config, { command });
+        const applies = (config, command, extra = {}) => plugin.apply(config, { command, ...extra });
 
         process.stdout.write(JSON.stringify({
             emitted,
             expected: fontsByUrlManifest(),
             client_build: applies({}, 'build'),
             ssr_build: applies({ build: { ssr: true } }, 'build'),
+            ssr_flag: applies({}, 'build', { isSsrBuild: true }),
             dev_server: applies({}, 'serve'),
             self_hosted: fontsByUrlPlugins({}).length,
         }));
@@ -245,6 +283,7 @@ it('emits fonts-manifest.json into the build only for a client build, only with 
         ->and(json_decode($contract['emitted'][0]['source'], true))->toBe($contract['expected'])
         ->and($contract['client_build'])->toBeTrue()
         ->and($contract['ssr_build'])->toBeFalse()
+        ->and($contract['ssr_flag'])->toBeFalse()
         ->and($contract['dev_server'])->toBeFalse()
         ->and($contract['self_hosted'])->toBe(0);
 });

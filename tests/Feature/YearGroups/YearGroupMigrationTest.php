@@ -41,7 +41,7 @@ it('seeds 21 year groups from one source, each with a tier its curriculum has (R
 
 it('never overwrites an admin’s change on a re-seed, and adds only what is missing (R30 #18)', function () {
     test()->seed([CurriculumSeeder::class, YearGroupSeeder::class]);
-    $year = YearGroup::query()->where('code', 'y8')->firstOrFail();
+    $year = YearGroup::query()->where('code', 'y8')->whereHas('curriculum', fn ($q) => $q->where('code', 'GCSE'))->firstOrFail();
     $year->update(['label' => 'Grade 8 (renamed)', 'level_tier' => LevelTier::Exam1]);
     YearGroup::query()->where('code', 'y11')->whereHas('curriculum', fn ($q) => $q->where('code', 'GCSE'))->delete();
 

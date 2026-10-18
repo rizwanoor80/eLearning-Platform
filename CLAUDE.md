@@ -24,7 +24,7 @@ Herd and its services (PostgreSQL, Redis, mail). **Owner ruling R178 (2026-10-07
 
 ## Cloud sessions
 A session started in Claude Code's cloud environment (`CLAUDE_CODE_REMOTE=true`; setup and variables in `docs/cloud/ENVIRONMENT.md`) differs from a local one in five ways. Everything else in this file applies, except what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`).
-- **No `/clear`.** Start a new session instead; wherever the method says "`/clear` this session", a cloud session reads "start a new session".
+- **`/clear` exists and keeps the container;** a new session is needed only after the environment dialog changes.
 - **No `CLAUDE.local.md`, so no ssh.** The server allow-list does not exist there. Read a server's state with `GET /ops/status` (bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged). `php artisan ops:status` prints the status of the environment it runs in, so in a cloud session it describes the cloud sandbox and is never evidence about a server.
 - **R178 does not apply.** The `SessionStart` hook (`scripts/cloud-session-start.sh`) starts PostgreSQL and Redis and migrates; it exits at once on a local machine. Do not start or stop services by hand.
 - **Deploys stay push-to-deploy** (fast-forward `rehearsal` to a `main` commit whose CI is green on both PostgreSQL jobs); verify a deploy through `/ops/status`, not ssh.
@@ -151,6 +151,7 @@ logs, writes docs/STATUS.md → owner asks the planner "where are we?" → repea
     off. Simple subagents (search, read, grep) run on the cheapest capable model; advisor and
     review subagents use the stronger one. Never estimate or log your own token spend; report only
     the measured context size.
+15. R224 (standing programme mode, 2026-10-18): unless a PLAN says "halt mode", a cycle runs as a programme — the fix loop covers every severity below High, a PR meeting the merge rule merges without asking and one that cannot is parked, questions go to the advisor with option 1 taken as a logged default, and the only halts are a High finding, a failed post-deploy check, a rule 8 gate, a frozen-file change, a failed compaction, the resume cap, `stop` and the end of the queue.
 
 ## When unsure
 Ask the advisor first for architecture questions and log it. For product questions, write an "Owner action" in STATUS.md §7 with a recommended option and pick the default listed in PRD §11 or the simplest option that keeps invariants intact until the owner answers. docs/PROJECT_BRIEF.md, docs/PRD.md and docs/reference/ are read-only for you; if you believe the PRD is wrong, say so in STATUS.md §6. If it conflicts with docs/reference/, the PRD wins.

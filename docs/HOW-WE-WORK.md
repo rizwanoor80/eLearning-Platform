@@ -217,6 +217,8 @@ Off by default. Once the loop is trusted, the owner may authorise a **programme*
 - the **programme board** in STATUS.md §8 so "where are we?" is answerable at any moment;
 - a review with the owner after ~24 hours or when the board says the programme is done.
 
+**R224 (standing programme mode, 2026-10-18):** from cycle 18 r3 every cycle runs as a programme unless its PLAN says "halt mode": the fix loop covers every severity below High (at most 2 re-review rounds per PR), a PR meeting the merge rule merges without asking and one that cannot is parked and skipped, questions go to the advisor with option 1 taken as a logged default, and the only halts are a High finding, a failed post-deploy check, a rule 8 gate, a frozen-file change, a failed compaction, the resume cap, `stop` and the end of the queue.
+
 A programme runs unattended, and nobody is there to clear. On a 200k window that is fine: auto-compaction carries it between sub-cycles, and STATUS.md is rewritten at every sub-cycle boundary so nothing a compaction drops is lost. Two things are stop conditions: a compaction that fails, and the automatic-resume cap in the plan being reached. When the programme finishes or stops, it raises the clear action like any cycle END.
 
 ---

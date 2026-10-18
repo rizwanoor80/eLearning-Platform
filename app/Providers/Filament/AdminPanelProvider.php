@@ -55,7 +55,8 @@ class AdminPanelProvider extends PanelProvider
             ->darkModeBrandLogo(fn () => view('filament.admin.brand-dark'))
             ->favicon(fn (): string => asset('brand/favicon-32.png'))
             ->viteTheme('resources/css/filament/admin/theme.css')
-            // Schibsted Grotesk is self-hosted by the Vite fonts build (same files as the site): no runtime CDN.
+            // Schibsted Grotesk is self-hosted by the Vite fonts build (same files as the site): no runtime CDN. The one exception is
+            // VITE_FONTS_INLINE=0 (the cloud sandbox), where the manifest imports Bunny's stylesheet by URL (scripts/vite-fonts.js).
             ->font('Schibsted Grotesk', provider: LocalFontProvider::class)
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => Vite::fonts('schibsted-grotesk'))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
