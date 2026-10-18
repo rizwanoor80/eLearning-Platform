@@ -96,8 +96,9 @@ final class TutorStatusTransitions
     }
 
     /**
-     * Locks the tutor's `users` row `FOR SHARE` (it waits for an `AnonymizeUser` in flight and keeps `deleted_at`
-     * stable until commit). Call it first in the outermost transaction, before any lock on the tutor's profile row.
+     * Locks the tutor's `users` row `FOR SHARE` (it waits for an `AnonymizeUser` in flight and holds one off until
+     * commit). Call it first in the outermost transaction, before any lock on the tutor's profile row. It only orders
+     * the locks: it does not test `deleted_at`, so a caller that must refuse a closed account checks the returned row.
      * `withTrashed`: a closed account is locked too, not a 404.
      */
     public static function lockOwner(TutorProfile $profile): User

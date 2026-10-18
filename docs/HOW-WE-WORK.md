@@ -324,7 +324,7 @@ Then paste Appendix A into the planning project's instructions. Only the project
 
 ## 17. Cloud sessions
 
-When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for the differences below and what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`). The repository's `CLAUDE.md` carries the same list in its own "Cloud sessions" section, and the two are kept word for word in step.
+When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for the differences below and what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`). The repository's `CLAUDE.md` carries the same list in its own "Cloud sessions" section, and the two list the same items, kept in step.
 
 - **`/clear` exists and keeps the container.** A new session is needed only after the environment dialog changes; the files carry the state either way.
 - **No `CLAUDE.local.md`, so no ssh.** The allow-list in §11 does not exist there. Read a server's state through the project's status endpoint (TrusTutor: `GET /ops/status` with the bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) and not through a shell. A command that prints the status of the environment it runs in (TrusTutor: `php artisan ops:status`) describes the cloud sandbox there, never a server, and is not evidence about one.

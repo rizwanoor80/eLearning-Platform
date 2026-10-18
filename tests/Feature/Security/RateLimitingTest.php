@@ -227,7 +227,7 @@ it('limits every other account write to 60 a minute per user, and never counts a
 it('puts the account baseline on the broadcasting auth route, one counter per user (R233)', function () {
     test()->actingAs(User::factory()->create());
 
-    // The channel name does not matter here: a refused subscription (403) still counts as a request.
+    // The channel name does not matter here: the throttle runs before the broadcaster answers, whatever it answers.
     for ($i = 0; $i < 60; $i++) {
         not429(test()->post('/broadcasting/auth', ['channel_name' => 'private-nothing', 'socket_id' => '1.1']));
     }

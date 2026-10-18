@@ -22,7 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The Filament admin panel is outside the `web` group and never passes through this middleware: its routes are
  * named `filament.admin.*` and run through `AdminPanelProvider`'s own middleware stack. The panel is protected by the
- * `access-admin-area` gate (`AppServiceProvider::configureGates()`) via Filament's own `authMiddleware`, not by the
+ * panel's own authentication (Filament's `authMiddleware`, which asks `User::canAccessPanel()` — the same condition as the
+ * `access-admin-area` gate in `AppServiceProvider::configureGates()`), not by the
  * `admin.` exclusion below, and a change here neither widens nor narrows it (CP8).
  *
  * Two named-route families are excluded so this middleware's blanket redirect does not pre-empt a

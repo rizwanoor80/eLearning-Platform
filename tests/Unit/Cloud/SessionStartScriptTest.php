@@ -45,8 +45,9 @@ function runSessionStart(?string $dbPassword): array
 }
 
 beforeEach(function () {
-    if ((new Process(['bash', '-c', 'true']))->run() !== 0) {
-        $this->markTestSkipped('bash is not available');
+    // The stubs are found through a colon-separated PATH of POSIX directories, which a Windows checkout cannot give.
+    if (PHP_OS_FAMILY === 'Windows' || (new Process(['bash', '-c', 'true']))->run() !== 0) {
+        $this->markTestSkipped('needs a POSIX bash');
     }
 });
 
