@@ -20,14 +20,15 @@ use Symfony\Component\HttpFoundation\Response;
  * `Fortify::authenticateUsing` (`FortifyServiceProvider`), which checks `status` before issuing a
  * new session at all — this middleware only ever sees a session that predates the suspension.
  *
+ * The Filament admin panel is outside the `web` group and never passes through this middleware: its routes are
+ * named `filament.admin.*` and run through `AdminPanelProvider`'s own middleware stack. The panel is protected by the
+ * `access-admin-area` gate (`AppServiceProvider::configureGates()`) via Filament's own `authMiddleware`, not by the
+ * `admin.` exclusion below, and a change here neither widens nor narrows it (CP8).
+ *
  * Two named-route families are excluded so this middleware's blanket redirect does not pre-empt a
  * more specific check that already exists on that family. The exclusion itself grants nothing —
  * each excluded family is still protected, just by something else. Despite the name, `admin.*`
- * here is **not** the Filament admin panel: the panel's routes are named `filament.admin.*` and
- * run through `AdminPanelProvider`'s own separate middleware stack, which never includes this
- * middleware at all — the panel is protected by the `access-admin-area` gate
- * (`AppServiceProvider::configureGates()`) via Filament's own `authMiddleware`, not by anything
- * excluded here.
+ * here is **not** the Filament admin panel.
  * - `admin.*` matches exactly one route, `admin.documents.show` (`routes/web.php`), which sits in
  *   the default `web` group and so does reach this middleware. That route already carries
  *   `can:access-admin-area` directly, which checks `status === Active` and answers 403 — asserted
