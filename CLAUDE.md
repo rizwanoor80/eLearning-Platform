@@ -23,7 +23,7 @@ Herd and its services (PostgreSQL, Redis, mail). **Owner ruling R178 (2026-10-07
 - A single command still running after 10 minutes is a stall: stop it, log a BLOCKER naming the command, work around it. Never wait on it.
 
 ## Cloud sessions
-A session started in Claude Code's cloud environment (`CLAUDE_CODE_REMOTE=true`; setup and variables in `docs/cloud/ENVIRONMENT.md`) differs from a local one in five ways. Everything else in this file applies, except what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`).
+A session started in Claude Code's cloud environment (`CLAUDE_CODE_REMOTE=true`; setup and variables in `docs/cloud/ENVIRONMENT.md`) differs from a local one in four ways, plus one clarification (`/clear`). Everything else in this file applies, except what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`).
 - **`/clear` exists and keeps the container;** a new session is needed only after the environment dialog changes.
 - **No `CLAUDE.local.md`, so no ssh.** The server allow-list does not exist there. Read a server's state with `GET /ops/status` (bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged). `php artisan ops:status` prints the status of the environment it runs in, so in a cloud session it describes the cloud sandbox and is never evidence about a server.
 - **R178 does not apply.** The `SessionStart` hook (`scripts/cloud-session-start.sh`) starts PostgreSQL and Redis and migrates; it exits at once on a local machine. Do not start or stop services by hand.

@@ -326,7 +326,7 @@ Then paste Appendix A into the planning project's instructions. Only the project
 
 When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for four lines. The repository's `CLAUDE.md` carries the same four in its own "Cloud sessions" section.
 
-- **No `/clear`.** Start a new session instead. Wherever §15 or Appendix A or B says "`/clear` this session", a cloud session reads "start a new session"; the files carry the state either way.
+- **`/clear` exists and keeps the container.** A new session is needed only after the environment dialog changes; the files carry the state either way.
 - **No `CLAUDE.local.md`, so no ssh.** The allow-list in §11 does not exist there. Read a server's state through the project's status endpoint (TrusTutor: `GET /ops/status` with the bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) and not through a shell. A command that prints the status of the environment it runs in (TrusTutor: `php artisan ops:status`) describes the cloud sandbox there, never a server, and is not evidence about one.
 - **R178 does not apply.** The `SessionStart` hook starts PostgreSQL and Redis and migrates; it exits at once on a local machine. The cloud session does not start or stop services by hand.
 - **Deploys stay push-to-deploy.** A deploy is a fast-forward of the deploy branch to a green `main` commit (TrusTutor: green on both CI jobs, PostgreSQL 16 and 18), and it is verified through the status endpoint.

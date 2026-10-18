@@ -220,6 +220,8 @@ it('recognises every shape of font call the consumer scan has to find', function
         app( Vite::class )->fonts();
         @fonts
         @fonts ('quicksand')
+        @fontsize
+        $viteX->fonts('quicksand');
         PHP);
 
     expect($calls)->toBe([
