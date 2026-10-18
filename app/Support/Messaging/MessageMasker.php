@@ -191,9 +191,9 @@ use Normalizer;
  *    candidate. A strictly counting run ("one two three four five", "five four three two one") and a run of one
  *    repeated word are left alone: that is primary-maths chat, not a number.
  *  - a messenger name (whatsapp, telegram, signal, insta, instagram, snap, snapchat, tiktok, discord) followed
- *    within three tokens by an `@handle` or by four or more digits (grouped as a phone number may be, so the
- *    sub-threshold "0501 234" after "whatsapp me" is hidden too). It runs after the phone pass, so a full number
- *    has already been hidden and the name then absorbs the placeholder.
+ *    within three words by an `@handle` or by four or more digits (grouped as a phone number may be, so a
+ *    sub-threshold "050 123" after "signal" is hidden too). It runs after the phone pass, so a full number has
+ *    already been hidden and the name is left in front of the placeholder ("whatsapp [hidden…]").
  *
  * Known limits (ADR-019, as narrowed by R218): digits split by fewer than five words, by whole words in another
  * language or by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
@@ -202,8 +202,9 @@ use Normalizer;
  * whitespace and no punctuation at all, a multi-digit or fractional enclosed-number symbol ("➉", "½", Roman
  * numerals), a spelled-out address with a hyphenated label ("sara at my-site dot com": only "my-site" is
  * hidden), "dotcom" or "d o t" written as one token or spaced letters, a messenger handle written without an
- * `@` ("telegram: sara_k"), one more than three tokens after the messenger name, or fewer than four digits
- * after it. A name made of ordinary words that spells an address inside a tutor's display name stays a product
+ * `@` ("telegram: sara_k"), more than three words between the messenger name and the handle, fewer than four
+ * digits after it, a messenger spelled "whats app", "ig" or "fb", an address with no recognised ending ("sara at
+ * gmail"), "period", "point", "nought", "double" or "triple" for a dot or a digit, and lookalike letters. A name made of ordinary words that spells an address inside a tutor's display name stays a product
  * decision (cycle 14 r2), not a masker rule. The safe side is over-masking: dates (27-09-2026, 27/09/2026),
  * "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a bare domain whose
  * ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates its labels,
@@ -212,7 +213,7 @@ use Normalizer;
  * word, deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead — and, from
  * R218, the word before a spelled "at" ("see you at school dot com" hides "you at school dot com"), a year or a
  * count right after a messenger name ("discord 2024 update"), and a run of digit words that is not a plain
- * count ("zero five zero one two"); the variation selectors and every format character (bar the ZWJ, see above)
+ * count ("zero five zero one two", "one three five seven nine"); the variation selectors and every format character (bar the ZWJ, see above)
  * are stripped from the stored text; 16:00-17:00 and ordinary sentence ends are left alone.
  */
 class MessageMasker
@@ -399,19 +400,23 @@ class MessageMasker
     private const DIGIT_WORD = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|o(?![\'’]))';
 
     /**
-     * Five or more digit words. The separator run is unbounded and possessive (the R144 lesson: a cap makes a long gap
-     * fail open) — it is disjoint from the words, so possessive matching commits to nothing a greedy match would find.
+     * Five or more digit words, separated by anything that is not a letter or digit (a dash, an em dash, a semicolon, a
+     * bar, as PHONE_RUN accepts for digits). The separator run is unbounded and possessive (the R144 lesson: a cap makes
+     * a long gap fail open) — it is disjoint from the words, so possessive matching commits to nothing a greedy match
+     * would find.
      */
-    private const NUMBER_WORDS = '~(?<![\p{L}\p{Nd}])'.self::DIGIT_WORD.'(?:[\s,.\-_/]++'.self::DIGIT_WORD.'){4,}(?![\p{L}\p{Nd}])~iu';
+    private const NUMBER_WORDS = '~(?<![\p{L}\p{Nd}])'.self::DIGIT_WORD.'(?:[^\p{L}\p{Nd}]++'.self::DIGIT_WORD.'){4,}(?![\p{L}\p{Nd}])~iu';
 
     /**
-     * A messenger name, up to three tokens, then an `@handle`, four or more digits (grouped the way PHONE_RUN groups
-     * them, taking the whole run so no sub-threshold tail is left behind) or a placeholder an earlier pass left. The
-     * gaps are "anything that is not a letter, digit or `@`" so an em dash or a colon works as well as a space.
+     * A messenger name, up to three words, then an `@handle` or four or more digits (grouped the way PHONE_RUN groups
+     * them, taking the whole run so no sub-threshold tail is left behind). A gap is "anything that is not a letter,
+     * digit or `@`" and a filler word is letters, digits and `_` only, so the two are disjoint: every position belongs
+     * to exactly one side, which keeps the match linear (a filler "token" that could also contain gap characters made
+     * it cubic, and a 200-character punctuated run after the name exhausted `pcre.backtrack_limit`).
      */
     private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:whatsapp|telegram|signal|instagram|insta|snapchat|snap|tiktok|discord)(?![\p{L}\p{Nd}])'
-        .'(?:[^\p{L}\p{Nd}@]++[^\s@]+){0,3}?[^\p{L}\p{Nd}@]*+'
-        .'(?:@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+|\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+|\[hidden until after your first lesson\])~iu';
+        .'(?:[^\p{L}\p{Nd}@]++[\p{L}\p{Nd}_]++){0,3}?[^\p{L}\p{Nd}@]*+'
+        .'(?:@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+|\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+)~iu';
 
     /**
      * Digits with up to six separator *graphemes* between them (`\X`, not a code point — see the class docblock),

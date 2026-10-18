@@ -257,11 +257,13 @@ question 12
     'R218 digit words, hyphens' => ['zero-five-zero-one-two-three', MessageMasker::PLACEHOLDER],
     'R218 digit words, oh for zero' => ['oh five oh one two three four', MessageMasker::PLACEHOLDER],
     'R218 digit words, wide separators (no cap to fail open)' => ['zero  five   zero    one two', MessageMasker::PLACEHOLDER],
+    'R218 digit words, em dashes' => ['zero—five—zero—one—two—three', MessageMasker::PLACEHOLDER],
+    'R218 digit words, semicolons' => ['zero;five;zero;one;two;three;four', MessageMasker::PLACEHOLDER],
     'R218 digit words, commas' => ['zero five zero, one two three', MessageMasker::PLACEHOLDER],
     'R218 messenger name and a grouped number' => ['whatsapp me on 050 123 4567', 'whatsapp me on '.MessageMasker::PLACEHOLDER],
-    'R218 messenger name and a sub-threshold grouped number leaves no tail' => ['whatsapp us on 0501 234', 'whatsapp us on '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a grouped number' => ['whatsapp us on 0501 234', 'whatsapp us on '.MessageMasker::PLACEHOLDER],
     'R218 messenger name, a plus and groups' => ['WhatsApp +971 50 123 4567', 'WhatsApp '.MessageMasker::PLACEHOLDER],
-    'R218 messenger name and a plain number absorbs the placeholder' => ['whatsapp 0501234567', 'whatsapp '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a plain number' => ['whatsapp 0501234567', 'whatsapp '.MessageMasker::PLACEHOLDER],
     'R218 messenger name and an at-handle' => ['add me on snapchat @sara', 'add me on '.MessageMasker::PLACEHOLDER],
     'R218 messenger name, an em dash and a handle' => ['Insta—@sara', MessageMasker::PLACEHOLDER],
     'R218 messenger name and a tag with digits' => ['discord sara#1234', MessageMasker::PLACEHOLDER],
@@ -285,6 +287,7 @@ question 12
     'R218 negative: a time after at' => ['arrived at 10.30 sharp', 'arrived at 10.30 sharp'],
     'R218 negative: the word signal after a noun' => ['the signal at the lights', 'the signal at the lights'],
     'R218 negative: a place and a sentence end' => ['she is at Oxford. Online lessons are fine', 'she is at Oxford. Online lessons are fine'],
+    'R218 negative: a long punctuated run after a messenger name stays readable' => ['discord: '.str_repeat('a,', 99), 'discord: '.str_repeat('a,', 99)],
     'R218 negative: at between two single letters' => ['a at b', 'a at b'],
 
     // R218, accepted over-masking (the safe side, disclosed in the class docblock): the word before a spelled "at"
@@ -380,6 +383,10 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
     'R218 many at-words with no dot' => ['at words', str_repeat('a at ', 2000)],
     'R218 many digit words' => ['digit words', str_repeat('one ', 2000)],
     'R218 many messenger names' => ['messenger names', str_repeat('whatsapp ', 2000)],
+    'R218 messenger name, a long comma run (was cubic and refused)' => ['messenger commas', 'discord: '.str_repeat('a,', 990)],
+    'R218 messenger name, a repeated abbreviation (was cubic and refused)' => ['messenger abbreviations', 'Signal: '.str_repeat('i.e.', 60)],
+    'R218 messenger name, a dotted run (was cubic and refused)' => ['messenger dots', 'whatsapp '.str_repeat('a.', 95)],
+    'R218 messenger name, four such runs' => ['messenger repeated', str_repeat('discord: a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z ', 4)],
     'R218 a messenger name and a long digit run with gaps' => ['digit gaps', 'whatsapp '.str_repeat('1 ', 2000)],
 ]);
 
@@ -462,9 +469,4 @@ it('reports masked for an R218 span and not for a counting run or a plain word',
         ->and($masker->mask('zero five zero one two')->masked)->toBeTrue()
         ->and($masker->mask('whatsapp @sara')->masked)->toBeTrue()
         ->and($masker->mask('signal strength')->masked)->toBeFalse();
-});
-
-it('keeps the messenger pattern\'s literal placeholder in step with PLACEHOLDER', function () {
-    // MessageMasker::MESSENGER spells the placeholder out literally; if PLACEHOLDER changes, this fails.
-    expect((new MessageMasker)->mask('whatsapp '.MessageMasker::PLACEHOLDER)->text)->toBe('whatsapp '.MessageMasker::PLACEHOLDER);
 });
