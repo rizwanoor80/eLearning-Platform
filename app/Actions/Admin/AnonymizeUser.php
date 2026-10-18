@@ -33,6 +33,9 @@ use Illuminate\Support\Str;
  * mail the tombstoned address.
  *
  * Admin action, audited; enforced here because no `UserPolicy` exists yet.
+ *
+ * Lock order (R225(b)): the target's `users` row `FOR UPDATE` first, then any `tutor_profiles` row. Every other
+ * transaction that touches both, such as `RequestDisplayName`, takes the same order, so none can wait on the other.
  */
 class AnonymizeUser
 {
