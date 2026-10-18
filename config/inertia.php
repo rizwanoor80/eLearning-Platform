@@ -52,6 +52,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | History encryption
+    |--------------------------------------------------------------------------
+    |
+    | Page props stay in the browser's history state, so on a shared device the back
+    | button could show the previous user's pages after a sign-out. With this on, every
+    | page is sent with `encryptHistory`, the browser seals its history with a key kept
+    | in session storage, and `Inertia::clearHistory()` (called on sign-out) discards
+    | the key. The Filament admin panel does not use Inertia and is not affected.
+    | (CP8 18f, R227.)
+    |
+    */
+
+    'history' => [
+
+        'encrypt' => (bool) env('INERTIA_ENCRYPT_HISTORY', true),
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Testing
     |--------------------------------------------------------------------------
     |

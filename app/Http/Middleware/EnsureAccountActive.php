@@ -7,6 +7,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -50,6 +51,12 @@ class EnsureAccountActive
 
             $request->session()->invalidate();
             $request->session()->regenerateToken();
+
+            // R227: this ends a session too, so the login page it lands on clears the browser's history (after the invalidate, which would drop the flag).
+            // Not for a background fetch (the unread-count poll): it would follow the redirect and use the flag up on a page nobody sees.
+            if (! $request->expectsJson()) {
+                Inertia::clearHistory();
+            }
 
             return redirect()->route('login')->with('status', 'This account is no longer active.');
         }
