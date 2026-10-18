@@ -23,6 +23,19 @@ class DisplayNameRequests
         }
     }
 
+    /**
+     * R217: a closed (anonymised) account takes no display name. `AnonymizeUser` marks it by soft-deleting the user
+     * row, the same column `TutorProfile::bookable()` reads, and its later unconditional UPDATE nulls the three
+     * display-name columns. Called on a profile row this transaction has locked: whichever of the two commits
+     * first, a request is either refused here or nulled there, and an anonymised tutor never keeps a name.
+     */
+    public static function assertAccountOpen(TutorProfile $locked, string $message): void
+    {
+        if (User::onlyTrashed()->whereKey($locked->user_id)->exists()) {
+            throw ValidationException::withMessages(['display_name' => $message]);
+        }
+    }
+
     public static function current(TutorProfile $locked, string $expectedName): string
     {
         $requested = $locked->display_name_requested;

@@ -67,9 +67,18 @@ class TutorProfile extends Model
      * `toArray()` or Inertia prop built from the model must not carry it. The two readers that may see it, the
      * tutor's own Settings page and the admin queue, read the attribute explicitly.
      *
+     * The four bank attributes are hidden for the same reason (R217): `HandleInertiaRequests` shares the request
+     * user as `auth.user` on every page, with whatever relations are loaded on it, so a tutor profile reached
+     * through `$user->tutorProfile` would carry the decrypted IBAN to the browser. Direct attribute reads
+     * (`$profile->bank_name`, `bankIbanMasked()`) are unaffected; the onboarding bank step passes its fields
+     * explicitly and the IBAN only masked.
+     *
      * @var list<string>
      */
-    protected $hidden = ['display_name_requested', 'display_name_requested_at'];
+    protected $hidden = [
+        'display_name_requested', 'display_name_requested_at',
+        'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
+    ];
 
     protected $fillable = [
         'user_id', 'country', 'headline', 'bio', 'intro_video_url', 'linkedin_url', 'hourly_rate', 'min_lead_hours',
