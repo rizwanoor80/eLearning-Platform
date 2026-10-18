@@ -66,6 +66,10 @@ class SuspendAccount
                 'suspended_reason' => $reason,
             ]);
 
+            // First among the afterCommit callbacks (they run in registration order, with no try/catch): the room close is
+            // queued and cheap, and must not depend on a sweep below completing.
+            DB::afterCommit(fn () => AccountSuspended::dispatch($locked->id, $actor->id));
+
             $profile = $locked->tutorProfile;
 
             if ($profile !== null && $profile->status === TutorProfileStatus::Approved) {
@@ -73,7 +77,6 @@ class SuspendAccount
             }
 
             DB::afterCommit(fn () => ($this->cancelLessons)($locked, $actor));
-            DB::afterCommit(fn () => AccountSuspended::dispatch($locked->id, $actor->id));
         });
     }
 }

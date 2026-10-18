@@ -37,6 +37,13 @@ class IssueJoinToken
         self::assertJoinable($lesson);
         self::assertParticipantJoinable($lesson, $participant);
 
+        // Closed early (a suspension, R232): `createRoom` below would make the room again, and a token issued before the
+        // close would open it. Only the token is refused, not `assertJoinable`: the other party's manual "I've joined" and
+        // no-show paths share that check and must stay open (see `assertParticipantJoinable`).
+        if ($lesson->room_closed_at !== null) {
+            throw new AttendanceException('The room for this lesson has closed.');
+        }
+
         $provider = $this->providers->forCode((string) $lesson->room_provider);
         $expiresAt = $lesson->ends_at->copy()->addMinutes((int) config('video.close_grace_minutes'));
 
@@ -65,12 +72,6 @@ class IssueJoinToken
 
         if ($lesson->room_id === null || $lesson->room_provider === null) {
             throw new AttendanceException('The room for this lesson is not ready yet.');
-        }
-
-        // Closed early (a suspension, R232): `createRoom` below would make the room again, and a token issued before the
-        // close would open it.
-        if ($lesson->room_closed_at !== null) {
-            throw new AttendanceException('The room for this lesson has closed.');
         }
 
         if (now()->lessThan($lesson->starts_at->copy()->subMinutes((int) config('video.join_lead_minutes')))) {

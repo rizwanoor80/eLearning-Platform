@@ -20,7 +20,9 @@ use Throwable;
  * Deliberately not filtered by lesson status: `CancelSuspendedTutorLessons` runs first and cancels confirmed
  * lessons, whose rooms (open from fifteen minutes before the start) would otherwise stay live with the innocent
  * party in them. The window is `CloseLessonRooms`' own: a room is open until the end plus the grace. The audit row
- * is written only when this call wins the conditional UPDATE, so a retried job audits each lesson once. Idempotent
+ * is written only when this call wins the conditional UPDATE, so a retried job audits each lesson once. The provider is
+ * closed before the row is marked (a crash between the two is retried; the reverse order would never retry), so a token
+ * issued in that instant can recreate the room, which then lapses at its own `exp` (the end plus the grace). Idempotent
  * and safe to run twice; a reinstated account is left alone.
  */
 class CloseSuspendedAccountRooms

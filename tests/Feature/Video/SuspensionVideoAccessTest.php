@@ -7,7 +7,9 @@ use App\Actions\Video\IssueJoinToken;
 use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
 use App\Enums\UserStatus;
+use App\Events\Safeguarding\AccountSuspended;
 use App\Exceptions\AttendanceException;
+use App\Listeners\Safeguarding\CloseRoomsOfSuspendedAccount;
 use App\Models\AuditLog;
 use App\Models\Curriculum;
 use App\Models\Learner;
@@ -17,6 +19,8 @@ use App\Models\User;
 use App\Models\VideoProvider;
 use App\Services\Video\AccountSuspensions;
 use App\Services\Video\FakeVideoProvider;
+use App\Services\Video\VideoProviderException;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Carbon;
 
 /**
@@ -208,12 +212,31 @@ it('refuses a join token once the room has been closed, and does not recreate it
     app(SuspendAccount::class)($admin, $tutor->user, 'Safeguarding concern upheld.');
     $lesson = $lesson->fresh()->load('learner', 'tutorProfile');
 
-    expect(fn () => IssueJoinToken::assertJoinable($lesson))
-        ->toThrow(AttendanceException::class, 'The room for this lesson has closed.');
-
     expect(fn () => app(IssueJoinToken::class)($parent, $lesson))
-        ->toThrow(AttendanceException::class, 'The room for this lesson has closed.');
-    expect(FakeVideoProvider::closedRooms())->toBe(['lesson-'.$lesson->id]);
+        ->toThrow(AttendanceException::class, 'The room for this lesson has closed.')
+        ->and(FakeVideoProvider::closedRooms())->toBe(['lesson-'.$lesson->id]);
+});
+
+it('keeps the lesson-level join check, and so the other party\'s manual join and no-show paths, open after a close', function () {
+    ['lesson' => $lesson, 'parent' => $parent, 'admin' => $admin] = suspLesson();
+
+    app(SuspendAccount::class)($admin, $parent, 'Safeguarding concern upheld.');
+
+    IssueJoinToken::assertJoinable($lesson->fresh());
+    expect($lesson->fresh()->room_closed_at)->not->toBeNull();
+});
+
+it('throws from the listener when a room could not be closed, so the queue retries, and allows several tries', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'admin' => $admin] = suspLesson();
+    $lesson->forceFill(['room_provider' => 'unknown-provider'])->save();
+    $tutor->user->forceFill(['status' => UserStatus::Suspended])->save();
+
+    $listener = app(CloseRoomsOfSuspendedAccount::class);
+
+    expect(fn () => $listener->handle(new AccountSuspended($tutor->user_id, $admin->id)))
+        ->toThrow(VideoProviderException::class)
+        ->and($listener->tries)->toBeGreaterThan(1)
+        ->and($listener)->toBeInstanceOf(ShouldQueue::class);
 });
 
 // (b) --------------------------------------------------------------------------------------------------------------

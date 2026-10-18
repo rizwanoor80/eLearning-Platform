@@ -10,11 +10,16 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 
 /**
  * R232: a suspension ends video access. Queued, so a slow or failing provider never holds up the admin's request;
- * a provider failure throws once every lesson has been tried, and the queue's retry closes the rest (closing a room
- * twice is not an error, and each lesson is audited once).
+ * a provider failure throws once every lesson has been tried, and the retries below close the rest (closing a room
+ * twice is not an error, and each lesson is audited once). The tries are set here because Horizon's own default is one.
  */
 class CloseRoomsOfSuspendedAccount implements ShouldQueue
 {
+    public int $tries = 5;
+
+    /** @var list<int> */
+    public array $backoff = [30, 120, 300, 600];
+
     public function __construct(private CloseSuspendedAccountRooms $closeRooms) {}
 
     /**
