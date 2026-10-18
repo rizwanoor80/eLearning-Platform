@@ -34,8 +34,10 @@ use Illuminate\Support\Str;
  *
  * Admin action, audited; enforced here because no `UserPolicy` exists yet.
  *
- * Lock order (R225(b)): the target's `users` row `FOR UPDATE` first, then any `tutor_profiles` row. Every other
- * transaction that touches both, such as `RequestDisplayName`, takes the same order, so none can wait on the other.
+ * Lock order (R225(b)): the target's `users` row `FOR UPDATE` first, then any `tutor_profiles` row.
+ * `RequestDisplayName` takes the same order and so cannot deadlock with this action. Not every transaction that
+ * writes an audited profile row does yet (`CompleteTutorOnboarding` and `ResetPermitScanOnPermitChange` lock the
+ * profile first, then reference the tutor's user row; recorded in STATUS Deferred).
  */
 class AnonymizeUser
 {

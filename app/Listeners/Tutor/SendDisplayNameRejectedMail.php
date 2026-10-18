@@ -15,8 +15,9 @@ class SendDisplayNameRejectedMail implements ShouldQueue
      * and this queued job, and the profile's `user()` relation includes trashed rows (and may be cached on an event
      * that was never serialised). The user is read afresh through the default scope, which leaves trashed rows out:
      * an anonymised user (soft-deleted, address tombstoned) gets nothing, and the mailable is never built. The
-     * mailable is itself queued, so the address is fixed here; an anonymisation between the two jobs would reach only
-     * the `.invalid` tombstone, as with the sibling listeners.
+     * mailable is itself queued and `Mail::to()` fixes the address when this job runs, so an anonymisation committing
+     * between this job and the mailable job is not caught here: that mail still goes to the address held at this
+     * moment (the sibling listeners behave the same; a re-check inside the mailable job is a later change).
      */
     public function handle(DisplayNameRejected $event): void
     {

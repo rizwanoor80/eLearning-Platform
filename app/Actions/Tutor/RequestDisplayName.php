@@ -19,9 +19,10 @@ use Illuminate\Validation\ValidationException;
  * Lock order (R225(b), same as `AnonymizeUser`): the tutor's `users` row first, then the `tutor_profiles` row. The
  * audit insert below carries a foreign key to the tutor's `users` row, which Postgres checks with `FOR KEY SHARE`;
  * taken after the profile lock it would cross `AnonymizeUser` (users `FOR UPDATE`, then profile) and deadlock into a
- * 500 with nothing written. So any transaction that will reference the tutor's `users` row takes its lock on that
- * row BEFORE the profile lock. `FOR SHARE` is enough: it waits for an anonymisation in flight (whose UPDATE needs
- * `FOR UPDATE`), keeps `deleted_at` stable until commit, and does not block other inserts that reference the row.
+ * 500 with nothing written. So a transaction that will reference the tutor's `users` row takes its lock on that
+ * row BEFORE the profile lock (this action does; two older actions do not yet, see `AnonymizeUser`). `FOR SHARE` is enough: it waits for an anonymisation in flight (whose UPDATE needs
+ * `FOR UPDATE`), keeps `deleted_at` stable until commit, and does not block other inserts that reference the row
+ * (it does briefly hold off an UPDATE of that users row, such as a settings save).
  * `ApproveDisplayName` and `RejectDisplayName` need no such lock: their audit foreign key is the admin's row, and an
  * admin is never the target of `AnonymizeUser`. If either ever inserts a row that references the TUTOR's user row,
  * it must take this lock first as well.

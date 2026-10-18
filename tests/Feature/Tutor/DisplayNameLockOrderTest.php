@@ -36,11 +36,13 @@ class DisplayNameLockOrderTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (DB::connection('probe')->transactionLevel() > 0) {
-            DB::connection('probe')->rollBack();
-        }
+        if (config()->has('database.connections.probe')) {
+            if (DB::connection('probe')->transactionLevel() > 0) {
+                DB::connection('probe')->rollBack();
+            }
 
-        DB::purge('probe');
+            DB::purge('probe');
+        }
 
         DB::statement('RESET lock_timeout');
 
