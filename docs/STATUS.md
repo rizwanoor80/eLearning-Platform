@@ -1,4 +1,4 @@
-# STATUS — cycle 17 r1 — END (all three steps done; context handoff to a new session); written 2026-10-17 17:12
+# STATUS — cycle 18 r1 — step 2 in progress (18a); written 2026-10-18 08:46
 Tests: **2646 passed / 13412 assertions in the cloud sandbox twice** (the five variables exported, then unset; `composer test` exit 0 both times; `ledger:verify` OK; CYCLE-LOG VERIFICATION 16:30; was 2646 / 13419 locally at cycle 16 END, 13412 in CI), and CI success on both PostgreSQL jobs for `e7d0be9`, `6a90aca` and the merge commit `6fdef0c` (runs 39049646071, 39051344817, 39051742276) · Advisor: **consulted 1 time (1 confirmed in part: 7 of 8 flags adopted, 1 rejected after a test)**, model named in its own report, counted on the configured `advisorModel` basis (R63) · Review: **17 verdicts, 9 PASS, 6 PASS WITH NOTE, 2 FAIL (Low, doc-only, fixed in round 1 of 2), 0 Medium, 0 High** · Context size: not measured by the tool (cloud session, no `/context`).
 
 ## §1 Git state
