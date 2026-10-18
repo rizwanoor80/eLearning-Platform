@@ -244,11 +244,58 @@ question 12
         'a.b.'.MessageMasker::PLACEHOLDER,
     ],
 
+    // R218 (cycle 18b), positives: spelled-out e-mail, digit words, messenger handles
+    'R218 spelled email, capitals' => ['sara AT gmail DOT com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, square brackets' => ['sara[at]gmail[dot]com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, round brackets (hidden whole, not just the domain)' => ['sara (at) gmail (dot) com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, hyphens and spaces between the parts' => ['sara - at - gmail - dot - com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, two interior dot segments' => ['sara at gmail dot co dot uk', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, word at and a literal dot' => ['sara at gmail.com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, literal at sign and a spelled dot' => ['sara@gmail dot com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email, spaced at sign and a bracketed dot' => ['sara @ gmail [dot] com', MessageMasker::PLACEHOLDER],
+    'R218 spelled email inside a sentence leaves the sentence' => ['write to sara at example dot org please', 'write to '.MessageMasker::PLACEHOLDER.' please'],
+    'R218 digit words, hyphens' => ['zero-five-zero-one-two-three', MessageMasker::PLACEHOLDER],
+    'R218 digit words, oh for zero' => ['oh five oh one two three four', MessageMasker::PLACEHOLDER],
+    'R218 digit words, wide separators (no cap to fail open)' => ['zero  five   zero    one two', MessageMasker::PLACEHOLDER],
+    'R218 digit words, commas' => ['zero five zero, one two three', MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a grouped number' => ['whatsapp me on 050 123 4567', 'whatsapp me on '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a sub-threshold grouped number leaves no tail' => ['whatsapp us on 0501 234', 'whatsapp us on '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name, a plus and groups' => ['WhatsApp +971 50 123 4567', 'WhatsApp '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a plain number absorbs the placeholder' => ['whatsapp 0501234567', 'whatsapp '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name and an at-handle' => ['add me on snapchat @sara', 'add me on '.MessageMasker::PLACEHOLDER],
+    'R218 messenger name, an em dash and a handle' => ['Insta—@sara', MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a tag with digits' => ['discord sara#1234', MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a short grouped number' => ['signal 050 123', MessageMasker::PLACEHOLDER],
+
+    // R218, negatives: ordinary chat the new patterns must leave alone
+    'R218 negative: at the park on the dot' => ['we met at the park on the dot', 'we met at the park on the dot'],
+    'R218 negative: three digit words and go' => ['one two three go', 'one two three go'],
+    'R218 negative: signal strength' => ['the signal strength is poor', 'the signal strength is poor'],
+    'R218 negative: a sentence end before a two-letter word' => ['look at it. Me too', 'look at it. Me too'],
+    'R218 negative: o clock' => ['see you at 5 o\'clock', 'see you at 5 o\'clock'],
+    'R218 negative: counting up' => ['one two three four five, got it?', 'one two three four five, got it?'],
+    'R218 negative: counting up with commas in a sentence' => ['I counted one, two, three, four, five apples', 'I counted one, two, three, four, five apples'],
+    'R218 negative: counting down' => ['five four three two one go', 'five four three two one go'],
+    'R218 negative: one word repeated' => ['one one one one one', 'one one one one one'],
+    'R218 negative: counting from zero' => ['zero one two three four', 'zero one two three four'],
+    'R218 negative: snap out of it' => ['snap out of it', 'snap out of it'],
+    'R218 negative: telegram with no handle' => ['telegram me tomorrow', 'telegram me tomorrow'],
+    'R218 negative: discord with no handle' => ['discord is noisy', 'discord is noisy'],
+    'R218 negative: a messenger name alone' => ['whatsapp', 'whatsapp'],
+    'R218 negative: a time after at' => ['arrived at 10.30 sharp', 'arrived at 10.30 sharp'],
+    'R218 negative: the word signal after a noun' => ['the signal at the lights', 'the signal at the lights'],
+    'R218 negative: a place and a sentence end' => ['she is at Oxford. Online lessons are fine', 'she is at Oxford. Online lessons are fine'],
+    'R218 negative: at between two single letters' => ['a at b', 'a at b'],
+
+    // R218, accepted over-masking (the safe side, disclosed in the class docblock): the word before a spelled "at"
+    'R218 over-masking: the word before at is hidden with the address' => ['see you at school dot com', 'see '.MessageMasker::PLACEHOLDER],
+
     // Known limits (ADR-019): spelled out is not caught
-    'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
+    // R218 (cycle 18b) closed these two limits: the rows stay, under their original keys, and now pin the new behaviour.
+    'spelled-out digits' => ['zero five zero one two three four five six seven', MessageMasker::PLACEHOLDER],
     'colon-separated number' => ['050:123:4567', '050:123:4567'],
     'lookalike letters for digits' => ['O5O l234567', 'O5O l234567'],
-    'spelled-out address' => ['sara at gmail dot com', 'sara at gmail dot com'],
+    'spelled-out address' => ['sara at gmail dot com', MessageMasker::PLACEHOLDER],
     'a spaced word-like ending is a known limit (R143)' => ['contact me at mysite. online please', 'contact me at mysite. online please'],
     // Pure whitespace alone, with no punctuation at all, is deliberately not a valid bare-domain
     // separator (R143) — otherwise ordinary line-wrapped sentences would bridge into a false positive.
@@ -327,6 +374,13 @@ it('stays fast on adversarial junk-gap input (R144 Finding 2)', function (string
     'gate-open, long dash run before a non-word ending' => ['gate-open non-word', str_repeat('a-', 1000).'.com'],
     'gate-open, long dash run before a word-like ending' => ['gate-open word-like', str_repeat('a-', 1000).'.shop'],
     'gate-open, mixed dot/dash run before a non-word ending' => ['gate-open mixed', str_repeat('a-', 500).str_repeat('a.', 500).'.com'],
+
+    // R218: the spelled-out patterns on the shapes that would be quadratic or exponential if a lookbehind or a cap were wrong.
+    'R218 a long dotted chain before a spelled email' => ['dotted chain', str_repeat('a.', 5000).' at b dot com'],
+    'R218 many at-words with no dot' => ['at words', str_repeat('a at ', 2000)],
+    'R218 many digit words' => ['digit words', str_repeat('one ', 2000)],
+    'R218 many messenger names' => ['messenger names', str_repeat('whatsapp ', 2000)],
+    'R218 a messenger name and a long digit run with gaps' => ['digit gaps', 'whatsapp '.str_repeat('1 ', 2000)],
 ]);
 
 // R157(c): EMAIL is not gated by `hasCandidate()` (it runs unconditionally in the masking pipeline,
@@ -386,4 +440,31 @@ it('still fails closed on a genuine PCRE engine failure', function () {
     } finally {
         ini_set('pcre.backtrack_limit', $original);
     }
+});
+
+it('is idempotent on the R218 shapes: masking the placeholder they leave changes nothing', function (string $input) {
+    $masker = new MessageMasker;
+    $once = $masker->mask($input)->text;
+
+    expect($masker->mask($once)->text)->toBe($once);
+})->with([
+    'sara (at) gmail (dot) com',
+    'zero five zero one two three four five six seven',
+    'whatsapp me on 050 123 4567',
+    'my insta is @sara.k and sara at gmail dot com',
+]);
+
+it('reports masked for an R218 span and not for a counting run or a plain word', function () {
+    $masker = new MessageMasker;
+
+    expect($masker->mask('sara at gmail dot com')->masked)->toBeTrue()
+        ->and($masker->mask('one two three four five')->masked)->toBeFalse()
+        ->and($masker->mask('zero five zero one two')->masked)->toBeTrue()
+        ->and($masker->mask('whatsapp @sara')->masked)->toBeTrue()
+        ->and($masker->mask('signal strength')->masked)->toBeFalse();
+});
+
+it('keeps the messenger pattern\'s literal placeholder in step with PLACEHOLDER', function () {
+    // MessageMasker::MESSENGER spells the placeholder out literally; if PLACEHOLDER changes, this fails.
+    expect((new MessageMasker)->mask('whatsapp '.MessageMasker::PLACEHOLDER)->text)->toBe('whatsapp '.MessageMasker::PLACEHOLDER);
 });

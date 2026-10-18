@@ -179,22 +179,41 @@ use Normalizer;
  * its docblock and the EMAIL constant above), which forecloses the ambiguity by construction the same way,
  * without capping or touching the local part. Measured before and after in CYCLE-LOG VERIFICATION entries.
  *
- * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
- * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
- * replaced by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
- * four family emoji, get through — phone-gap limits are unchanged by R144, disclosed as out of scope),
- * a `:` between digits, an address whose provider is not on the short MAIL_PROVIDER list and whose domain
- * has no recognised ending, a bare word-like ending reached only by whitespace and no punctuation at all
- * is deliberately NOT caught (see above), a multi-digit or fractional enclosed-number symbol ("➉", "½",
- * Roman numerals), and social handles are not caught. The safe side is over-masking: dates (27-09-2026,
- * 27/09/2026), "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a
- * bare domain whose ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates
- * its labels, "(at)"/"(dot)" written with any punctuation around them ("sara (at) gmail (dot) com"), and
- * now (R144) an arbitrarily long run of junk punctuation between labels (fifty or five hundred dots, or a
- * mixed junk run) are masked too — a label is not distinguished from a spelled-out separator word,
- * deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead; the
- * variation selectors and every format character (bar the ZWJ, see above) are stripped from the stored
- * text; 16:00-17:00 and ordinary sentence ends are left alone.
+ * R218 (cycle 18b): three shapes that used to be documented limits are masked, conservatively and in English only
+ * (each becomes one `PLACEHOLDER`, counted like any other hidden span; masking is the only effect):
+ *  - a spelled-out e-mail, `<token> at <token> dot <tld>`, where "at" is the word, `[at]`, `(at)` or a literal `@`
+ *    and "dot" is the word, `[dot]`, `(dot)` or a tight literal `.`, with up to two interior dot segments, spaces
+ *    or hyphens between the parts, and the ending drawn from the same lists as the bare-domain patterns. With a
+ *    literal `@` every dot must be spelled (a plain `sara@example.com` stays with EMAIL, so spans do not change);
+ *    a literal `.` is tight only, so "look at it. Me too" is left alone. These run first, before EMAIL, so
+ *    "sara (at) gmail (dot) com" is hidden whole and not as "sara (at) " plus a hidden domain.
+ *  - a run of five or more digit words (zero, oh, o, one to nine) with separators between them, masked as a phone
+ *    candidate. A strictly counting run ("one two three four five", "five four three two one") and a run of one
+ *    repeated word are left alone: that is primary-maths chat, not a number.
+ *  - a messenger name (whatsapp, telegram, signal, insta, instagram, snap, snapchat, tiktok, discord) followed
+ *    within three tokens by an `@handle` or by four or more digits (grouped as a phone number may be, so the
+ *    sub-threshold "0501 234" after "whatsapp me" is hidden too). It runs after the phone pass, so a full number
+ *    has already been hidden and the name then absorbs the placeholder.
+ *
+ * Known limits (ADR-019, as narrowed by R218): digits split by fewer than five words, by whole words in another
+ * language or by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
+ * four family emoji, get through), a `:` between digits, an address whose provider is not on the short
+ * MAIL_PROVIDER list and whose domain has no recognised ending, a bare word-like ending reached only by
+ * whitespace and no punctuation at all, a multi-digit or fractional enclosed-number symbol ("➉", "½", Roman
+ * numerals), a spelled-out address with a hyphenated label ("sara at my-site dot com": only "my-site" is
+ * hidden), "dotcom" or "d o t" written as one token or spaced letters, a messenger handle written without an
+ * `@` ("telegram: sara_k"), one more than three tokens after the messenger name, or fewer than four digits
+ * after it. A name made of ordinary words that spells an address inside a tutor's display name stays a product
+ * decision (cycle 14 r2), not a masker rule. The safe side is over-masking: dates (27-09-2026, 27/09/2026),
+ * "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a bare domain whose
+ * ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates its labels,
+ * "(at)"/"(dot)" with any punctuation around them, an arbitrarily long run of junk punctuation between labels
+ * (fifty or five hundred dots, or a mixed junk run) — a label is not distinguished from a spelled-out separator
+ * word, deliberately, or a real bare domain built the same way ("mysite.dot.com") would leak instead — and, from
+ * R218, the word before a spelled "at" ("see you at school dot com" hides "you at school dot com"), a year or a
+ * count right after a messenger name ("discord 2024 update"), and a run of digit words that is not a plain
+ * count ("zero five zero one two"); the variation selectors and every format character (bar the ZWJ, see above)
+ * are stripped from the stored text; 16:00-17:00 and ordinary sentence ends are left alone.
  */
 class MessageMasker
 {
@@ -347,6 +366,53 @@ class MessageMasker
     /** Mirrors COUNTRY_DOMAIN's own ending: a bounded two-letter run, preceded by junk (never a bare letter/digit) and not followed by another letter/digit — "word"/"text" (4 letters, no isolated 2-letter token) do not count. */
     private const HAS_COUNTRY_ENDING = '~(?<![\p{L}\p{Nd}])[a-z]{2}(?![\p{L}\p{Nd}])~iu';
 
+    /** R218: the word, `[at]` or `(at)` form of "at" (a literal `@` is a separate pattern); the word needs non-alphanumeric neighbours. */
+    private const SPELLED_AT = '(?:\[\s*at\s*\]|\(\s*at\s*\)|(?<![\p{L}\p{Nd}])at(?![\p{L}\p{Nd}]))';
+
+    private const SPELLED_DOT = '(?:\[\s*dot\s*\]|\(\s*dot\s*\)|(?<![\p{L}\p{Nd}])dot(?![\p{L}\p{Nd}]))';
+
+    /** Spaces and hyphens between the parts of a spelled-out address; possessive, so a long gap never backtracks. */
+    private const SPELL_GAP = '[\s\-]*+';
+
+    /** No hyphen, so a hyphen can be the gap ("sara-at-gmail-dot-com"); no `.` either, so a dot is always a separator. */
+    private const SPELL_LABEL = '[\p{L}\p{Nd}_]++';
+
+    private const SPELL_TLD = '(?:'.self::NON_WORD_ENDINGS.'|'.self::WORD_ENDINGS.'|[a-z]{2})(?![\p{L}\p{Nd}])';
+
+    /** A dot between labels: spelled, with a gap either side, or a literal `.` with no gap at all (so "it. Me" is not one). */
+    private const SPELL_DOT_ANY = '(?:'.self::SPELL_GAP.self::SPELLED_DOT.self::SPELL_GAP.'|\.)';
+
+    private const SPELL_DOT_WORD = self::SPELL_GAP.self::SPELLED_DOT.self::SPELL_GAP;
+
+    /**
+     * "at" spelled as a word or bracket. The lookbehind is the whole local-part class (as EMAIL's), not just a letter or
+     * digit: otherwise an attempt starts after every `.` or `+` in a dotted chain and re-reads the chain each time,
+     * which is quadratic in a long "a.a.a." run.
+     */
+    private const SPELLED_EMAIL_AT_WORD = '~(?<![\p{L}\p{Nd}_+.])[\p{L}\p{Nd}_+]++(?:\.[\p{L}\p{Nd}_+]++)*+'.self::SPELL_GAP.self::SPELLED_AT.self::SPELL_GAP
+        .self::SPELL_LABEL.'(?:'.self::SPELL_DOT_ANY.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_ANY.self::SPELL_TLD.'~iu';
+
+    /** A literal `@` with every dot spelled: a plain "sara@example.com" is EMAIL's, so the spans of existing cases do not move. */
+    private const SPELLED_EMAIL_AT_SYMBOL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP
+        .self::SPELL_LABEL.'(?:'.self::SPELL_DOT_WORD.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_WORD.self::SPELL_TLD.'~iu';
+
+    private const DIGIT_WORD = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|o(?![\'’]))';
+
+    /**
+     * Five or more digit words. The separator run is unbounded and possessive (the R144 lesson: a cap makes a long gap
+     * fail open) — it is disjoint from the words, so possessive matching commits to nothing a greedy match would find.
+     */
+    private const NUMBER_WORDS = '~(?<![\p{L}\p{Nd}])'.self::DIGIT_WORD.'(?:[\s,.\-_/]++'.self::DIGIT_WORD.'){4,}(?![\p{L}\p{Nd}])~iu';
+
+    /**
+     * A messenger name, up to three tokens, then an `@handle`, four or more digits (grouped the way PHONE_RUN groups
+     * them, taking the whole run so no sub-threshold tail is left behind) or a placeholder an earlier pass left. The
+     * gaps are "anything that is not a letter, digit or `@`" so an em dash or a colon works as well as a space.
+     */
+    private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:whatsapp|telegram|signal|instagram|insta|snapchat|snap|tiktok|discord)(?![\p{L}\p{Nd}])'
+        .'(?:[^\p{L}\p{Nd}@]++[^\s@]+){0,3}?[^\p{L}\p{Nd}@]*+'
+        .'(?:@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+|\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+|\[hidden until after your first lesson\])~iu';
+
     /**
      * Digits with up to six separator *graphemes* between them (`\X`, not a code point — see the class docblock),
      * a grapheme disqualified from counting as a separator (and so ending the run) if it is `:` or an ordinary
@@ -365,6 +431,19 @@ class MessageMasker
 
         $hidden = 0;
         $masked = $text;
+
+        // R218: the spelled-out shapes first, so "sara (at) gmail (dot) com" is hidden whole before the
+        // bare-domain patterns take only its domain.
+        $masked = $this->replace(self::SPELLED_EMAIL_AT_WORD, self::PLACEHOLDER, $masked, $hidden);
+        $masked = $this->replace(self::SPELLED_EMAIL_AT_SYMBOL, self::PLACEHOLDER, $masked, $hidden);
+        $masked = $this->replaceCallback(self::NUMBER_WORDS, function (array $match) use (&$hidden): string {
+            if ($this->isCountingRun($match[0])) {
+                return $match[0];
+            }
+            $hidden++;
+
+            return self::PLACEHOLDER;
+        }, $masked);
 
         foreach ([
             [self::EMAIL, null],
@@ -402,8 +481,40 @@ class MessageMasker
             $masked,
         );
 
+        // After the phone pass: a full number is already a placeholder, which the messenger name then absorbs.
+        $masked = $this->replace(self::MESSENGER, self::PLACEHOLDER, $masked, $hidden);
+
         // "masked" means something was hidden, not that NFKC, digit-folding or the invisible-character strip changed the text.
         return new MaskedMessage($masked, $hidden > 0);
+    }
+
+    /**
+     * R218: "one two three four five" and "five four three two one" count; "one one one one one" repeats. None is a
+     * number someone could dial, and hiding them would break ordinary primary-maths chat. Any other run of five or
+     * more digit words is hidden. "o" and "oh" read as zero.
+     */
+    private function isCountingRun(string $run): bool
+    {
+        $values = ['zero' => 0, 'oh' => 0, 'o' => 0, 'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6, 'seven' => 7, 'eight' => 8, 'nine' => 9];
+        preg_match_all('~[a-z]+~i', $run, $words);
+        $digits = array_map(static fn (string $word): int => $values[strtolower($word)], $words[0]);
+
+        foreach ([0, 1, -1] as $step) {
+            $steady = true;
+
+            for ($i = 1, $n = count($digits); $i < $n; $i++) {
+                if ($step !== $digits[$i] - $digits[$i - 1]) {
+                    $steady = false;
+                    break;
+                }
+            }
+
+            if ($steady) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
