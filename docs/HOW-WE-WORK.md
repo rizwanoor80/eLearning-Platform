@@ -324,12 +324,13 @@ Then paste Appendix A into the planning project's instructions. Only the project
 
 ## 17. Cloud sessions
 
-When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for four lines. The repository's `CLAUDE.md` carries the same four in its own "Cloud sessions" section.
+When a project also runs sessions in Claude Code's cloud environment (TrusTutor: `docs/cloud/ENVIRONMENT.md`; such a session sets `CLAUDE_CODE_REMOTE=true`), the method is unchanged — the same loop, files, gates and rules — except for the differences below and what exists only on the owner's machine (the Windows checkout path, Herd, `CLAUDE.local.md`). The repository's `CLAUDE.md` carries the same list in its own "Cloud sessions" section, and the two are kept word for word in step.
 
 - **`/clear` exists and keeps the container.** A new session is needed only after the environment dialog changes; the files carry the state either way.
 - **No `CLAUDE.local.md`, so no ssh.** The allow-list in §11 does not exist there. Read a server's state through the project's status endpoint (TrusTutor: `GET /ops/status` with the bearer token from the environment variable `TRUSTUTOR_STATUS_TOKEN`, never echoed, never logged) and not through a shell. A command that prints the status of the environment it runs in (TrusTutor: `php artisan ops:status`) describes the cloud sandbox there, never a server, and is not evidence about one.
 - **R178 does not apply.** The `SessionStart` hook starts PostgreSQL and Redis and migrates; it exits at once on a local machine. The cloud session does not start or stop services by hand.
-- **Deploys stay push-to-deploy.** A deploy is a fast-forward of the deploy branch to a green `main` commit (TrusTutor: green on both CI jobs, PostgreSQL 16 and 18), and it is verified through the status endpoint.
+- **Deploys stay push-to-deploy.** A deploy is a fast-forward of the deploy branch to a green `main` commit (TrusTutor: green on both CI jobs, PostgreSQL 16 and 18), and it is verified through the status endpoint, not ssh.
+- **The toolchain installs differently** (TrusTutor: ADR-028). Where the cloud's GitHub proxy serves only the project's own repository, dependencies are cloned over git rather than downloaded as archives, and a tool that is not a package is fetched as a checksum-verified file by the install step (TrusTutor: Composer `--prefer-source`, and PHPStan as a pinned phar at `tools/phpstan.phar`, never committed). Generated files the install writes (TrusTutor: the Wayfinder modules under `resources/js/`) are git-ignored and never committed.
 
 ---
 
