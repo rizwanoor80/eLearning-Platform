@@ -29,7 +29,6 @@ function unthrottledWriteAllowList(): array
 {
     return [
         'horizon/*' => 'Horizon dashboard API: behind the Horizon gate, a vendor route group configured in config/horizon.php.',
-        'broadcasting/auth' => 'Reverb channel authorisation: Echo calls it once per channel subscription on every page load, so a per-minute count would throttle ordinary use.',
         'livewire*/update' => 'Filament admin: Livewire polls it by design, so a per-minute count would break the panel; the guest admin login that posts through it has Filament\'s own rate limit (Login page, 5 a minute).',
         'admin/logout' => 'Filament admin sign-out: a panel route, behind the admin gate.',
     ];
@@ -223,6 +222,18 @@ it('limits every other account write to 60 a minute per user, and never counts a
 
     test()->post(route('notifications.read-all'))->assertStatus(429);
     not429(test()->actingAs(User::factory()->create())->post(route('notifications.read-all')));
+});
+
+it('puts the account baseline on the broadcasting auth route, one counter per user (R233)', function () {
+    test()->actingAs(User::factory()->create());
+
+    // The channel name does not matter here: a refused subscription (403) still counts as a request.
+    for ($i = 0; $i < 60; $i++) {
+        not429(test()->post('/broadcasting/auth', ['channel_name' => 'private-nothing', 'socket_id' => '1.1']));
+    }
+
+    test()->post('/broadcasting/auth', ['channel_name' => 'private-nothing', 'socket_id' => '1.1'])->assertStatus(429);
+    not429(test()->actingAs(User::factory()->create())->post('/broadcasting/auth', ['channel_name' => 'private-nothing', 'socket_id' => '1.1']));
 });
 
 it('puts the account baseline on the Fortify writes that have no limiter of their own', function () {
