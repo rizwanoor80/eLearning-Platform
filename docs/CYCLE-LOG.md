@@ -7905,3 +7905,24 @@ Authorisation quoted before acting. R111: "CC deploys trustutor-rehearsal itself
 - **`public/build/manifest.json`:** 200 before and after, 82 keys, 25081 bytes, sha256 prefix `2d1d0b27822fda26`, `cmp` identical (18e changed no front-end source). **HTTPS smoke:** `/` `/login` `/admin/login` `/tutors` 200; unauthenticated `/ops/status` 404; `GET /forgot-password` 200 (a read; no write was sent to rehearsal); same before and after.
 - **R214:** `mail.from_name` = **`trusTutor Team`** (unchanged). Owner action 5 stays open; recorded again at END.
 - R213 met in full. 18e's done-means (merged, record, deploy, R213 green) is met. Note: the 17:11 stamps on the two entries above were typed a minute ahead of the clock (`date -u` read 17:10 at the push); order is right.
+
+### 2026-10-18 17:24 — NOTE (18f: advisor not consulted; CC)
+18f (R227) touches the sign-out path (auth), so the advisor rule applies; it was not consulted because the change adds no decision about who may sign in or out: it decorates Fortify's own `LogoutResponse` and adds one flag after the session invalidate, both read from vendor source (`ResponseFactory.php:187,383`, `Response.php:112,224,234`, Fortify `AuthenticatedSessionController.php:100-109`). The fresh Opus review below stood in as the independent read. Advisor count stays 4.
+
+### 2026-10-18 17:24 — VERIFICATION (18f: red/green and gate, CC)
+- `tests/Feature/Security/InertiaHistoryTest.php`: on the old code 4 of 5 fail (no `encryptHistory` on a guest page or a signed-in page; no `clearHistory` after logout or after a suspended session ends), the 5th (no flag on an ordinary page) is a control and passes. All green on the new code; round 1 added a 6th test (a JSON request ending a suspended session leaves the flag for a real page).
+- Gate on `76bc3e3`: `composer test` **2688 passed / 13925 assertions** (base `main` 2683 / 13912). Gate on `e79c94e`: **2689 passed / 13928 assertions**, 72.0 s; Pint, PHPStan 0 errors, vue-tsc, RTL, `ledger:verify` OK; `VITE_FONTS_INLINE=0 npm run build` OK.
+- `git log origin/main..HEAD`: `e79c94e` CP8 18f: review round 1 - keep the clear-history flag for a real page when a background request ends a suspended session (R227); `76bc3e3` CP8 18f: encrypt Inertia history app-wide and clear it on sign-out (R227).
+- CI on `e79c94e` (run 39149128445): PostgreSQL 16 success 17:23:30, PostgreSQL 18 success 17:23:24.
+
+### 2026-10-18 17:24 — REVIEW (18f, PR #60 at `76bc3e3`, round 1; fresh subagent, Opus 5.5 (claude-opus-5-5))
+12 verdicts: 6 PASS, 5 PASS WITH NOTE, 1 FAIL (Low); Medium 0, High 0.
+- FAIL 6 (Low, `EnsureAccountActive.php:56-58`): the suspended-session branch redirects every request type, so a background `fetch` (the 60 s unread-count poll, the lesson-room POST) follows the redirect to `/login`, which pulls `clearHistory` into a page nobody sees; the next real page carries no flag. Fixed in `e79c94e`: the flag is set only when `! $request->expectsJson()`, with a test.
+- Notes: 4 (the JSON 204 sign-out path is correct and untested), 7 (the usual suspension path deletes the user's `sessions` rows, so another device arrives as a guest with no flag; history is cleared only on an explicit sign-out or a surviving suspended session), 9 (Filament admin sign-out does not clear history; the panel is out of scope by the plan), 10 (`crypto.subtle` is missing over plain HTTP on a non-localhost host, so the client stores unencrypted there with a console warning; protection is real only over HTTPS), 11 (no test for the JSON 204 path).
+- Recorded in STATUS Deferred: notes 7, 9 and 10.
+
+### 2026-10-18 17:24 — DECISION (18f: fix loop round 1 under R224(1), CC)
+The one Low fixed in `e79c94e` with a test; the gate re-run green. Re-review not run: below Medium none is required.
+
+### 2026-10-18 17:25 — DECISION (18f: merge PR #60 under R224(2)/R147, authorisation quoted before acting, CC)
+Authorisation (rule 8), PLAN cycle 18 r3, R224(2): a PR whose last review has 0 Medium and 0 High, with CI green on both PostgreSQL jobs, that touches no frozen file or migration and whose diff stays in the named files plus tests and docs, merges without asking (one attempt, R147). Conditions met: last review 12 verdicts, Medium 0, High 0; the Low fixed in `e79c94e`; CI on `e79c94e` green on both jobs (above); the diff is `config/inertia.php`, `app/Http/Responses/LogoutResponse.php`, `FortifyServiceProvider.php`, `EnsureAccountActive.php` and two tests: no migration, no frozen file, no `docs/cloud/ENVIRONMENT.md`, no `.claude/settings.json`. Method: squash with `expectedHeadSha` `e79c94e6a046a4f5e1b51d1274be33626612c00d`.
