@@ -30,7 +30,7 @@ function unthrottledWriteAllowList(): array
     return [
         'horizon/*' => 'Horizon dashboard API: behind the Horizon gate, a vendor route group configured in config/horizon.php.',
         'broadcasting/auth' => 'Reverb channel authorisation: Echo calls it once per channel subscription on every page load, so a per-minute count would throttle ordinary use.',
-        'livewire*/update' => 'Filament admin: Livewire polls it by design; the panel sits behind the admin gate.',
+        'livewire*/update' => 'Filament admin: Livewire polls it by design, so a per-minute count would break the panel; the guest admin login that posts through it has Filament\'s own rate limit (Login page, 5 a minute).',
         'admin/logout' => 'Filament admin sign-out: a panel route, behind the admin gate.',
     ];
 }
@@ -112,7 +112,9 @@ it('gives every write route Fortify registers a real limit, not Limit::none()', 
             continue;
         }
 
-        expect($limit)->toBeInstanceOf(Limit::class, 'no limit for '.$route->getName());
+        // Unlimited is itself a Limit, so the class check alone would let a Limit::none() through.
+        expect($limit)->toBeInstanceOf(Limit::class, 'no limit for '.$route->getName())
+            ->not->toBeInstanceOf(Unlimited::class, 'no limit for '.$route->getName());
     }
 });
 
@@ -131,6 +133,18 @@ it('limits using a reset link on its own counter', function () {
     post429(5, '/reset-password', ['email' => 'someone@example.test']);
 
     test()->post('/reset-password', ['email' => 'someone@example.test'])->assertStatus(429);
+    // Requesting a link has a counter of its own, so the burst above did not use it (and the reverse holds below).
+    not429(test()->post('/forgot-password', ['email' => 'someone@example.test']));
+});
+
+it('does not let reset-link requests use up the form that sets the new password', function () {
+    post429(5, '/forgot-password', ['email' => 'someone@example.test']);
+
+    not429(test()->post('/reset-password', ['email' => 'someone@example.test']));
+});
+
+it('sends the settings index on to the profile page', function () {
+    $this->actingAs(User::factory()->create())->get('/settings')->assertRedirect('/settings/profile');
 });
 
 it('limits sign-ups to 5 a minute per address, on the parent form', function () {
