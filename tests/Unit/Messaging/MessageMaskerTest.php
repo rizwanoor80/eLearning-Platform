@@ -273,7 +273,20 @@ question 12
     'R218 messenger name and an at-handle' => ['add me on snapchat @sara', 'add me on '.MessageMasker::PLACEHOLDER],
     'R218 messenger name, an em dash and a handle' => ['Insta—@sara', MessageMasker::PLACEHOLDER],
     'R218 messenger name and a tag with digits' => ['discord sara#1234', MessageMasker::PLACEHOLDER],
-    'R218 messenger name and a short grouped number' => ['signal 050 123', MessageMasker::PLACEHOLDER],
+    'R218 messenger name and a second short grouped number' => ['signal 050 123', MessageMasker::PLACEHOLDER],
+
+    // R221 round 2: the spans the spelled and messenger passes must not cut short or leave behind
+    'R221 spelled email run before a URL path leaves no path' => ['find me at instagram.com/sara_k', 'find '.MessageMasker::PLACEHOLDER],
+    'R221 counting words in a URL path stay part of the URL' => ['https://x.com/one-two-three-four-nine/sara-k', MessageMasker::PLACEHOLDER],
+    'R221 non-counting words in a bare-domain path stay part of it' => ['visit x.com/zero-five-zero-one-two-three', 'visit '.MessageMasker::PLACEHOLDER],
+    'R221 phone tail is not taken as a spelled local part' => ['call 050 123 4567 at home.ae', 'call '.MessageMasker::PLACEHOLDER.' '.MessageMasker::PLACEHOLDER],
+    'R221 phone tail before a spelled address keeps the whole number hidden' => ['050 123 4567 at gmail dot com', MessageMasker::PLACEHOLDER.' '.MessageMasker::PLACEHOLDER],
+    'R221 spelled dot inside a longer literal address does not cut it short' => ['sara@a.dot.co.acme.local', MessageMasker::PLACEHOLDER],
+    'R221 spaced literal dots, two of them' => ['sara at gmail . co . uk', MessageMasker::PLACEHOLDER],
+    'R221 spaced literal dot before a sure ending' => ['sara at gmail . com', MessageMasker::PLACEHOLDER],
+    'R221 spelled address with a path after it' => ['sara at gmail dot com/inbox', MessageMasker::PLACEHOLDER],
+    'R221 messenger name that reads as a country domain, then a handle' => ['whatsapp-me @sara', MessageMasker::PLACEHOLDER],
+    'R221 negative: a spaced full stop before a sentence' => ['meet at the shop . It is open', 'meet at the shop . It is open'],
 
     // R218, negatives: ordinary chat the new patterns must leave alone
     'R218 negative: at the park on the dot' => ['we met at the park on the dot', 'we met at the park on the dot'],

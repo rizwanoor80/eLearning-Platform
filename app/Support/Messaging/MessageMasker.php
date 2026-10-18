@@ -217,6 +217,13 @@ use Normalizer;
  * count right after a messenger name ("discord 2024 update"), and a run of digit words that is not a plain
  * count ("zero five zero one two", "one three five seven nine"); the variation selectors and every format character (bar the ZWJ, see above)
  * are stripped from the stored text; 16:00-17:00 and ordinary sentence ends are left alone.
+ *
+ * Still let through (cycle 18b round 2, R221 Low, no pattern changed for them): a hyphenated local part in a
+ * spelled address ("sara-k at gmail dot com" hides "k at gmail dot com"), a messenger name followed by a bare
+ * short number ("whatsapp 123"), by "@" and a gap before the handle ("whatsapp @ sara") or by a hyphenated handle
+ * ("whatsapp @sara-k"), a messenger name that doubles as a country domain ("whatsapp-me", "signal-us") followed by
+ * only four to six digits (the name is hidden as a domain first, so the digits stand alone), letters spaced apart
+ * ("a t", "d o t"), "at the rate", the handle written before the messenger name, and lookalike letters.
  */
 class MessageMasker
 {
@@ -392,17 +399,39 @@ class MessageMasker
 
     private const SPELL_DOT_WORD = self::SPELL_GAP.self::SPELLED_DOT.self::SPELL_GAP;
 
+    /** SPELL_GAP without the full stop, so a literal `.` can sit between two gaps ("gmail . co") without a possessive gap eating it. */
+    private const SPELL_GAP_NO_DOT = '[^\p{L}\p{Nd}@_.]*+';
+
+    /** A dot with room either side: spelled, or a literal `.` (the loose form is only used where the ending is a sure sign, see below). */
+    private const SPELL_DOT_LOOSE = '(?:'.self::SPELL_DOT_WORD.'|'.self::SPELL_GAP_NO_DOT.'\.'.self::SPELL_GAP_NO_DOT.')';
+
+    /**
+     * What may follow the ending of a spelled address: not another `.label` (that is a longer address, EMAIL's, so the
+     * spelled span must not cut it short), and a URL path, port or query is part of the span (the way the named-domain
+     * patterns take it), so "me at instagram.com/sara_k" is not left with its path showing.
+     */
+    private const SPELL_TAIL = '(?!\.[\p{L}\p{Nd}_])(?:[/:?#]\S*+)?';
+
+    private const SPELL_NON_WORD_TLD = '(?:'.self::NON_WORD_ENDINGS.')(?![\p{L}\p{Nd}])';
+
     /**
      * "at" spelled as a word or bracket. The lookbehind is the whole local-part class (as EMAIL's), not just a letter or
      * digit: otherwise an attempt starts after every `.` or `+` in a dotted chain and re-reads the chain each time,
      * which is quadratic in a long "a.a.a." run.
      */
     private const SPELLED_EMAIL_AT_WORD = '~(?<![\p{L}\p{Nd}_+.])[\p{L}\p{Nd}_+]++(?:\.[\p{L}\p{Nd}_+]++)*+'.self::SPELL_GAP.self::SPELLED_AT.self::SPELL_GAP
-        .self::SPELL_LABEL.'(?:'.self::SPELL_DOT_ANY.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_ANY.self::SPELL_TLD.'~iu';
+        .self::SPELL_LABEL.'(?:'
+        // Tight literal dots, or spelled dots with a gap (the first form: "sara at gmail dot com", "sara at gmail.com").
+        .'(?:(?:'.self::SPELL_DOT_ANY.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_ANY.self::SPELL_TLD.')'
+        // A literal dot with spaces round it ("sara at gmail . com") before a sure ending ...
+        .'|(?:(?:'.self::SPELL_DOT_LOOSE.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_LOOSE.self::SPELL_NON_WORD_TLD.')'
+        // ... or when two or more such dots line up ("sara at gmail . co . uk").
+        .'|(?:(?:'.self::SPELL_DOT_LOOSE.self::SPELL_LABEL.'){1,2}'.self::SPELL_DOT_LOOSE.self::SPELL_TLD.')'
+        .')'.self::SPELL_TAIL.'~iu';
 
     /** A literal `@` with every dot spelled: a plain "sara@example.com" is EMAIL's, so the spans of existing cases do not move. */
     private const SPELLED_EMAIL_AT_SYMBOL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP
-        .self::SPELL_LABEL.'(?:'.self::SPELL_DOT_WORD.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_WORD.self::SPELL_TLD.'~iu';
+        .self::SPELL_LABEL.'(?:'.self::SPELL_DOT_WORD.self::SPELL_LABEL.'){0,2}'.self::SPELL_DOT_WORD.self::SPELL_TLD.self::SPELL_TAIL.'~iu';
 
     private const DIGIT_WORD = '(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|o(?![\'’]))';
 
@@ -421,9 +450,22 @@ class MessageMasker
      * to exactly one side, which keeps the match linear (a filler "token" that could also contain gap characters made
      * it cubic, and a 200-character punctuated run after the name exhausted `pcre.backtrack_limit`).
      */
-    private const MESSENGER = '~(?<![\p{L}\p{Nd}])(?:whatsapp|telegram|signal|instagram|insta|snapchat|snap|tiktok|discord)(?![\p{L}\p{Nd}])'
-        .'(?:[^\p{L}\p{Nd}@]++[\p{L}\p{Nd}]++){0,3}?[^\p{L}\p{Nd}@]*+'
-        .'(?:@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+|\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+)~iu';
+    private const MESSENGER_NAME = '(?<![\p{L}\p{Nd}])(?:whatsapp|telegram|signal|instagram|insta|snapchat|snap|tiktok|discord)(?![\p{L}\p{Nd}])'
+        .'(?:[^\p{L}\p{Nd}@]++[\p{L}\p{Nd}]++){0,3}?[^\p{L}\p{Nd}@]*+';
+
+    /** The handle, and a URL-style path after it ("insta @sara_k/x"), which the address passes used to take along. */
+    private const MESSENGER_HANDLE = '@[\p{L}\p{Nd}_]{2,}(?:\.[\p{L}\p{Nd}_]+)*+(?:[/?#]\S*+)?';
+
+    private const MESSENGER_DIGITS = '\p{Nd}(?:[^\p{L}\p{Nd}:@]{0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}+\p{Nd}){3,}+';
+
+    private const MESSENGER = '~'.self::MESSENGER_NAME.'(?:'.self::MESSENGER_HANDLE.'|'.self::MESSENGER_DIGITS.')~iu';
+
+    /**
+     * The `@handle` half of MESSENGER on its own, run before the bare-domain passes: a name that is itself a domain
+     * ("whatsapp-me" reads as a `.me` address) would otherwise be hidden first and the handle left standing alone.
+     * The digits half stays after the phone pass, so a full number is still the placeholder and the name stays in front.
+     */
+    private const MESSENGER_NAME_AND_HANDLE = '~'.self::MESSENGER_NAME.self::MESSENGER_HANDLE.'~iu';
 
     /**
      * Digits with up to six separator *graphemes* between them (`\X`, not a code point — see the class docblock),
@@ -446,16 +488,9 @@ class MessageMasker
 
         // R218: the spelled-out shapes first. They hide a spelled address as one span; what keeps
         // "sara (at) gmail (dot) com" whole is SPELL_GAP accepting the brackets, not this ordering.
-        $masked = $this->replace(self::SPELLED_EMAIL_AT_WORD, self::PLACEHOLDER, $masked, $hidden);
-        $masked = $this->replace(self::SPELLED_EMAIL_AT_SYMBOL, self::PLACEHOLDER, $masked, $hidden);
-        $masked = $this->replaceCallback(self::NUMBER_WORDS, function (array $match) use (&$hidden): string {
-            if ($this->isCountingRun($match[0])) {
-                return $match[0];
-            }
-            $hidden++;
-
-            return self::PLACEHOLDER;
-        }, $masked);
+        $masked = $this->replaceSpelled(self::SPELLED_EMAIL_AT_WORD, $masked, $hidden);
+        $masked = $this->replaceSpelled(self::SPELLED_EMAIL_AT_SYMBOL, $masked, $hidden);
+        $masked = $this->replace(self::MESSENGER_NAME_AND_HANDLE, self::PLACEHOLDER, $masked, $hidden);
 
         foreach ([
             [self::EMAIL, null],
@@ -479,6 +514,16 @@ class MessageMasker
             }
             $masked = $this->replace($pattern, self::PLACEHOLDER, $masked, $hidden);
         }
+
+        // After the address and URL passes, so a counting-word path ("x.com/one-two-three-four-nine") is already part of its URL.
+        $masked = $this->replaceCallback(self::NUMBER_WORDS, function (array $match) use (&$hidden): string {
+            if ($this->isCountingRun($match[0])) {
+                return $match[0];
+            }
+            $hidden++;
+
+            return self::PLACEHOLDER;
+        }, $masked);
 
         $masked = $this->replaceCallback(
             self::PHONE_RUN,
@@ -561,6 +606,38 @@ class MessageMasker
         $count += $done;
 
         return $result;
+    }
+
+    /**
+     * A spelled address that opens with digits straight after a run of digits ("050 123 4567 at home.ae") is the tail of
+     * a phone number, not a local part: hiding it as one span would leave the front of the number (under seven digits)
+     * showing, so its digits are kept for the phone pass and only the rest of the address is hidden here.
+     */
+    private function replaceSpelled(string $pattern, string $subject, int &$count): string
+    {
+        if (preg_match_all($pattern, $subject, $found, PREG_OFFSET_CAPTURE) === false) {
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
+        }
+
+        $result = '';
+        $cursor = 0;
+
+        foreach ($found[0] as [$text, $offset]) {
+            $result .= substr($subject, $cursor, $offset - $cursor);
+            $cursor = $offset + strlen($text);
+            $before = substr($subject, max(0, $offset - 64), min($offset, 64));
+
+            if (preg_match('~^\p{Nd}~u', $text) === 1 && preg_match('~\p{Nd}[^\p{L}\p{Nd}]{0,12}$~u', $before) === 1) {
+                // Keep the digits for the phone pass; the rest of the address is hidden here.
+                $local = preg_match('~^[\p{L}\p{Nd}._%+\-]++~u', $text, $head) === 1 ? $head[0] : '';
+                $result .= $local.' '.self::PLACEHOLDER;
+            } else {
+                $result .= self::PLACEHOLDER;
+            }
+            $count++;
+        }
+
+        return $result.substr($subject, $cursor);
     }
 
     private function replaceCallback(string $pattern, callable $callback, string $subject): string

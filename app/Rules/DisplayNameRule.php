@@ -49,12 +49,12 @@ use Normalizer;
  * "Ka" + U+02BB + "iu": the masker reads the mark as a dot and the two letters as a country code), a name of
  * seven or more numeral characters, and scripts outside LETTER (e.g. Armenian, Ethiopic).
  *
- * Since the masker also hides spelled-out contact details (cycle 18b, R218), three more shapes are refused,
- * again on the safe side: a name that reads as a spelled address, with the words "at" and "dot" (or "[at]",
- * "(dot)") around words ("Jo at Home dot Org"); a name of five or more number words in a row that are not a
- * plain count ("zero five zero one two"); and a messenger name (WhatsApp, Telegram, Signal, Insta, Snap,
- * TikTok, Discord and the like) followed within three words by an @handle or a run of four or more digits
- * ("Signal 1234"). The masker's own docblock lists what it still lets through.
+ * Since the masker also hides spelled-out contact details (cycle 18b, R218), two more shapes are refused, again
+ * on the safe side: a name that reads as a spelled address, with the words "at" and "dot" (or "[at]", "(dot)")
+ * around words ("Jo at Home dot Org"); and a name of five or more number words in a row that are not a plain
+ * count ("zero five zero one two"). The masker's third shape, a messenger name followed by an @handle or four or
+ * more digits, needs an "@" or a digit, which NAME_PATTERN already refuses. The masker's own docblock lists what
+ * it still lets through.
  */
 class DisplayNameRule implements ValidationRule
 {
