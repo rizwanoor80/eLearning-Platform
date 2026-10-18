@@ -323,7 +323,7 @@ class DisplayNameRule implements ValidationRule
             $forms = [$value, $noJoiners, $bare, strtr($noJoiners, self::MASKER_FOLDS), strtr($bare, self::MASKER_FOLDS)];
 
             foreach (array_unique($forms) as $form) {
-                if (app(MessageMasker::class)->mask($form)->masked) {
+                if (app(MessageMasker::class)->mask($form, false)->masked) {
                     return true;
                 }
             }

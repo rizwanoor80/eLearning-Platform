@@ -333,7 +333,7 @@ it('reports a character failure, a contact-detail failure and a length failure w
     // A name the structural rules admit but the masker reads as contact details gets the contact message.
     $greedy = new class extends MessageMasker
     {
-        public function mask(string $body): MaskedMessage
+        public function mask(string $body, bool $spelledOut = true): MaskedMessage
         {
             return new MaskedMessage($body, str_contains($body, 'Sara'));
         }
@@ -438,7 +438,7 @@ it('knowingly refuses a few legitimate spellings rather than admit what the mask
 it('keeps the fail-closed behaviour when the masker cannot decide', function () {
     $broken = new class extends MessageMasker
     {
-        public function mask(string $text): never
+        public function mask(string $text, bool $spelledOut = true): never
         {
             throw new MessageMaskingFailedException('forced');
         }

@@ -179,14 +179,30 @@ use Normalizer;
  * its docblock and the EMAIL constant above), which forecloses the ambiguity by construction the same way,
  * without capping or touching the local part. Measured before and after in CYCLE-LOG VERIFICATION entries.
  *
- * Known limits, disclosed in ADR-019: numbers and addresses spelled out in words with plain spaces and
- * no punctuation at all ("zero five zero…", "sara at gmail dot com"), digits split by whole words or
+ * R231, the spelled-out pre-pass: with `$spelledOut` (the default) the body is also read through
+ * `SpelledOutPrePass` — "sara at gmail dot com", five or more digit words, a messenger name followed by a
+ * handle or digits. That never adds a pattern to the chain above. The chain runs twice, once over the text
+ * as it stands (exactly what it hid before R231) and once over a `Shadow` copy with the spelled-out words
+ * rewritten to "@", "." and digits; what either run hides, plus the messenger spans, is mapped back onto the
+ * ORIGINAL text and each merged stretch becomes one PLACEHOLDER. So the result hides everything the chain
+ * alone would (never less), and a body the pre-pass finds nothing in takes the old path byte for byte
+ * (`maskPlain`). Disclosed: a messenger span is hidden directly rather than through a marker; a body the
+ * pre-pass rewrites costs about twice the chain's time; the pre-pass is deliberately narrow, so "we are at
+ * zoom.us" and "meet me at 5.pm" also hide the word before the domain (the chain already hid the domain),
+ * "dot" is rewritten only before a recognised ending or a short list of country codes and never after a
+ * plain word such as "the" or "red" ("dot in" and "dot is" are left alone), and a digit word run needs five
+ * words with at most three separator characters between them. `DisplayNameRule` calls `mask($form, false)`:
+ * a display name is never rejected on the strength of a spelled-out shape (R218, no new rejection).
+ *
+ * Known limits, disclosed in ADR-019 and narrowed by R231: spelled-out shapes the pre-pass does not
+ * recognise (a digit word run broken by more than three characters, a country code off its list, a handle
+ * far from a messenger name), digits split by whole words or
  * replaced by lookalike letters, more than six separator *graphemes* between digits (so seven dashes, or
  * four family emoji, get through — phone-gap limits are unchanged by R144, disclosed as out of scope),
  * a `:` between digits, an address whose provider is not on the short MAIL_PROVIDER list and whose domain
  * has no recognised ending, a bare word-like ending reached only by whitespace and no punctuation at all
  * is deliberately NOT caught (see above), a multi-digit or fractional enclosed-number symbol ("➉", "½",
- * Roman numerals), and social handles are not caught. The safe side is over-masking: dates (27-09-2026,
+ * Roman numerals), and a social handle with no messenger name near it are not caught. The safe side is over-masking: dates (27-09-2026,
  * 27/09/2026), "Year 10, 11, 12, 13", 10,000,000, "@ school, then", a file name such as solution.py, a
  * bare domain whose ending is not on the NAMED_DOMAIN list (".art") once any junk punctuation separates
  * its labels, "(at)"/"(dot)" written with any punctuation around them ("sara (at) gmail (dot) com"), and
@@ -290,9 +306,9 @@ class MessageMasker
      */
     private const MAX_BARE_DOMAIN_LABELS = 16;
 
-    private const NON_WORD_ENDINGS = 'com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|pro|mobi|link|page';
+    public const NON_WORD_ENDINGS = 'com|net|org|edu|gov|mil|int|info|biz|app|dev|xyz|pro|mobi|link|page';
 
-    private const WORD_ENDINGS = 'online|site|tech|club|shop|store|blog|live|news|cloud|academy|wiki|name|email|school|chat|space|world|education|ninja|network|agency|digital|media|life|today|tutor|tutors|zone|team|group';
+    public const WORD_ENDINGS = 'online|site|tech|club|shop|store|blog|live|news|cloud|academy|wiki|name|email|school|chat|space|world|education|ninja|network|agency|digital|media|life|today|tutor|tutors|zone|team|group';
 
     /**
      * Local part, an `@` (a run of one or more collapses to one, so "sara@@gmail.com" still matches), loose junk
@@ -305,8 +321,11 @@ class MessageMasker
      */
     private const EMAIL = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.self::BARE_DOMAIN_LABEL.'(?:'.self::LABEL_GAP.self::BARE_DOMAIN_LABEL.')++~u';
 
+    /** The mail providers that need no domain ending after an `@` (and, R231, after a spelled-out "at"). */
+    public const MAIL_PROVIDERS = 'gmail|googlemail|hotmail|outlook|yahoo|icloud|proton(?:mail)?|aol|msn';
+
     /** A well-known mail provider after an `@` needs no domain ending at all: "sara@gmail com" and "sara@gmail" are addresses. */
-    private const MAIL_PROVIDER = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'(?:gmail|googlemail|hotmail|outlook|yahoo|icloud|proton(?:mail)?|aol|msn)(?![\p{L}\p{Nd}])~iu';
+    private const MAIL_PROVIDER = '~(?<![\p{L}\p{Nd}._%+\-])[\p{L}\p{Nd}._%+\-]++'.self::AT_GAP.'@++'.self::AT_GAP.'(?:'.self::MAIL_PROVIDERS.')(?![\p{L}\p{Nd}])~iu';
 
     private const URL_WITH_SCHEME = '~\b[a-z][a-z0-9+.\-]{1,15}://\S+~iu';
 
@@ -354,7 +373,37 @@ class MessageMasker
      */
     private const PHONE_RUN = '~[+(\[]{0,2}\p{Nd}(?:(?:(?!:)(?!(?=\p{L})(?!\p{Lm}))\X){0,'.self::MAX_PHONE_GAP_GRAPHEMES.'}\p{Nd})+\p{M}*~u';
 
-    public function mask(string $body): MaskedMessage
+    /**
+     * What `AT_TARGET` accepts after a spelled-out "at" (R231): the shape of a mail target built from this class's
+     * own constants — a mail provider, or up to seven labels and a recognised ending. "home. Also" has neither, so
+     * "I am at home" is never rewritten.
+     */
+    public const AT_TARGET = '(?:(?:'.self::MAIL_PROVIDERS.')(?![\p{L}\p{Nd}])|'.self::BARE_DOMAIN_LABEL.'(?:'.self::LOOSE_DOT_JUNK.self::BARE_DOMAIN_LABEL.'){0,6}(?:'.self::LOOSE_DOT_JUNK.'(?:'.self::NON_WORD_ENDINGS.')|'.self::TIGHT_JUNK.'(?:'.self::WORD_ENDINGS.'|[a-z]{2}))(?![\p{L}\p{Nd}]))';
+
+    /**
+     * The chain, in order, each with its presence gate or null. Gated (R144(b)): the three bare-domain patterns are
+     * the only ones whose outer group is fully backtracking (see class docblock), so each is skipped outright — no
+     * replace() call at all — when a cheap, linear presence check proves its ending token cannot occur anywhere.
+     * MAIL_PROVIDER runs last: run before the bare-domain patterns, a partial match (e.g. "sara@gmail" alone) leaves
+     * real trailing text ("  com") directly against the freshly inserted PLACEHOLDER's own "]", which
+     * NAMED_DOMAIN_LOOSE then spuriously bridges into a second, nested placeholder. Running it last means
+     * EMAIL/the bare-domain patterns already consumed every case MAIL_PROVIDER would otherwise partially match.
+     */
+    private const CHAIN = [
+        [self::EMAIL, null],
+        [self::URL_WITH_SCHEME, null],
+        [self::URL_WWW, null],
+        [self::NAMED_DOMAIN_LOOSE, self::HAS_NON_WORD_ENDING],
+        [self::NAMED_DOMAIN_TIGHT, self::HAS_WORD_ENDING],
+        [self::COUNTRY_DOMAIN, self::HAS_COUNTRY_ENDING],
+        [self::MAIL_PROVIDER, null],
+    ];
+
+    /**
+     * `$spelledOut` (R231) also hides the shapes `SpelledOutPrePass` finds — "sara at gmail dot com", digit words, a
+     * messenger name and its handle. `DisplayNameRule` passes false: a display name gets no new rejection (R218).
+     */
+    public function mask(string $body, bool $spelledOut = true): MaskedMessage
     {
         $text = mb_scrub($body, 'UTF-8');
 
@@ -363,26 +412,25 @@ class MessageMasker
         $text = $this->replace(self::INVISIBLE, '', $text);
         $text = $this->foldEnclosedDigits($text);
 
+        if ($spelledOut) {
+            $rewritten = SpelledOutPrePass::rewrite($text);
+            $direct = SpelledOutPrePass::messengerSpans($text);
+
+            if ($rewritten !== null || $direct !== []) {
+                return $this->maskTracked($text, $rewritten, $direct);
+            }
+        }
+
+        return $this->maskPlain($text);
+    }
+
+    /** The chain exactly as it ran before R231: nothing was rewritten, so the text is masked in place. */
+    private function maskPlain(string $text): MaskedMessage
+    {
         $hidden = 0;
         $masked = $text;
 
-        foreach ([
-            [self::EMAIL, null],
-            [self::URL_WITH_SCHEME, null],
-            [self::URL_WWW, null],
-            // Gated (R144(b)): these three are the only patterns whose outer group is fully
-            // backtracking (see class docblock), so each is skipped outright — no replace() call at
-            // all — when a cheap, linear presence check proves its ending token cannot occur anywhere.
-            [self::NAMED_DOMAIN_LOOSE, self::HAS_NON_WORD_ENDING],
-            [self::NAMED_DOMAIN_TIGHT, self::HAS_WORD_ENDING],
-            [self::COUNTRY_DOMAIN, self::HAS_COUNTRY_ENDING],
-            // MAIL_PROVIDER runs last: run before the bare-domain patterns, a partial match (e.g.
-            // "sara@gmail" alone) leaves real trailing text ("  com") directly against the freshly
-            // inserted PLACEHOLDER's own "]", which NAMED_DOMAIN_LOOSE then spuriously bridges into a
-            // second, nested placeholder. Running it last means EMAIL/the bare-domain patterns already
-            // consumed every case MAIL_PROVIDER would otherwise partially match.
-            [self::MAIL_PROVIDER, null],
-        ] as [$pattern, $gate]) {
+        foreach (self::CHAIN as [$pattern, $gate]) {
             if ($gate !== null && ! $this->hasCandidate($gate, $masked)) {
                 continue;
             }
@@ -404,6 +452,95 @@ class MessageMasker
 
         // "masked" means something was hidden, not that NFKC, digit-folding or the invisible-character strip changed the text.
         return new MaskedMessage($masked, $hidden > 0);
+    }
+
+    /**
+     * R231: the chain runs twice with every byte's origin tracked — once over the text itself (what `maskPlain` would
+     * hide) and once over the rewritten copy — and the output is the ORIGINAL text with one placeholder per merged
+     * span the two runs, or a messenger name and its handle (`$direct`), hid. So nothing `maskPlain` hides can be
+     * exposed by the pre-pass, and the sender's own words survive everywhere else.
+     *
+     * @param  list<array{int, int}>  $direct
+     */
+    private function maskTracked(string $text, ?Shadow $rewritten, array $direct): MaskedMessage
+    {
+        $spans = $direct;
+
+        foreach ([Shadow::identity($text), $rewritten] as $shadow) {
+            if ($shadow !== null) {
+                array_push($spans, ...$this->chainShadow($shadow)->placeholderSpans());
+            }
+        }
+
+        if ($spans === []) {
+            return new MaskedMessage($text, false);
+        }
+
+        usort($spans, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        $merged = [];
+
+        foreach ($spans as [$start, $end]) {
+            $last = array_key_last($merged);
+
+            if ($last !== null && $start <= $merged[$last][1]) {
+                $merged[$last][1] = max($merged[$last][1], $end);
+            } else {
+                $merged[] = [$start, $end];
+            }
+        }
+
+        $masked = '';
+        $position = 0;
+
+        foreach ($merged as [$start, $end]) {
+            $masked .= substr($text, $position, $start - $position).self::PLACEHOLDER;
+            $position = $end;
+        }
+
+        return new MaskedMessage($masked.substr($text, $position), true);
+    }
+
+    /** The chain over a tracked copy: the same patterns, gates (run on the copy's own text) and phone floor as `maskPlain`. */
+    private function chainShadow(Shadow $shadow): Shadow
+    {
+        foreach (self::CHAIN as [$pattern, $gate]) {
+            if ($gate !== null && ! $this->hasCandidate($gate, $shadow->text)) {
+                continue;
+            }
+            $shadow = $this->hideMatches($pattern, $shadow, static fn (string $match): bool => true);
+        }
+
+        return $this->hideMatches(
+            self::PHONE_RUN,
+            $shadow,
+            static fn (string $match): bool => preg_match_all('~\p{Nd}~u', $match) >= self::MIN_PHONE_DIGITS,
+        );
+    }
+
+    /**
+     * Replaces every match of `$pattern` in the copy for which `$hides` returns true with `PLACEHOLDER`, tracking
+     * each as one placeholder. Matches are found exactly as `preg_replace` would find them.
+     *
+     * @param  callable(string): bool  $hides
+     */
+    private function hideMatches(string $pattern, Shadow $shadow, callable $hides): Shadow
+    {
+        if (preg_match_all($pattern, $shadow->text, $found, PREG_SET_ORDER | PREG_OFFSET_CAPTURE) === false) {
+            throw new MessageMaskingFailedException(MessageMaskingFailedException::NOTICE);
+        }
+
+        $edits = [];
+
+        foreach ($found as $groups) {
+            [$match, $offset] = $groups[0];
+
+            if ($hides($match)) {
+                $edits[] = [$offset, strlen($match), [[self::PLACEHOLDER, 0, strlen($match)]]];
+            }
+        }
+
+        return $shadow->apply($edits, true);
     }
 
     /**
