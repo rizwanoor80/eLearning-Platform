@@ -7982,3 +7982,24 @@ Authorisation (rule 8), PLAN cycle 19 r1 / R224(2): a PR whose last review has 0
 
 ### 2026-10-18 20:14 — NOTE (19a: merged, post-merge record, CC)
 PR #61 squash-merged under R224(2)/R147 as `70f6034` (`expectedHeadSha` `d4baf94`), one attempt. Test-only: `app/` unchanged, so no rehearsal deploy and no R213 (rehearsal stays at `8c64d6f`). Suite on the merged tree: 2701 tests / 13956 assertions (measured on the PR head; the squash adds nothing else). Next: 19b.
+
+### 2026-10-18 21:11 — ADVISOR (19b design, CC)
+Model that answered: Fable 5.1. Quote: "Sound, and it is the right tool: the identity run *is* main's chain, so monotonicity is by construction." Consulted before the build on the shadow-copy design (chain over the identity copy and over the rewritten copy, union of placeholder spans, output built from the original text). Advisor count for 19b: 1 (minimum 1, met); cycle 19 total 1.
+
+### 2026-10-18 21:11 — DEVIATION (19b: messenger spans hidden directly, CC)
+PLAN R231 names a marker for messenger names. A marker placed after "-", "." or "+" falls outside EMAIL's lookbehind and leaves the handle visible, so `SpelledOutPrePass::messengerSpans` hides a messenger name plus its handle or 7+ digits outright and `MessageMasker` unions those spans with the chain's. Ambiguous names (signal, insta, ig, snap, imo, kik) count only with the handle or number straight after. No new text reaches the chain; monotonicity is unaffected.
+
+### 2026-10-18 21:11 — REVIEW (19b round 1, head `9c712ae`, fresh subagent)
+21 verdicts: 4 Medium FAIL, 4 Low FAIL, 0 High; rest PASS / PASS WITH NOTE. Medium: digit words needed 8+ digits against the chain's 7; ambiguous messenger names ("signal", "imo") over-matched ordinary prose; newline and joiner gaps between digit words stayed visible; messenger names found only in the rewritten text were not mapped back. Fixed in `3eef580`.
+
+### 2026-10-18 21:11 — REVIEW (19b round 2, head `3eef580`, fresh subagent)
+3 Medium FAIL, 2 Low FAIL, notes. Medium: the array-based Shadow rebuilt O(n) per edit (115 ms on an NFKC-growing body); "[", ";" and "|" separators between spelled-out digits kept the digits visible; ".NET" read as a domain (documented, not fixed: a known over-mask). Fixed in `eb2a92e` (packed Shadow, six-character gaps, "at the rate (of)").
+
+### 2026-10-18 21:11 — REVIEW (19b round 3, head `eb2a92e`, fresh subagent)
+1 Medium FAIL, 3 Low FAIL, notes, 0 High. Medium: `Shadow::placeholderSpans` makes per-byte substr/unpack calls on placeholder-heavy NFKC bodies (ids below 256 give one run per byte). Lows: stale "at most three separator characters" docblock in `MessageMasker` (about line 197); code points versus graphemes in the digit count; no placeholder-heavy timing row and no `Shadow` property test with ids above 255. Safety: the reviewer's 60k-input fuzz found 0 exposures, 0 invalid UTF-8, 0 plain-path differences, max 5.4 ms.
+
+### 2026-10-18 21:11 — VERIFICATION (19b, PR #62 head `eb2a92e`, CC)
+`composer test`: round 1 2801 tests / 21118 assertions; round 2 2810 / 21136 (Pint, PHPStan 0 errors, vue-tsc, RTL, `ledger:verify` OK); `npm run build` OK. Gate: the 19a corpus green (monotonic, each input under 50 ms) with 25+ new positive and 13+ new negative dataset rows (gate 24 and 12). CI on `eb2a92e` (run 39165889972): PostgreSQL 16 and 18 both success. `git log origin/main..HEAD`: `eb2a92e` round 2 fixes; `3eef580` round 1 fixes; `9c712ae` the pre-pass.
+
+### 2026-10-18 21:11 — DECISION (19b: park PR #62 under R224, CC)
+The fix loop cap is 2 and both rounds are spent; the last review still has 1 Medium, so the R224(2) merge rule (0 Medium, 0 High) is not met. R224: a PR that cannot merge under the rule is parked. Not exceeding the cap on my own authority. PR #62 stays open at `eb2a92e` with CI green. Owner action 13 asks for a third fix round (Recommended: the Medium is a small, understood change). The programme continues with 19c, which is independent and branches from `origin/main`. R223 stays open in STATUS Deferred until 19b merges.

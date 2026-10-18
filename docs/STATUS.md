@@ -1,37 +1,38 @@
-# STATUS — cycle 19 r1 — programme "steady state II", 19a merged, 19b next; written 2026-10-18 20:14
-Tests: **2701 passed / 13956 assertions** on 19a head `d4baf94` (base `main` 2689 / 13928 + 12 new) · Advisor: consulted 0 times this session (0 confirmed; 19a's minimum is 0); cycle 19 total 0 · Review: 19a round 1 12 verdicts (1 Medium, 3 Low, 0 High), fixed in `d4baf94`; re-review 5 verdicts, 0 FAIL · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 19:40).
+# STATUS — cycle 19 r1 — programme "steady state II", 19a merged, 19b parked, 19c next; written 2026-10-18 21:12
+Tests: **2810 passed / 21136 assertions** on 19b head `eb2a92e` (base `main` 2701 / 13956) · Advisor: consulted 1 time this session (1 confirmed: Fable 5.1 on 19b; 19b minimum 1 met); cycle 19 total 1 · Review: 19b rounds 1–3: 21 verdicts (4 Medium), then 3 Medium, then 1 Medium, 0 High; fix cap 2 spent · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 2. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000 (CYCLE-LOG 19:40).
 
 ## §1 Git state
-- `origin/main` = `70f6034` (19a squash of PR [#61](https://github.com/rizwanoor80/eLearning-Platform/pull/61), test-only) plus this record; `app/` code on `main` is still `8c64d6f`; `rehearsal` = `8c64d6f` (no deploy for a test-only merge). No open PR. The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
+- `origin/main` = `70f6034` (19a) plus docs records; `app/` on `main` is still `8c64d6f`; `rehearsal` = `8c64d6f`. Open PR: [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) (19b, branch `cp/19b-masker-prepass`, head `eb2a92e`, 3 commits, CI green on both PostgreSQL jobs, **parked**). The harness branch `claude/confident-mendel-80sp0u` is scratch (R210).
 
 ## §2 Step map
-1. START, R222 check — [done]. 2. 19a under R230 — [merged `70f6034` under R224(2)/R147; CI green on both jobs after one re-run]. 3. 19b under R231 — [not started, needs 19a merged]. 4. 19c under R232 — [not started]. 5. 19d under R233 — [not started]. 6. END — [not started].
+1. START, R222 check — [done]. 2. 19a under R230 — [merged `70f6034`]. 3. 19b under R231 — [built, 3 reviews, **parked**: cap 2 spent, 1 Medium open]. 4. 19c under R232 — [starting]. 5. 19d under R233 — [not started]. 6. END — [not started].
 
 ## §3 What changed this run
-- 19a: `tests/Support/Messaging/MaskerCorpus.php` (6962 deterministic inputs, seed 230: 8 synthetic sections plus the 162 dataset rows last), `tests/Fixtures/Messaging/masker_corpus.jsonl` (header plus one `<sha1> <output>` line per input, recorded from `main`'s unchanged masker), `tests/Fixtures/Messaging/masking_fixtures.php` (the existing dataset moved byte-identically), `tests/Support/Messaging/record_corpus.php` (regeneration, run from `main` only), `tests/Unit/Messaging/MessageMaskerCorpusTest.php` (12 tests: size, keyed coverage, monotonicity, 50 ms budget, no refusal, the checker's own tests). `MessageMasker.php` is unchanged.
-- CYCLE-LOG 20:08: DEVIATION, REVIEW x2, VERIFICATION, DECISION (flake).
+- 19b (PR #62, not merged): `SpelledOutPrePass` (dot, at, digit words, ZWJ, messenger spans), `Shadow` (per-byte origin map, packed), `MessageMasker::mask($body, bool $spelledOut = true)` with a tracked path that unions the chain's placeholder spans over the identity copy and the rewritten copy and builds the output from the original text (monotonic versus `main` by construction; a body with no spelled-out shape takes the byte-identical plain path); `DisplayNameRule` calls `mask($form, false)` (R218). Tests: 304 in `tests/Unit/Messaging`; dataset 25+ positive and 13+ negative new rows; the 19a corpus green.
+- CYCLE-LOG 21:11: ADVISOR, DEVIATION, REVIEW x3, VERIFICATION, DECISION (park).
 
 ## §4 Decisions and by whom
-- Owner (PLAN r1): R229–R233 and the queue. CC: recording is whole-output text keyed by `sha1(input)` rather than spans (DEVIATION, CYCLE-LOG 20:08); the Dubai-midnight flake is handled by a standing-down comment and one re-run, not by editing that test.
+- Owner (PLAN r1): R229–R233 and the queue. CC: messenger spans hidden outright instead of a marker (DEVIATION); 19b parked rather than a third fix round beyond the cap (DECISION 21:11).
 
 ## §5 Why stopping
-Not stopping: 19a merged; starting 19b.
+Not stopping: 19b is parked on the cap; the programme continues with 19c.
 
 ## §6 Mismatches
-- **`LessonPageTest` "lists an in-progress lesson on the tutor dashboard for today" fails when CI runs within five minutes of Dubai midnight (19:55–20:00 UTC)** — both PostgreSQL jobs of run 39161181974 failed on it for a PR that touches no `app/` code. For the planner: a clock-sensitive test; a fix is a later plan (freeze the clock in that test).
-- **Existing masker defect frozen into the 19a baseline:** 218 of 6962 recorded outputs (3.1%) carry garbled nested placeholders (for example an `ftp://EXAMPLE.COM/@sara_k` input becomes `[hidden until after your first lesson] until after your first lesson]`). Not a leak, but users see it. Fixing it is an `app/` change; it fits 19b (the corpus accepts a change that hides more or equal).
-- **Corpus limits (disclosed in the class docblock):** an exposed stretch that repeats visible text can false-pass; a normalisation-only change reads as an exposure; a masker returning one placeholder for every input passes the corpus (only the exact dataset test pins that); the `masked` flag is unchecked; orphan recordings and the header count/seed are not asserted; masker output depends on the ICU/PCRE version.
+- **19b open Medium (review 3):** `Shadow::placeholderSpans` unpacks per byte on placeholder-heavy NFKC bodies (a performance edge, not a leak; fuzz max 5.4 ms). Fix: unpack the placeholder map once, or record each placeholder's range in `apply()`. Lows: stale "at most three separator characters" docblock in `MessageMasker` (about line 197); code points versus graphemes in the digit count; add a placeholder-heavy timing row and `Shadow` property tests with ids above 255.
+- **Known over-masks, documented in the dataset:** zoom.us, "5.pm", "dot net", counting prose with 7+ digits in words.
+- **`LessonPageTest` Dubai-midnight flake** (19:55–20:00 UTC) — a later plan: freeze the clock in that test.
 - Carried: HOW-WE-WORK §17 wording (19d item 5); the empty-`DB_PASSWORD` mismatch (19d item 4); `mail.from_name` reads `trusTutor Team` (Owner action 5).
 
 ## §7 Next step / Owner actions
-Nothing for the owner now. Owner action 5 (`mail.from_name`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
+Owner action 13: authorise a third fix round for PR #62 (19b) — (Recommended: the one Medium is a small, understood change and every safety property already holds); to take it, reply `update — fix round 3` and the next run applies the fix list in §6, re-reviews, and merges under R224(2). Declining: reply `update — leave 19b parked`. Reply `update` when done.
+Owner action 5 (`mail.from_name`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
 | 19a | `cp/19a-masker-corpus` | [#61](https://github.com/rizwanoor80/eLearning-Platform/pull/61) | r1 12 verdicts (1 Medium fixed), re-review 0 FAIL | merged `70f6034` |
-| 19b | `cp/19b-masker-prepass` | — | — | starting |
-| 19c | `cp/19c-suspension-video` | — | — | not started |
+| 19b | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | r1 21 (4 Medium), r2 3 Medium, r3 1 Medium | parked, Owner action 13 |
+| 19c | `cp/19c-suspension-video` | — | — | starting |
 | 19d | `cp/19d-hygiene` | — | — | not started |
 Resume cap 12, 0 used.
 
