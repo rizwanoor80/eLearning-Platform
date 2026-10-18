@@ -8,7 +8,7 @@ use Tests\Support\Messaging\MaskerCorpus;
  *
  * MaskerCorpus builds a few thousand synthetic bodies from a seeded generator; the fixture
  * tests/Fixtures/Messaging/masker_corpus.jsonl holds what the accepted masker (`main` at the time of
- * recording) output for each, in order. The test asserts that the masker in this checkout still hides
+ * recording) output for each, keyed by the sha1 of the input. The test asserts that the masker in this checkout still hides
  * everything that recording hid — it may hide more, never less — and that no input takes over 50 ms.
  *
  * A change to MessageMasker that turns the monotonicity test red has exposed something `main` hid: fix
@@ -17,8 +17,10 @@ use Tests\Support\Messaging\MaskerCorpus;
  *
  *     php tests/Support/Messaging/record_corpus.php
  *
- * Changing the generator changes the inputs, which turns the input-hash test red until the fixture is
- * re-recorded the same way. Inputs are synthetic only: example domains, `.test`, fictional handles and
+ * Changing the generator changes its synthetic inputs, which turns the coverage test red until the fixture is
+ * re-recorded the same way. Adding a row to the dataset in tests/Fixtures/Messaging/masking_fixtures.php
+ * needs no re-recording: the corpus appends those rows last, and one with no recording is covered by the
+ * exact dataset test instead. Inputs are synthetic only: example domains, `.test`, fictional handles and
  * 555-style numbers.
  */
 
@@ -29,12 +31,30 @@ it('builds a corpus of at least 6000 distinct synthetic inputs', function () {
         ->and(count(array_unique($inputs)))->toBe(count($inputs));
 });
 
-it('records an output for exactly the inputs the generator builds', function () {
+it('has a recorded output for every synthetic input the generator builds', function () {
     $recorded = MaskerCorpus::recorded();
+    $missing = [];
+    $covered = 0;
 
-    expect($recorded['header']['inputs_sha1'])->toBe(MaskerCorpus::inputsHash(), 'the generator changed: re-record the fixture (see the header of this file)')
-        ->and($recorded['header']['count'])->toBe(count(MaskerCorpus::inputs()))
-        ->and(count($recorded['outputs']))->toBe(count(MaskerCorpus::inputs()));
+    foreach (MaskerCorpus::inputs() as $index => $input) {
+        if (array_key_exists(MaskerCorpus::keyOf($input), $recorded['outputs'])) {
+            $covered++;
+        } elseif (MaskerCorpus::sectionOf($index) !== 'dataset') {
+            $missing[] = $index;
+        }
+    }
+
+    expect($recorded['header']['placeholder'])->toBe(MessageMasker::PLACEHOLDER, 'the placeholder text changed: re-record from main (see the header of this file)')
+        ->and($missing)->toBe([], 'the generator changed: re-record from main (see the header of this file); no recording for #'.implode(', #', array_slice($missing, 0, 10)))
+        ->and($covered)->toBeGreaterThanOrEqual(MaskerCorpus::MIN_INPUTS);
+});
+
+it('puts the dataset rows after every synthetic input, so adding a row never shifts the recording', function () {
+    $sections = array_map(fn (int $index) => MaskerCorpus::sectionOf($index), array_keys(MaskerCorpus::inputs()));
+    $firstDataset = array_search('dataset', $sections, true);
+
+    expect($firstDataset)->not->toBeFalse()
+        ->and(array_unique(array_slice($sections, $firstDataset)))->toBe(['dataset']);
 });
 
 it('still hides everything the recorded masker hid (a change may hide more, never less)', function () {
@@ -43,13 +63,19 @@ it('still hides everything the recorded masker hid (a change may hide more, neve
     $exposures = [];
 
     foreach (MaskerCorpus::run() as $index => $run) {
-        if (! MaskerCorpus::neverExposes($recorded[$index], $run['output'])) {
+        $key = MaskerCorpus::keyOf($inputs[$index]);
+
+        if (! array_key_exists($key, $recorded)) {
+            continue; // an unrecorded dataset row; the coverage test above fails for any other
+        }
+
+        if (! MaskerCorpus::neverExposes($recorded[$key], $run['output'])) {
             $exposures[] = sprintf(
                 "#%d [%s]\n  input:    %s\n  recorded: %s\n  now:      %s",
                 $index,
                 MaskerCorpus::sectionOf($index),
                 json_encode($inputs[$index], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
-                json_encode($recorded[$index], JSON_UNESCAPED_UNICODE),
+                json_encode($recorded[$key], JSON_UNESCAPED_UNICODE),
                 json_encode($run['output'], JSON_UNESCAPED_UNICODE),
             );
         }
@@ -115,7 +141,9 @@ describe('monotonicity checker', function () {
         $accepted = [];
 
         foreach (MaskerCorpus::inputs() as $index => $input) {
-            if ($recorded[$index] !== null && str_contains($recorded[$index], $p) && MaskerCorpus::neverExposes($recorded[$index], $input)) {
+            $baseline = $recorded[MaskerCorpus::keyOf($input)] ?? null;
+
+            if ($baseline !== null && str_contains($baseline, $p) && MaskerCorpus::neverExposes($baseline, $input)) {
                 $accepted[] = $index;
             }
         }

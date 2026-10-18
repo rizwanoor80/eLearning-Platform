@@ -10,19 +10,27 @@ use App\Support\Messaging\MessageMasker;
  *
  *  - `inputs()` builds the corpus: a few thousand synthetic bodies from a seeded generator of our own (a
  *    linear congruential generator, so the sequence cannot drift with the PHP version or its `mt_rand`
- *    implementation). Everything in it is fictional — example domains, `.test`, invented handles and
- *    `555`-style numbers; no real contact detail enters the public repository.
+ *    implementation). Nothing in it is a real person's contact detail: example domains and `.test`, the
+ *    mail-provider and short-link names the masker itself lists (it cannot be exercised without them),
+ *    invented handles, and numbers that are either `555`-style or random digit strings.
  *  - `recorded()` reads `tests/Fixtures/Messaging/masker_corpus.jsonl`: the output of the accepted masker
- *    for each input, in order, frozen. `record()` writes it. Re-recording is a deliberate step (see the
- *    header of `MessageMaskerCorpusTest`): do it only from a checkout whose masker is the accepted baseline.
+ *    for each input, frozen and keyed by the sha1 of the input (so adding a row to `masking_fixtures.php` needs
+ *    no re-recording; such a row is covered by the exact dataset test). `record()` writes it. Re-recording
+ *    is a deliberate step (see the header of `MessageMaskerCorpusTest`): do it only from a checkout of
+ *    `main`, never from a branch that changes the masker.
  *  - `neverExposes()` is the monotonicity check: a change may hide more than the baseline did, never less.
  *    `MessageMasker::mask()` returns text only, so the check works on the output: split both outputs on the
  *    placeholder and require every visible piece of the candidate to sit, in order and without overlap,
  *    inside one visible piece of the baseline. A candidate that shows a character the baseline hid has a
  *    piece that straddles a baseline placeholder (or sits outside the baseline's visible text), so it fails.
- *    Disclosed limit: an exposed stretch that happens to repeat visible text elsewhere in the same body
- *    could align to that copy and pass; the generator's contact details are distinctive enough that this
- *    is not expected, and the checker's own tests pin the shapes that matter.
+ *    Disclosed limits: (1) an exposed stretch that happens to repeat visible text elsewhere in the same body
+ *    could align to that copy and pass (e.g. baseline "[hidden], sara" against "sara[hidden]"); sixteen
+ *    deliberately weakened maskers were all caught in the review of this file, but the weakest spots are
+ *    the phone-gap limit and MAIL_PROVIDER (one to three inputs each). (2) A change that only alters
+ *    normalisation of visible text (say, also stripping the zero-width joiner) reads as an exposure: the
+ *    fix is a deliberate re-recording from `main` in the same cycle. (3) Recording the whole output rather
+ *    than hidden spans is a disclosed deviation from R230's wording (the masker exposes no spans and
+ *    19a may not change `app/`).
  */
 final class MaskerCorpus
 {
@@ -39,6 +47,9 @@ final class MaskerCorpus
 
     /** @var array<int, array{output: string|null, ms: float}>|null */
     private static ?array $runs = null;
+
+    /** @var list<string>|null */
+    private static ?array $sections = null;
 
     private int $state = self::SEED;
 
@@ -83,9 +94,10 @@ final class MaskerCorpus
         return self::$inputs;
     }
 
-    public static function inputsHash(): string
+    /** The recording is keyed by input, not by position, so adding a dataset row never shifts it. */
+    public static function keyOf(string $input): string
     {
-        return sha1(implode("\0", self::inputs()));
+        return sha1($input);
     }
 
     /**
@@ -130,22 +142,25 @@ final class MaskerCorpus
     }
 
     /**
-     * @return array{header: array<string, mixed>, outputs: list<string|null>}
+     * @return array{header: array<string, mixed>, outputs: array<string, string|null>} outputs keyed by sha1 of the input
      */
     public static function recorded(): array
     {
         $lines = file(self::FIXTURE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         $header = json_decode((string) array_shift($lines), true, 512, JSON_THROW_ON_ERROR);
+        $outputs = [];
 
-        return [
-            'header' => $header,
-            'outputs' => array_map(fn (string $line) => json_decode($line, true, 512, JSON_THROW_ON_ERROR), $lines),
-        ];
+        foreach ($lines as $line) {
+            $outputs[substr($line, 0, 40)] = json_decode(substr($line, 41), true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return ['header' => $header, 'outputs' => $outputs];
     }
 
     /**
-     * Writes the fixture from the masker as it is in this checkout. One JSON value per line, so a diff
-     * shows exactly which inputs changed their output.
+     * Writes the fixture from the masker as it is in this checkout: a header line, then one line per
+     * input, `<sha1 of the input> <JSON output>`, in generator order so a diff shows exactly which inputs
+     * changed their output.
      */
     public static function record(): int
     {
@@ -154,14 +169,14 @@ final class MaskerCorpus
             'about' => 'MessageMasker corpus recording (R230). Regenerate: php tests/Support/Messaging/record_corpus.php',
             'seed' => self::SEED,
             'count' => count($runs),
-            'inputs_sha1' => self::inputsHash(),
+            'placeholder' => MessageMasker::PLACEHOLDER,
         ];
 
         $flags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
         $lines = [json_encode($header, $flags)];
 
-        foreach ($runs as $run) {
-            $lines[] = json_encode($run['output'], $flags);
+        foreach (self::inputs() as $index => $input) {
+            $lines[] = self::keyOf($input).' '.json_encode($runs[$index]['output'], $flags);
         }
 
         file_put_contents(self::FIXTURE, implode("\n", $lines)."\n");
@@ -212,10 +227,13 @@ final class MaskerCorpus
     /** Which generator section an input came from, for failure messages. */
     public static function sectionOf(int $index): string
     {
-        $generator = new self;
-        $generator->generate();
+        if (self::$sections === null) {
+            $generator = new self;
+            $generator->generate();
+            self::$sections = array_values($generator->seen);
+        }
 
-        return array_values($generator->seen)[$index] ?? '?';
+        return self::$sections[$index] ?? '?';
     }
 
     // ---------------------------------------------------------------------------------------------------
@@ -226,12 +244,6 @@ final class MaskerCorpus
         $this->state = self::SEED;
         $this->seen = [];
 
-        $this->section('dataset', 0, fn () => null);
-
-        foreach (require __DIR__.'/../../Fixtures/Messaging/masking_fixtures.php' as $row) {
-            $this->add($row[0]);
-        }
-
         $this->section('urls', 950, fn () => $this->wrap($this->url()));
         $this->section('phones', 1250, fn () => $this->wrap($this->phone()));
         $this->section('emails', 1050, fn () => $this->wrap($this->email()));
@@ -240,6 +252,14 @@ final class MaskerCorpus
         $this->section('lookalikes', 750, fn () => $this->wrap($this->lookalike()));
         $this->section('long', 200, fn () => $this->longRun());
         $this->section('prose', 850, fn () => $this->prose());
+
+        // The dataset rows come last and take no random numbers, so adding a row to masking_fixtures.php
+        // never shifts or changes any synthetic input.
+        $this->currentSection = 'dataset';
+
+        foreach (require __DIR__.'/../../Fixtures/Messaging/masking_fixtures.php' as $row) {
+            $this->add($row[0]);
+        }
     }
 
     /**
@@ -317,7 +337,7 @@ final class MaskerCorpus
 
     private function mapDigits(string $number, int $zero): string
     {
-        return (string) preg_replace_callback('/[0-9]/', fn (array $m) => mb_chr($zero + (int) $m[0]), $number);
+        return (string) preg_replace_callback('/[0-9]/', fn (array $m) => mb_chr($zero + (int) $m[0], 'UTF-8'), $number);
     }
 
     // ---- urls
@@ -355,7 +375,7 @@ final class MaskerCorpus
 
         $groups = $this->pick([[3, 3, 4], [2, 3, 4], [4, 3, 3], [3, 4], [2, 2, 2, 2, 2], [1, 3, 3, 3], [5, 5], [3, 3, 3]]);
         $sep = $this->pick([' ', '-', '.', '/', ' - ', '_', '  ', '•', '·', '–', '—', '*', '|', ' / ', '😀', '(', '٫']);
-        $chars = mb_str_split($number);
+        $chars = mb_str_split($number, 1, 'UTF-8');
         $out = '';
         $taken = 0;
 
@@ -488,7 +508,7 @@ final class MaskerCorpus
 
     private function mutate(string $text): string
     {
-        $chars = mb_str_split($text);
+        $chars = mb_str_split($text, 1, 'UTF-8');
 
         if ($chars === []) {
             return $text;
@@ -513,12 +533,12 @@ final class MaskerCorpus
                 array_splice($chars, $at + 1, 0, ["\u{0301}"]);
                 break;
             case 3:
-                $chars = array_map(fn (string $c) => ($c >= '!' && $c <= '~') ? mb_chr(0xFF01 + ord($c) - 0x21) : $c, $chars);
+                $chars = array_map(fn (string $c) => ($c >= '!' && $c <= '~') ? mb_chr(0xFF01 + ord($c) - 0x21, 'UTF-8') : $c, $chars);
                 break;
             case 4:
                 foreach ($chars as $i => $c) {
                     if (ctype_digit($c)) {
-                        $chars[$i] = $c === '0' ? "\u{24EA}" : mb_chr($this->pick([0x2460, 0x2776, 0x2780, 0x278A, 0x24F5]) + (int) $c - 1);
+                        $chars[$i] = $c === '0' ? "\u{24EA}" : mb_chr($this->pick([0x2460, 0x2776, 0x2780, 0x278A, 0x24F5]) + (int) $c - 1, 'UTF-8');
                     }
                 }
                 break;
@@ -536,16 +556,16 @@ final class MaskerCorpus
     {
         $unit = $this->pick(['.', '_', '-', ' .', '. ', '!!', '@', 'a.', 'a_', 'a-', '1 ', '1-', ', ', '..', '__', '- ', 'ab ', '1.', 'x@']);
         $length = $this->pick([50, 120, 300, 600, 1000, 1500, 1990, 2000]);
-        $pad = mb_substr(str_repeat($unit, intdiv($length, strlen($unit)) + 1), 0, $length);
+        $pad = mb_substr(str_repeat($unit, intdiv($length, strlen($unit)) + 1), 0, $length, 'UTF-8');
         $core = $this->chance(70) ? $this->pick([$this->email(), $this->phone(), $this->url(), $this->spelled(), 'sara@example.com', '050 555 0123', 'example.com']) : '';
 
         $body = match ($this->int(0, 2)) {
             0 => $core.' '.$pad,
             1 => $pad.' '.$core,
-            default => mb_substr($pad, 0, intdiv($length, 2)).' '.$core.' '.mb_substr($pad, intdiv($length, 2)),
+            default => mb_substr($pad, 0, intdiv($length, 2), 'UTF-8').' '.$core.' '.mb_substr($pad, intdiv($length, 2), null, 'UTF-8'),
         };
 
-        return mb_substr($body, 0, 2000);
+        return mb_substr($body, 0, 2000, 'UTF-8');
     }
 
     // ---- ordinary prose
