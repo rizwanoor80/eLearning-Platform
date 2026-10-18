@@ -69,6 +69,7 @@ it('keeps the bank details out of every other page a tutor opens', function () {
 });
 
 it('keeps the bank details out of a parent\'s pages', function () {
+    bfpTutor();
     $parent = User::factory()->create();
 
     foreach ([route('dashboard'), route('profile.edit')] as $url) {
