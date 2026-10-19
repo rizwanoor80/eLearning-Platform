@@ -82,7 +82,7 @@ it('keeps hundreds of placeholders separate, correct and in order once their ids
         ->and($shadow->placeholderSpans())->toBe($expected);
 });
 
-it('widens spans correctly when a placeholder id has no zero byte left in it', function () {
+it('widens spans correctly when the ids pass 255 and a later placeholder swallows two of them', function () {
     // 300 placeholders, then one edit that swallows the last two: ids 299 and 300 are 0x012B and 0x012C.
     $count = 300;
     $edits = [];

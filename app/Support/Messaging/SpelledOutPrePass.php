@@ -21,7 +21,7 @@ use App\Exceptions\MessageMaskingFailedException;
  *    from the chain's own constants (`MessageMasker::AT_TARGET`: a mail provider, or labels and a recognised
  *    ending): "I am at home. Also fine" is untouched, "sara at gmail" is not.
  *  - A run of digit words and typed numbers ("zero five 0 one two three four") becomes digits, one digit per word
- *    ("double five" is two digits), the gaps (up to six non-letter characters, as in the chain) kept, so the chain's phone-run budget applies exactly as it does to
+ *    ("double five" is two digits), the gaps (up to six non-letter characters, counted as code points here where the chain's phone gap counts graphemes) kept, so the chain's phone-run budget applies exactly as it does to
  *    typed digits. The run needs at least one word and seven digits in all (the chain's own floor); anything
  *    shorter could not be hidden by the chain anyway.
  *  - A zero-width joiner between two letters or digits is dropped from the copy, so "th\u{200D}ree" reads as "three".
@@ -185,7 +185,7 @@ final class SpelledOutPrePass
     }
 
     /**
-     * Typed digits are counted as code points (`mb_strlen`), which is how the chain's `\p{Nd}{7,}` floor counts them
+     * Typed digits are counted as code points (`mb_strlen`), which is how the chain's phone floor (`\p{Nd}` matches against MIN_PHONE_DIGITS) counts them
      * too; the separators between tokens are code points as well, where the chain's phone gap counts graphemes.
      *
      * @return list<array{int, int, list<array{string, int, int}>}>

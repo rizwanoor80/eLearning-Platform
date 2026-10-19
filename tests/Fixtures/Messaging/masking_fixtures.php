@@ -307,7 +307,8 @@ question 12
     'R231 digit words with bars' => ['zero five zero | one two three | four five six seven', MessageMasker::PLACEHOLDER],
     'R231 at the rate' => ['sara at the rate gmail dot com', MessageMasker::PLACEHOLDER],
 
-    // Round 3 (R235): bodies that carry well over 255 placeholders between them, so the ids need more than one byte
+    // Round 3 (R235): bodies with over a hundred placeholders each, timed by the corpus. They take the plain path (no spelled-out
+    // shape); ids past 255 are covered by ShadowTest
     'R235 many addresses in one body' => [str_repeat('x@example.test ', 130), str_repeat(MessageMasker::PLACEHOLDER.' ', 130)],
     'R235 many full-width addresses in one body' => [str_repeat('ａ＠ｂ．ｃｏｍ ', 140), str_repeat(MessageMasker::PLACEHOLDER.' ', 140)],
 ];
