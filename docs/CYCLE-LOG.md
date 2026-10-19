@@ -8116,3 +8116,6 @@ A first attempt on Fable 5.1 died on a rate limit (tool failure, no verdicts); r
 
 ### 2026-10-19 — NOTE (21a fix round 1, CC)
 Fixed 14 (an `exists()` pre-check returns before the transaction and any relation load), 15 (the stranger test now uses an in-progress lesson; with the party filter removed it fails, shown), 16 (four tests added: learner-only parent row, both suspended + confirmed, tutor-path and confirmed-path races). Not fixed: 13, `SettleEndedLessons` is outside the plan's authorisation boundary, so it goes under Deferred. Notes 9-12 go to STATUS §6. Commit `430bb53`. `composer test`: 2864 passed / 21441 assertions (+4, 2860 before); Pint, PHPStan 0, `ledger:verify` OK. Fix rounds used: 1 of 2.
+
+### 2026-10-19 — DECISION (21a merge under R224(2)/R147, authorisation quoted before acting, CC)
+Authorisation (rule 8), PLAN cycle 21 r1 / R224(2): a PR whose last review has 0 Medium and 0 High, with CI green on both PostgreSQL jobs, that touches no frozen file or migration, merges without asking (one attempt, R147). Conditions met: round-1 review 0 High, 0 Medium (4 Low, 3 fixed, 1 deferred); CI green on `430bb53` (PostgreSQL 16 and 18, run 39245162530); the diff is `SettleEndedLesson.php`, the new `SettleSuspendedLesson.php` and its test: no frozen file, no migration. Squash, `expectedHeadSha` `430bb53`.
