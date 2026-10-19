@@ -184,7 +184,12 @@ final class SpelledOutPrePass
         return $edits;
     }
 
-    /** @return list<array{int, int, list<array{string, int, int}>}> */
+    /**
+     * Typed digits are counted as code points (`mb_strlen`), which is how the chain's `\p{Nd}{7,}` floor counts them
+     * too; the separators between tokens are code points as well, where the chain's phone gap counts graphemes.
+     *
+     * @return list<array{int, int, list<array{string, int, int}>}>
+     */
     private static function digits(string $text): array
     {
         $edits = [];

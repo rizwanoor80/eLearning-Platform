@@ -21,6 +21,9 @@ final class Shadow
     /** One packed 32-bit little-endian integer per byte of `$text`. */
     private const WIDTH = 4;
 
+    /** Words read per step by `placeholderSpans()`. */
+    private const CHUNK = 4096;
+
     private function __construct(
         public readonly string $text,
         private readonly string $from,
@@ -116,19 +119,21 @@ final class Shadow
      */
     public function placeholderSpans(): array
     {
-        // Only the runs of non-zero bytes can belong to a placeholder; skip the (usually far larger) rest.
-        if (preg_match_all('~[^\x00]++~', $this->placeholder, $runs, PREG_OFFSET_CAPTURE) === false) {
-            throw new LogicException('Shadow could not scan its placeholders.');
-        }
-
+        $length = strlen($this->placeholder);
         $spans = [];
 
-        foreach ($runs[0] as [$run, $offset]) {
-            $first = intdiv($offset, self::WIDTH);
-            $count = intdiv($offset + strlen($run) - 1, self::WIDTH) - $first + 1;
-            $ids = self::unpacked(substr($this->placeholder, $first * self::WIDTH, $count * self::WIDTH));
-            $from = self::unpacked(substr($this->from, $first * self::WIDTH, $count * self::WIDTH));
-            $to = self::unpacked(substr($this->to, $first * self::WIDTH, $count * self::WIDTH));
+        // Whole 32-bit words at a time, so an id below 256 (which leaves zero bytes inside its word) cannot split a
+        // run; a chunk with nothing hidden in it, which is most of most bodies, is skipped on one byte scan.
+        for ($offset = 0; $offset < $length; $offset += self::CHUNK * self::WIDTH) {
+            $size = min(self::CHUNK * self::WIDTH, $length - $offset);
+
+            if (strspn($this->placeholder, "\0", $offset, $size) === $size) {
+                continue;
+            }
+
+            $ids = self::unpacked(substr($this->placeholder, $offset, $size));
+            $from = self::unpacked(substr($this->from, $offset, $size));
+            $to = self::unpacked(substr($this->to, $offset, $size));
 
             foreach ($ids as $index => $id) {
                 if ($id === 0) {

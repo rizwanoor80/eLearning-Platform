@@ -194,7 +194,7 @@ use Normalizer;
  * "one, two, three, four, five, six, seven" reads as a number, "dot" is rewritten only before a recognised
  * ending or a short list of country codes and never after a plain word such as "the" or "red" ("dot in" and
  * "dot is" are left alone), a run of digit words and typed numbers needs seven digits in all (the chain's
- * phone floor) with at most three separator characters between tokens, and a messenger name that is also an
+ * phone floor) with up to six separator characters between tokens (counted as code points here; the chain's own phone-gap limit counts graphemes), and a messenger name that is also an
  * ordinary word ("signal", "imo", "snap") only counts when the handle or number is right behind it. Words glued
  * together ("zerofivezero") are not split. `DisplayNameRule` calls `mask($form, false)`: a display name is never
  * rejected on the strength of a spelled-out shape (R218, no new rejection). Review comments and counterpart

@@ -306,4 +306,8 @@ question 12
     'R231 digit words with a semicolon' => ['zero five zero; one two three four five six', MessageMasker::PLACEHOLDER],
     'R231 digit words with bars' => ['zero five zero | one two three | four five six seven', MessageMasker::PLACEHOLDER],
     'R231 at the rate' => ['sara at the rate gmail dot com', MessageMasker::PLACEHOLDER],
+
+    // Round 3 (R235): bodies that carry well over 255 placeholders between them, so the ids need more than one byte
+    'R235 many addresses in one body' => [str_repeat('x@example.test ', 130), str_repeat(MessageMasker::PLACEHOLDER.' ', 130)],
+    'R235 many full-width addresses in one body' => [str_repeat('ａ＠ｂ．ｃｏｍ ', 140), str_repeat(MessageMasker::PLACEHOLDER.' ', 140)],
 ];

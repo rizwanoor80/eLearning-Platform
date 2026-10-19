@@ -64,3 +64,68 @@ it('refuses edits that are out of order, overlap, run past the text or stand for
     'past the end' => [[[5, 3, [['x', 0, 3]]]]],
     'an empty piece' => [[[1, 2, [['x', 1, 1]]]]],
 ])->throws(LogicException::class);
+
+it('keeps hundreds of placeholders separate, correct and in order once their ids pass 255', function () {
+    $count = 600;
+    $text = implode(' ', array_fill(0, $count, 'ab'));
+    $edits = [];
+    $expected = [];
+
+    for ($i = 0; $i < $count; $i++) {
+        $edits[] = [$i * 3, 2, [['X', 0, 2]]];
+        $expected[] = [$i * 3, $i * 3 + 2];
+    }
+
+    $shadow = Shadow::identity($text)->apply($edits, true);
+
+    expect($shadow->text)->toBe(implode(' ', array_fill(0, $count, 'X')))
+        ->and($shadow->placeholderSpans())->toBe($expected);
+});
+
+it('widens spans correctly when a placeholder id has no zero byte left in it', function () {
+    // 300 placeholders, then one edit that swallows the last two: ids 299 and 300 are 0x012B and 0x012C.
+    $count = 300;
+    $edits = [];
+
+    for ($i = 0; $i < $count; $i++) {
+        $edits[] = [$i * 3, 2, [['X', 0, 2]]];
+    }
+
+    $first = Shadow::identity(implode(' ', array_fill(0, $count, 'ab')))->apply($edits, true);
+    $last = strlen($first->text);
+    $merged = $first->apply([[$last - 3, 3, [['Y', 0, 3]]]], true);
+    $spans = $merged->placeholderSpans();
+
+    expect($spans)->toHaveCount($count - 1)
+        ->and($spans[0])->toBe([0, 2])
+        ->and(end($spans))->toBe([($count - 2) * 3, ($count - 1) * 3 + 2]);
+});
+
+it('reads the span of one placeholder that covers many bytes in a single pass', function () {
+    // R235: one placeholder id over 100,000 bytes used to be read a byte at a time.
+    $length = 100000;
+    $shadow = Shadow::identity(str_repeat('a', $length))
+        ->apply([[0, $length, [[str_repeat('Y', $length), 0, $length]]]], true);
+
+    $start = hrtime(true);
+    $spans = $shadow->placeholderSpans();
+    $milliseconds = (hrtime(true) - $start) / 1e6;
+
+    expect($spans)->toBe([[0, $length]])
+        ->and($milliseconds)->toBeLessThan(60.0);
+});
+
+it('reads many separate placeholders without losing or merging any', function () {
+    $count = 20000;
+    $edits = [];
+
+    for ($i = 0; $i < $count; $i++) {
+        $edits[] = [$i * 3, 2, [['X', 0, 2]]];
+    }
+
+    $spans = Shadow::identity(implode(' ', array_fill(0, $count, 'ab')))->apply($edits, true)->placeholderSpans();
+
+    expect($spans)->toHaveCount($count)
+        ->and($spans[0])->toBe([0, 2])
+        ->and($spans[$count - 1])->toBe([($count - 1) * 3, ($count - 1) * 3 + 2]);
+});
