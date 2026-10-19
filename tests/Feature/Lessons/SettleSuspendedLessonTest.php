@@ -243,10 +243,39 @@ it('settles a lesson with no audit row exactly as before', function () {
 });
 
 it('ignores a closed-room audit row for a user who is neither the tutor nor the lesson\'s account owner', function () {
-    ['lesson' => $lesson] = ssSetup(90);
+    // In progress with only the tutor joined: were the stranger's row taken as the parent's, the tutor would be paid.
+    ['lesson' => $lesson] = ssSetup(75, [VideoParticipant::Tutor]);
     ssSuspend($lesson, User::factory()->create());
 
-    expect(ssSettle($lesson))->toBe(LessonStatus::Refunded);
+    expect(app(SettleSuspendedLesson::class)($lesson))->toBeNull()
+        ->and(ssSettle($lesson))->toBeNull()
+        ->and($lesson->fresh()->status)->toBe(LessonStatus::InProgress)
+        ->and(AuditLog::query()->where('action', 'lesson.settled_suspension')->count())->toBe(0)
+        ->and(app(LedgerService::class)->balance($lesson, LedgerAccount::Escrow))->toBe($lesson->price->toFils());
+
+    ['lesson' => $unattended] = ssSetup(90);
+    ssSuspend($unattended, User::factory()->create());
+
+    expect(ssSettle($unattended))->toBe(LessonStatus::Refunded);
+    ssExpectRefunded($unattended);
+});
+
+it('pays the tutor when the suspended parent\'s lesson is in progress with only the learner joined', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = ssSetup(75, [VideoParticipant::Learner]);
+    ssSuspend($lesson, $parent);
+
+    expect(ssSettle($lesson))->toBe(LessonStatus::CompletedReported)
+        ->and(ssSettledAudit($lesson)->after['row'])->toBe('parent_in_progress');
+    ssExpectPaid($lesson);
+});
+
+it('leaves a confirmed lesson to the unattended refund when both accounts are suspended', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor, 'parent' => $parent] = ssSetup(90);
+    ssSuspend($lesson, $parent);
+    ssSuspend($lesson, $tutor->user);
+
+    expect(ssSettle($lesson))->toBe(LessonStatus::Refunded)
+        ->and(AuditLog::query()->where('action', 'lesson.settled_suspension')->count())->toBe(0);
     ssExpectRefunded($lesson);
 });
 
@@ -283,4 +312,35 @@ it('completes instead of paying a no-show when the learner joined after the swee
     $this->artisan('lessons:settle-ended')->assertSuccessful();
 
     expect($lesson->fresh()->status)->toBe(LessonStatus::Completed);
+});
+
+it('does not refund a suspended tutor\'s lesson when the learner joined after the sweep read it', function () {
+    ['lesson' => $lesson, 'tutor' => $tutor] = ssSetup(75, [VideoParticipant::Tutor]);
+    ssSuspend($lesson, $tutor->user);
+
+    $stale = $lesson->fresh();
+    Lesson::query()->whereKey($lesson->id)->update(['learner_joined_at' => now()->subMinutes(74)]);
+
+    expect(fn () => app(SettleEndedLesson::class)($stale))->toThrow(LessonTransitionException::class)
+        ->and($lesson->fresh()->status)->toBe(LessonStatus::InProgress)
+        ->and($lesson->ledgerEntries()->count())->toBe(2)
+        ->and(AuditLog::query()->where('action', 'lesson.settled_suspension')->count())->toBe(0);
+
+    $this->artisan('lessons:settle-ended')->assertSuccessful();
+
+    expect($lesson->fresh()->status)->toBe(LessonStatus::Completed);
+});
+
+it('does not cancel a suspended parent\'s confirmed lesson when a join moved it to in progress after the sweep read it', function () {
+    ['lesson' => $lesson, 'parent' => $parent] = ssSetup(90);
+    ssSuspend($lesson, $parent);
+
+    $stale = $lesson->fresh(); // confirmed
+    app(RecordAttendance::class)($lesson->fresh(), VideoParticipant::Tutor, now()->subMinutes(80));
+    expect($lesson->fresh()->status)->toBe(LessonStatus::InProgress);
+
+    expect(fn () => app(SettleEndedLesson::class)($stale))->toThrow(LessonTransitionException::class)
+        ->and($lesson->fresh()->status)->toBe(LessonStatus::InProgress)
+        ->and($lesson->fresh()->cancelled_at)->toBeNull()
+        ->and(AuditLog::query()->where('action', 'lesson.settled_suspension')->count())->toBe(0);
 });

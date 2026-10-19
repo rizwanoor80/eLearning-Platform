@@ -55,6 +55,11 @@ class SettleSuspendedLesson
             return null;
         }
 
+        // The common candidate has no suspension row: answer that before opening a transaction or loading a relation.
+        if (! AuditLog::query()->where('action', self::AUDIT_ROOM_CLOSED)->where('subject_type', Lesson::class)->where('subject_id', $lesson->id)->exists()) {
+            return null;
+        }
+
         return DB::transaction(function () use ($lesson): ?LessonStatus {
             $suspended = $this->suspendedUserIds($lesson);
 
