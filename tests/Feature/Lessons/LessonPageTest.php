@@ -396,6 +396,11 @@ it('keeps an in-progress lesson on the parent dashboard so the parent can get ba
 });
 
 it('lists an in-progress lesson on the tutor dashboard for today', function () {
+    // R237: "today" is the tutor's local day (Asia/Dubai, UTC+4) and the lesson started five minutes ago, so a run in
+    // the five minutes after Dubai midnight (20:00-20:05 UTC) put its start on the day before and left it off
+    // today's list. Frozen at Dubai midday.
+    Carbon::setTestNow('2026-10-19 08:00:00');
+
     ['lesson' => $lesson, 'tutor' => $tutor] = lpLesson(-5, 'fake', status: LessonStatus::InProgress);
 
     test()->actingAs($tutor->user)->get(route('tutor.dashboard'))
