@@ -8119,3 +8119,9 @@ Fixed 14 (an `exists()` pre-check returns before the transaction and any relatio
 
 ### 2026-10-19 — DECISION (21a merge under R224(2)/R147, authorisation quoted before acting, CC)
 Authorisation (rule 8), PLAN cycle 21 r1 / R224(2): a PR whose last review has 0 Medium and 0 High, with CI green on both PostgreSQL jobs, that touches no frozen file or migration, merges without asking (one attempt, R147). Conditions met: round-1 review 0 High, 0 Medium (4 Low, 3 fixed, 1 deferred); CI green on `430bb53` (PostgreSQL 16 and 18, run 39245162530); the diff is `SettleEndedLesson.php`, the new `SettleSuspendedLesson.php` and its test: no frozen file, no migration. Squash, `expectedHeadSha` `430bb53`.
+
+### 2026-10-19 — NOTE (21a post-merge record, CC)
+PR #66 squash-merged as `2b3e0a4` on `main` (CC's single attempt under R224(2)/R147). Push CI on `2b3e0a4` (run 39246066918, run number 312): success. Code now at `2b3e0a4`; `rehearsal` still `9e204d9`, an ancestor of `2b3e0a4` (checked with `git merge-base --is-ancestor`).
+
+### 2026-10-19 — DECISION (21a rehearsal deploy under R228, authorisation quoted before acting, CC)
+Authorisation (rule 8), PLAN cycle 21 r1, authorisation boundary: "CC may create and push `cp/21a-suspension-settlement` from `origin/main`, open the PR, run reviews and the R224 fix loop, merge under R224(2)/R147, deploy rehearsal and verify under R228, write docs-only commits to `main` (R210)." Step 2: "done means: merged, record, deploy and R213 green". Conditions met: `2b3e0a4` has green push CI on both PostgreSQL jobs; `rehearsal` is its ancestor (fast-forward); no migration in the diff. Action: `git push origin 2b3e0a4:refs/heads/rehearsal`, then authenticated `/ops/status` and the public smoke. Production is never CC's.
