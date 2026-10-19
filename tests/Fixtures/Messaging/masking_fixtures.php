@@ -243,13 +243,72 @@ question 12
         'a.b.'.MessageMasker::PLACEHOLDER,
     ],
 
-    // Known limits (ADR-019): spelled out is not caught
-    'spelled-out digits' => ['zero five zero one two three four five six seven', 'zero five zero one two three four five six seven'],
+    // Known limits (ADR-019)
     'colon-separated number' => ['050:123:4567', '050:123:4567'],
     'lookalike letters for digits' => ['O5O l234567', 'O5O l234567'],
-    'spelled-out address' => ['sara at gmail dot com', 'sara at gmail dot com'],
     'a spaced word-like ending is a known limit (R143)' => ['contact me at mysite. online please', 'contact me at mysite. online please'],
     // Pure whitespace alone, with no punctuation at all, is deliberately not a valid bare-domain
     // separator (R143) — otherwise ordinary line-wrapped sentences would bridge into a false positive.
     'a bare newline with no punctuation is a known limit (R143)' => ["visit mysite\ncom now", "visit mysite\ncom now"],
+
+    // R231: spelled-out shapes (`SpelledOutPrePass`)
+    'R231 spelled-out digits (formerly a known limit)' => ['zero five zero one two three four five six seven', MessageMasker::PLACEHOLDER],
+    'R231 spelled-out address (formerly a known limit)' => ['sara at gmail dot com', MessageMasker::PLACEHOLDER],
+    'R231 spelled-out address inside a sentence' => ['mail sara at gmail dot com now', 'mail '.MessageMasker::PLACEHOLDER.' now'],
+    'R231 round brackets round at and dot' => ['write to sara (at) example (dot) com please', 'write to '.MessageMasker::PLACEHOLDER.' please'],
+    'R231 square brackets round at and dot' => ['sara [at] example [dot] com', MessageMasker::PLACEHOLDER],
+    'R231 curly brackets round at' => ['sara {at} example.com', MessageMasker::PLACEHOLDER],
+    'R231 spaces round the spelled dot' => ['sara at gmail . com', MessageMasker::PLACEHOLDER],
+    'R231 hyphenated domain label' => ['sara at my-site dot com ok', MessageMasker::PLACEHOLDER.' ok'],
+    'R231 two-part country ending' => ['sara.k at gmail dot co dot uk', MessageMasker::PLACEHOLDER],
+    'R231 bare mail provider after at' => ['mail me at sara at gmail', 'mail me at '.MessageMasker::PLACEHOLDER],
+    'R231 at before a domain with a path' => ['sara at example.com/path', MessageMasker::PLACEHOLDER],
+    'R231 upper-case at and dot' => ['Sara AT Gmail DOT Com', MessageMasker::PLACEHOLDER],
+    'R231 spelled-out www address' => ['see www dot example dot com now', 'see '.MessageMasker::PLACEHOLDER.' now'],
+    'R231 digit words with a lead-in' => ['call zero five zero one two three four five six please', 'call '.MessageMasker::PLACEHOLDER.' please'],
+    'R231 digit words with commas' => ['call zero, five, zero, one, two, three, four', 'call '.MessageMasker::PLACEHOLDER],
+    'R231 digit words with oh and double' => ['double five oh one two three four', MessageMasker::PLACEHOLDER],
+    'R231 triple digit word' => ['triple five one two three four', MessageMasker::PLACEHOLDER],
+    'R231 digit words in capitals' => ['ZERO FIVE ZERO ONE TWO THREE FOUR', MessageMasker::PLACEHOLDER],
+    'R231 messenger with an at handle' => ['whatsapp @sara_k thanks', MessageMasker::PLACEHOLDER.' thanks'],
+    'R231 messenger with digits' => ['telegram 0501234 thanks', MessageMasker::PLACEHOLDER.' thanks'],
+    'R231 messenger with words before the handle' => ['my whatsapp is @sara_k ok', 'my '.MessageMasker::PLACEHOLDER.' ok'],
+    'R231 messenger with a plus and digits' => ['+whatsapp 0501234', '+'.MessageMasker::PLACEHOLDER],
+    'R231 messenger name in capitals' => ['WhatsApp @sara_k', MessageMasker::PLACEHOLDER],
+    'R231 instagram handle' => ['insta: @sara_k', MessageMasker::PLACEHOLDER],
+    'R231 snapchat and digits' => ['add me on snapchat 5550142 later', 'add me on '.MessageMasker::PLACEHOLDER.' later'],
+    'R231 hyphenated messenger prefix' => ['tutor-whatsapp @sara_k', MessageMasker::PLACEHOLDER],
+
+    // Negatives (R231): ordinary prose that shares a word with a spelled-out shape and must be left alone
+    'R231 prose "at school" then a sentence' => ['meet me at school. Then we go', 'meet me at school. Then we go'],
+    'R231 prose "at home" with no space after the dot' => ['see you at home.Thanks', 'see you at home.Thanks'],
+    'R231 polka dot' => ['polka dot is cute', 'polka dot is cute'],
+    'R231 the dot com bubble' => ['the dot com bubble', 'the dot com bubble'],
+    'R231 a red dot on the map' => ['a red dot on the map', 'a red dot on the map'],
+    'R231 dotted is not dot' => ['a dotted line here', 'a dotted line here'],
+    'R231 chat is not at' => ['that chat is nice', 'that chat is nice'],
+    'R231 messenger with a short number' => ['whatsapp 123', 'whatsapp 123'],
+    'R231 messenger with a time' => ['discord at 5pm', 'discord at 5pm'],
+    'R231 four digit words only' => ['one two three four', 'one two three four'],
+    'R231 digit words in prose' => ['one of the two apps, three days', 'one of the two apps, three days'],
+    'R231 at home then a sentence' => ['I am at home. Also fine', 'I am at home. Also fine'],
+    'R231 messenger name inside a word' => ['a signalman at work', 'a signalman at work'],
+
+    // Documented over-masking (R231): the chain already hid the domain; the rewrite makes the word before "at" part of the address
+    'R231 over-mask: at a domain with a country code' => ['we are at zoom.us', 'we '.MessageMasker::PLACEHOLDER],
+    'R231 over-mask: a time written with a dot' => ['meet me at 5.pm', 'meet '.MessageMasker::PLACEHOLDER],
+    'R231 over-mask: dot net in prose' => ['I teach dot net programming', 'I '.MessageMasker::PLACEHOLDER.' programming'],
+    'R231 over-mask: counting prose with seven digit words' => ['Score: one 100, two 95, three 90', 'Score: '.MessageMasker::PLACEHOLDER],
+
+    // Round 2: punctuation between spelled-out digits and the South Asian spelling of "@"
+    'R231 digit words with brackets' => ['zero five zero (one two three) four five six seven', MessageMasker::PLACEHOLDER],
+    'R231 typed digits and words with brackets' => ['050 (one two three) 4567', MessageMasker::PLACEHOLDER],
+    'R231 digit words with a semicolon' => ['zero five zero; one two three four five six', MessageMasker::PLACEHOLDER],
+    'R231 digit words with bars' => ['zero five zero | one two three | four five six seven', MessageMasker::PLACEHOLDER],
+    'R231 at the rate' => ['sara at the rate gmail dot com', MessageMasker::PLACEHOLDER],
+
+    // Round 3 (R235): bodies with over a hundred placeholders each, timed by the corpus. They take the plain path (no spelled-out
+    // shape); ids past 255 are covered by ShadowTest
+    'R235 many addresses in one body' => [str_repeat('x@example.test ', 130), str_repeat(MessageMasker::PLACEHOLDER.' ', 130)],
+    'R235 many full-width addresses in one body' => [str_repeat('ａ＠ｂ．ｃｏｍ ', 140), str_repeat(MessageMasker::PLACEHOLDER.' ', 140)],
 ];
