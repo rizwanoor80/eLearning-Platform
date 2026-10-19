@@ -1,47 +1,51 @@
-# STATUS — cycle 20 r1 — programme "steady state III", 20a merged and on rehearsal, 20b parked, 20c in progress; written 2026-10-19 09:10
-Tests: **2845 passed / 21297 assertions** on `main` `9e204d9` (measured on the 19b head `7be1d20`; `8456a7c` was comments only) · Advisor: consulted 1 time this cycle (Opus 5.5, 20b; a Fable 5.1 attempt failed on a rate limit and is not counted) · Review: 20a round 3 PASS WITH NOTES, 0 Medium, 0 High · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
+# STATUS — cycle 20 r1 — programme "steady state III", END; written 2026-10-19 09:25
+Tests: **2845 passed / 21297 assertions** on `main` `f139489` (20c is test-only, count unchanged) · Advisor: consulted 1 time this cycle (Opus 5.5, 20b; one Fable 5.1 attempt failed on a rate limit and is not counted) · Review: 20a round 3 PASS WITH NOTES and 20c PASS, 0 Medium, 0 High each · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
 
 ## §1 Git state
-- `origin/main` = `9e204d9` (PR #62 squash) plus docs-only commits after it; `rehearsal` = `9e204d9`, verified through `/ops/status` (release 80561433). PR #62 merged. Local branch `cp/20b-suspension-settlement` has no commits and is not pushed; `cp/19b-masker-prepass` still exists locally and on the remote (no branch deleted, per plan). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
+- `origin/main` = `f139489` (PR #65 squash) plus docs-only commits after it; `rehearsal` = `9e204d9` (deployed and verified in 20a; 20c is test-only and not deployed, per R237). PRs #62 and #65 merged; no open PR. Local branch `cp/20b-suspension-settlement` has no commits and was never pushed; `cp/19b-masker-prepass` and `cp/20c-lesson-page-clock` remain (no branch deleted, per plan). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
 
 ## §2 Step map
-1. START, R222 check — [done]. 2. 20a (19b round 3, R235) — [done: merged `9e204d9`, rehearsal verified]. 3. 20b (R236) — [parked: no `confirmed → no_show_student` edge]. 4. 20c (R237) — [in progress]. 5. END — [not started].
+1. START, R222 check — [done]. 2. 20a (19b round 3, R235) — [done: merged `9e204d9`, rehearsal verified]. 3. 20b (R236) — [parked: no `confirmed → no_show_student` edge; Owner action 15]. 4. 20c (R237) — [done: merged `f139489`]. 5. END — [done].
 
-## §3 What changed this run
-- 20a: `Shadow::placeholderSpans` reads its byte maps a word-aligned 4,096-word chunk at a time instead of a byte at a time; red/green on a 100,000-byte placeholder (96.6 ms before, about 17 ms after). Tests added for ids above 255 and 20,000 separate placeholders; three comments and one test name the review flagged corrected. Merged as `9e204d9`; push CI green on both PostgreSQL jobs; rehearsal fast-forwarded and verified (R213).
-- 20b: advisor consulted, then parked with the transition table cited (CYCLE-LOG DECISION 2026-10-19). No code changed.
+## §3 What changed this cycle
+- 20a: `Shadow::placeholderSpans` reads its byte maps a word-aligned 4,096-word chunk at a time instead of a byte at a time (100,000-byte placeholder: 96.6 ms before, about 17 ms after); tests for ids above 255 and 20,000 separate placeholders; three comments and one test name corrected. Merged as `9e204d9`; rehearsal fast-forwarded and verified (release 80561433, migrations pending 0, Horizon running, ledger ok, public pages 200, unauthenticated `/ops/status` 404).
+- 20b: advisor consulted, parked with the transition table cited. No code changed.
+- 20c: the tutor-dashboard "today" test freezes the clock at Dubai midday. The real failing window is 20:00–20:05 UTC (the five minutes after Dubai midnight), not 19:55–20:00 as the plan and the 2026-10-18 log said; corrected in the test comment and the log.
 
 ## §4 Decisions and by whom
 - Owner: R234–R237 (PLAN r1). Owner action 13 answered "yes" (R235); Owner action 14 answered by R236.
-- CC: merge of PR #62 under R224(2)/R147; rehearsal deploy under R228; park 20b under R236's last sentence on the advisor's reading (Opus 5.5).
+- CC: merges of PR #62 and PR #65 under R224(2)/R147; rehearsal deploy under R228; park 20b under R236's last sentence on the advisor's reading (Opus 5.5).
+- Advisor summary: consulted 1 time (20b, Opus 5.5; minimum 1 met). The Fable 5.1 attempt hit its usage limit before answering: a tool failure, not a consultation.
+- R214: `mail.from_name` = **`trusTutor Team`** (unchanged; read from `/ops/status` after the last deploy, 2026-10-19). Owner action 5 stays open.
 
 ## §5 Why stopping
-Not stopped: programme running (20c next).
+END of the queue (R224). Nothing further is authorised. Offer: the session can be cleared, since Owner action 15 needs an owner answer: `/clear` this session and reply `update — <1, 2 or 3>`.
 
 ## §6 Mismatches
-- **20b / R236 against the state machine.** R236(a) needs `NoShowStudent` from a lesson nobody joined; that lesson is `confirmed` and `Confirmed → [CancelledByParent, CancelledByTutor, InProgress, NoShowBoth, ProviderFailure]` (`LessonStateMachine.php:52-63`). The plan said to park, not add the edge. So the cycle-19 behaviour stands: a suspended parent's unattended lesson is refunded via `no_show_both`.
+- **20b / R236 against the state machine.** R236(a) needs `NoShowStudent` from a lesson nobody joined; that lesson is `confirmed` and `Confirmed → [CancelledByParent, CancelledByTutor, InProgress, NoShowBoth, ProviderFailure]` (`LessonStateMachine.php:52-63`). The plan said to park, not add the edge. So cycle 19's behaviour stands: a suspended parent's unattended lesson is refunded via `no_show_both`.
 - A tutor-suspended `confirmed` lesson never reaches settlement (`CancelSuspendedTutorLessons` already cancels and refunds it), so R236(b) only matters for the `in_progress` case (19c gap 2: tutor joined, learner not, then stuck).
 - Not covered by R236 and still open: a suspended party whose counterpart joined while the suspended party never did; both accounts suspended (two audit rows, no precedence rule).
+- The plan's `LessonPageTest` window (19:55–20:00 UTC) was off by the sign: it is 20:00–20:05 UTC.
 - The Fable 5.1 advisor hit its usage limit during this session; Opus 5.5 answered instead.
-- Ordering slip: the rehearsal push preceded its DECISION entry (disclosed in the entry).
+- Ordering slip: the 20a rehearsal push preceded its DECISION entry (disclosed in the entry).
 - Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged.
 
 ## §7 Next step / Owner actions
-Next: 20c, then END.
-Owner action 15: decide 20b. (1) (Recommended) Grant a frozen-file GO to add the edge `confirmed → no_show_student` to `LessonStateMachine` under build → prove → halt → GO with a red/green proof; it is the only way to give a suspended parent's unattended lesson the student-no-show outcome R236(a) asked for, and a later plan then ships all of R236 whole. (2) Accept a partial ruling: a later plan authorises only (a1) parent suspended / tutor joined / `in_progress` and (b2) tutor suspended / tutor joined / `in_progress` with existing edges, and (a2) stays refunded and disclosed. (3) Leave settlement as it is and rely on the admin's two-dial dispute. Reply `update — <1, 2 or 3>`.
-Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
+Parked PRs: none. Default-taken decisions: none this cycle (the one advisor question was answered, not defaulted).
+Owner action 15: decide 20b. (1) (Recommended) Grant a frozen-file GO to add the edge `confirmed → no_show_student` to `LessonStateMachine` under build → prove → halt → GO with a red/green proof; it is the only way to give a suspended parent's unattended lesson the student-no-show outcome R236(a) asked for, and a later plan then ships all of R236 whole. (2) Accept a partial ruling: a later plan authorises only (a1) parent suspended / tutor joined / `in_progress` and (b2) tutor suspended / tutor joined / `in_progress` with existing edges, and (a2) stays refunded and disclosed. (3) Leave settlement as it is and rely on the admin's two-dial dispute. Then `/clear` this session and reply `update — <1, 2 or 3>`.
+Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120). The planner cuts the next PLAN.
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
 | 20a | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | PASS WITH NOTES (0 Medium, 0 High) | merged `9e204d9`, rehearsal verified |
 | 20b | `cp/20b-suspension-settlement` | — | — | parked (Owner action 15) |
-| 20c | `cp/20c-lesson-page-clock` | — | — | in progress |
-Resume cap 12, 0 used.
+| 20c | `cp/20c-lesson-page-clock` | [#65](https://github.com/rizwanoor80/eLearning-Platform/pull/65) | PASS (0 Medium, 0 High) | merged `f139489`, test-only, no deploy |
+Resume cap 12, 0 used. Cycle 20 r1 ended.
 
 
 ## Deferred
-- **19a corpus follow-ups (REVIEW 2026-10-18 20:08):** the garbled nested placeholders in 218 baseline outputs (a masker defect; 19b may fix it); the placeholder-for-everything and unchecked `masked` limits; the `LessonPageTest` Dubai-midnight flake (planner).
+- **19a corpus follow-ups (REVIEW 2026-10-18 20:08):** the garbled nested placeholders in 218 baseline outputs (a masker defect; 19b may fix it); the placeholder-for-everything and unchecked `masked` limits; (the `LessonPageTest` Dubai-midnight flake closed in 20c).
 - **Cycle-17 follow-ups found by the 17a review (the twins and the hook lines closed in 18c):** a `::warning::` annotation when the build only goes green on a retry (the empty-`DB_PASSWORD` mismatch closed in 19d); `APP_ENV`/`DB_CONNECTION` and the two published passwords in `docs/cloud/ENVIRONMENT.md` (planner's file).
 - **`max_participants: 2` on Daily rooms** — built and tested in 19c, unverified against live Daily (connection-count caveats in §6 gap 5).
 - **18e review notes (REVIEW 2026-10-18 17:00):** behind a load balancer `$request->ip()` is the balancer's address until `TRUSTED_PROXIES` is set (R130, already under production hardening) — then registration is about 5 sign-ups a minute site-wide per form; the walk counts a Fortify own-limiter route as throttled through `throttle:fortify` although the dispatcher returns none for it (a null `fortify.limiters.login` would not turn it red); Horizon and Filament/Livewire carry no baseline limiter (allow-listed; broadcasting auth got one in 19d); the two sign-up forms have a counter each.
