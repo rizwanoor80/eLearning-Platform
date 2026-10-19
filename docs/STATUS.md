@@ -1,33 +1,42 @@
-# STATUS — cycle 20 r1 — programme "steady state III", 20a in progress; written 2026-10-19 08:38
-Tests: **2730 passed / 14103 assertions** on `main` `3e472ec` (docs-only since `a8bdca3`) · Advisor: consulted 0 times this cycle so far · Review: none yet this cycle · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 0. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
+# STATUS — cycle 20 r1 — programme "steady state III", 20a merged and on rehearsal, 20b parked, 20c in progress; written 2026-10-19 09:10
+Tests: **2845 passed / 21297 assertions** on `main` `9e204d9` (measured on the 19b head `7be1d20`; `8456a7c` was comments only) · Advisor: consulted 1 time this cycle (Opus 5.5, 20b; a Fable 5.1 attempt failed on a rate limit and is not counted) · Review: 20a round 3 PASS WITH NOTES, 0 Medium, 0 High · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
 
 ## §1 Git state
-- `origin/main` = `3e472ec` (PLAN cycle 20 r1, committed by the planner); `rehearsal` = `a8bdca3`. Open PR: [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) (19b, `cp/19b-masker-prepass`, head `eb2a92e`, parked until 20a). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
+- `origin/main` = `9e204d9` (PR #62 squash) plus docs-only commits after it; `rehearsal` = `9e204d9`, verified through `/ops/status` (release 80561433). PR #62 merged. Local branch `cp/20b-suspension-settlement` has no commits and is not pushed; `cp/19b-masker-prepass` still exists locally and on the remote (no branch deleted, per plan). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
 
 ## §2 Step map
-1. START, R222 check — [done]. 2. 20a (19b round 3, R235) — [in progress]. 3. 20b (R236) — [not started]. 4. 20c (R237) — [not started]. 5. END — [not started].
+1. START, R222 check — [done]. 2. 20a (19b round 3, R235) — [done: merged `9e204d9`, rehearsal verified]. 3. 20b (R236) — [parked: no `confirmed → no_show_student` edge]. 4. 20c (R237) — [in progress]. 5. END — [not started].
 
 ## §3 What changed this run
-- START entry logged (CYCLE-LOG 2026-10-19). Nothing else yet.
+- 20a: `Shadow::placeholderSpans` reads its byte maps a word-aligned 4,096-word chunk at a time instead of a byte at a time; red/green on a 100,000-byte placeholder (96.6 ms before, about 17 ms after). Tests added for ids above 255 and 20,000 separate placeholders; three comments and one test name the review flagged corrected. Merged as `9e204d9`; push CI green on both PostgreSQL jobs; rehearsal fast-forwarded and verified (R213).
+- 20b: advisor consulted, then parked with the transition table cited (CYCLE-LOG DECISION 2026-10-19). No code changed.
 
 ## §4 Decisions and by whom
 - Owner: R234–R237 (PLAN r1). Owner action 13 answered "yes" (R235); Owner action 14 answered by R236.
+- CC: merge of PR #62 under R224(2)/R147; rehearsal deploy under R228; park 20b under R236's last sentence on the advisor's reading (Opus 5.5).
 
 ## §5 Why stopping
-Not stopped: programme running.
+Not stopped: programme running (20c next).
 
 ## §6 Mismatches
-- None new. Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged; 19c gap 2 and the unattended-refund Medium are what 20b addresses.
+- **20b / R236 against the state machine.** R236(a) needs `NoShowStudent` from a lesson nobody joined; that lesson is `confirmed` and `Confirmed → [CancelledByParent, CancelledByTutor, InProgress, NoShowBoth, ProviderFailure]` (`LessonStateMachine.php:52-63`). The plan said to park, not add the edge. So the cycle-19 behaviour stands: a suspended parent's unattended lesson is refunded via `no_show_both`.
+- A tutor-suspended `confirmed` lesson never reaches settlement (`CancelSuspendedTutorLessons` already cancels and refunds it), so R236(b) only matters for the `in_progress` case (19c gap 2: tutor joined, learner not, then stuck).
+- Not covered by R236 and still open: a suspended party whose counterpart joined while the suspended party never did; both accounts suspended (two audit rows, no precedence rule).
+- The Fable 5.1 advisor hit its usage limit during this session; Opus 5.5 answered instead.
+- Ordering slip: the rehearsal push preceded its DECISION entry (disclosed in the entry).
+- Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged.
 
 ## §7 Next step / Owner actions
-Next: 20a. Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
+Next: 20c, then END.
+Owner action 15: decide 20b. (1) (Recommended) Grant a frozen-file GO to add the edge `confirmed → no_show_student` to `LessonStateMachine` under build → prove → halt → GO with a red/green proof; it is the only way to give a suspended parent's unattended lesson the student-no-show outcome R236(a) asked for, and a later plan then ships all of R236 whole. (2) Accept a partial ruling: a later plan authorises only (a1) parent suspended / tutor joined / `in_progress` and (b2) tutor suspended / tutor joined / `in_progress` with existing edges, and (a2) stays refunded and disclosed. (3) Leave settlement as it is and rely on the admin's two-dial dispute. Reply `update — <1, 2 or 3>`.
+Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 20a | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | — | in progress |
-| 20b | `cp/20b-suspension-settlement` | — | — | not started |
-| 20c | `cp/20c-lesson-page-clock` | — | — | not started |
+| 20a | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | PASS WITH NOTES (0 Medium, 0 High) | merged `9e204d9`, rehearsal verified |
+| 20b | `cp/20b-suspension-settlement` | — | — | parked (Owner action 15) |
+| 20c | `cp/20c-lesson-page-clock` | — | — | in progress |
 Resume cap 12, 0 used.
 
 
