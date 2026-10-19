@@ -18,13 +18,17 @@ use Illuminate\Support\Facades\DB;
  *    `refunded` — full refund, no strike, no tutor pay.
  *
  * A lesson where only one side joined stays `in_progress`: whether the other side was absent is the
- * joined party's call (`MarkNoShow`), never the clock's. Anything else is left untouched. The state
+ * joined party's call (`MarkNoShow`), never the clock's — except when a suspension closed the room (R238): `SettleSuspendedLesson`
+ * runs first and settles that lesson with the suspended party as the absent one. Anything else is left untouched. The state
  * machine asserts the edge on the locked status, so a run that races another action or a second run
  * is a no-op.
  */
 class SettleEndedLesson
 {
-    public function __construct(private LessonSettlement $settlement) {}
+    public function __construct(
+        private LessonSettlement $settlement,
+        private SettleSuspendedLesson $suspended,
+    ) {}
 
     /**
      * @return LessonStatus|null the status the lesson moved to, or null when nothing applied
@@ -32,8 +36,8 @@ class SettleEndedLesson
     public function __invoke(Lesson $lesson): ?LessonStatus
     {
         return match ($lesson->status) {
-            LessonStatus::InProgress => $this->complete($lesson),
-            LessonStatus::Confirmed => $this->unattended($lesson),
+            LessonStatus::InProgress => ($this->suspended)($lesson) ?? $this->complete($lesson),
+            LessonStatus::Confirmed => ($this->suspended)($lesson) ?? $this->unattended($lesson),
             default => null,
         };
     }
