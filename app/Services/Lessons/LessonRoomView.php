@@ -50,6 +50,7 @@ final class LessonRoomView
         try {
             IssueJoinToken::assertJoinable($lesson);
             IssueJoinToken::assertParticipantJoinable($lesson, $party);
+            IssueJoinToken::assertRoomOpen($lesson);
             $canJoin = $provider !== null;
         } catch (AttendanceException $e) {
             $joinProblem = $e->getMessage();

@@ -17,13 +17,15 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function (): void {
             // R193: operator routes sit outside the `web` group — no session, cookies, CSRF or Inertia.
             Route::group([], base_path('routes/ops.php'));
         },
     )
+    // Registered here, not through `withRouting(channels:)`, to carry the baseline write limiter (R233): Echo's channel
+    // authorisation is a POST like any other account write, 60 a minute per user, far above one page load's subscriptions.
+    ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', 'throttle:account-writes']])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
