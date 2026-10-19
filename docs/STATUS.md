@@ -1,47 +1,36 @@
-# STATUS — cycle 20 r1 — programme "steady state III", END; written 2026-10-19 09:25
-Tests: **2845 passed / 21297 assertions** on `main` `f139489` (20c is test-only, count unchanged) · Advisor: consulted 1 time this cycle (Opus 5.5, 20b; one Fable 5.1 attempt failed on a rate limit and is not counted) · Review: 20a round 3 PASS WITH NOTES and 20c PASS, 0 Medium, 0 High each · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000.
+# STATUS — cycle 21 r1 — programme steady state IV, 21a in progress; written 2026-10-19 10:00
+Tests: **2845 passed / 21297 assertions** on `main` `b8b568d` (docs-only since `f139489`) · Advisor: 0 consultations so far this cycle (minimum 1 for 21a) · Review: none yet · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000, `CLAUDE_CODE_REMOTE`=true.
 
 ## §1 Git state
-- `origin/main` = `f139489` (PR #65 squash) plus docs-only commits after it; `rehearsal` = `9e204d9` (deployed and verified in 20a; 20c is test-only and not deployed, per R237). PRs #62 and #65 merged; no open PR. Local branch `cp/20b-suspension-settlement` has no commits and was never pushed; `cp/19b-masker-prepass` and `cp/20c-lesson-page-clock` remain (no branch deleted, per plan). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
+- `origin/main` = `b8b568d` (PLAN cycle 21 r1, docs-only) over code `f139489`; `rehearsal` = `9e204d9`. No open PR. Branch `cp/21a-suspension-settlement` about to be cut from `origin/main`. Local `cp/19b-masker-prepass`, `cp/20b-suspension-settlement` (no commits), `cp/20c-lesson-page-clock` remain (no branch deleted). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
 
 ## §2 Step map
-1. START, R222 check — [done]. 2. 20a (19b round 3, R235) — [done: merged `9e204d9`, rehearsal verified]. 3. 20b (R236) — [parked: no `confirmed → no_show_student` edge; Owner action 15]. 4. 20c (R237) — [done: merged `f139489`]. 5. END — [done].
+1. START, R222 check, board, close Owner action 15 — [done]. 2. 21a (R238) — [in progress]. 3. END — [pending].
 
 ## §3 What changed this cycle
-- 20a: `Shadow::placeholderSpans` reads its byte maps a word-aligned 4,096-word chunk at a time instead of a byte at a time (100,000-byte placeholder: 96.6 ms before, about 17 ms after); tests for ids above 255 and 20,000 separate placeholders; three comments and one test name corrected. Merged as `9e204d9`; rehearsal fast-forwarded and verified (release 80561433, migrations pending 0, Horizon running, ledger ok, public pages 200, unauthenticated `/ops/status` 404).
-- 20b: advisor consulted, parked with the transition table cited. No code changed.
-- 20c: the tutor-dashboard "today" test freezes the clock at Dubai midday. The real failing window is 20:00–20:05 UTC (the five minutes after Dubai midnight), not 19:55–20:00 as the plan and the 2026-10-18 log said; corrected in the test comment and the log.
+- Docs only so far: START entry; Owner action 15 recorded as answered by R238 (supersedes R236).
 
 ## §4 Decisions and by whom
-- Owner: R234–R237 (PLAN r1). Owner action 13 answered "yes" (R235); Owner action 14 answered by R236.
-- CC: merges of PR #62 and PR #65 under R224(2)/R147; rehearsal deploy under R228; park 20b under R236's last sentence on the advisor's reading (Opus 5.5).
-- Advisor summary: consulted 1 time (20b, Opus 5.5; minimum 1 met). The Fable 5.1 attempt hit its usage limit before answering: a tool failure, not a consultation.
-- R214: `mail.from_name` = **`trusTutor Team`** (unchanged; read from `/ops/status` after the last deploy, 2026-10-19). Owner action 5 stays open.
+- Owner: R238 (suspended party is the no-show party, existing edges only) answers Owner action 15 (2026-10-19). Planner: R239.
+- Advisor summary: not yet consulted this cycle.
+- R214: `mail.from_name` = `trusTutor Team` (last read 2026-10-19; re-read at the 21a deploy). Owner action 5 stays open.
 
 ## §5 Why stopping
-END of the queue (R224). Nothing further is authorised. Offer: the session can be cleared, since Owner action 15 needs an owner answer: `/clear` this session and reply `update — <1, 2 or 3>`.
+Not stopping: programme mode (R224), running 21a.
 
 ## §6 Mismatches
-- **20b / R236 against the state machine.** R236(a) needs `NoShowStudent` from a lesson nobody joined; that lesson is `confirmed` and `Confirmed → [CancelledByParent, CancelledByTutor, InProgress, NoShowBoth, ProviderFailure]` (`LessonStateMachine.php:52-63`). The plan said to park, not add the edge. So cycle 19's behaviour stands: a suspended parent's unattended lesson is refunded via `no_show_both`.
-- A tutor-suspended `confirmed` lesson never reaches settlement (`CancelSuspendedTutorLessons` already cancels and refunds it), so R236(b) only matters for the `in_progress` case (19c gap 2: tutor joined, learner not, then stuck).
-- Not covered by R236 and still open: a suspended party whose counterpart joined while the suspended party never did; both accounts suspended (two audit rows, no precedence rule).
-- The plan's `LessonPageTest` window (19:55–20:00 UTC) was off by the sign: it is 20:00–20:05 UTC.
-- The Fable 5.1 advisor hit its usage limit during this session; Opus 5.5 answered instead.
-- Ordering slip: the 20a rehearsal push preceded its DECISION entry (disclosed in the entry).
-- Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged.
+- None new. The R236 mismatch is resolved by R238 (existing edges `Confirmed → CancelledByParent → CompletedReported`, `InProgress → NoShowStudent → CompletedReported`, `InProgress → NoShowTutor → Refunded`, checked against `LessonStateMachine.php`). Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged.
 
 ## §7 Next step / Owner actions
-Parked PRs: none. Default-taken decisions: none this cycle (the one advisor question was answered, not defaulted).
-Owner action 15: decide 20b. (1) (Recommended) Grant a frozen-file GO to add the edge `confirmed → no_show_student` to `LessonStateMachine` under build → prove → halt → GO with a red/green proof; it is the only way to give a suspended parent's unattended lesson the student-no-show outcome R236(a) asked for, and a later plan then ships all of R236 whole. (2) Accept a partial ruling: a later plan authorises only (a1) parent suspended / tutor joined / `in_progress` and (b2) tutor suspended / tutor joined / `in_progress` with existing edges, and (a2) stays refunded and disclosed. (3) Leave settlement as it is and rely on the admin's two-dial dispute. Then `/clear` this session and reply `update — <1, 2 or 3>`.
-Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120). The planner cuts the next PLAN.
+Parked PRs: none. Default-taken decisions: none.
+Owner action 15: **answered** by R238 (2026-10-19); no reply needed.
+Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 20a | `cp/19b-masker-prepass` | [#62](https://github.com/rizwanoor80/eLearning-Platform/pull/62) | PASS WITH NOTES (0 Medium, 0 High) | merged `9e204d9`, rehearsal verified |
-| 20b | `cp/20b-suspension-settlement` | — | — | parked (Owner action 15) |
-| 20c | `cp/20c-lesson-page-clock` | [#65](https://github.com/rizwanoor80/eLearning-Platform/pull/65) | PASS (0 Medium, 0 High) | merged `f139489`, test-only, no deploy |
-Resume cap 12, 0 used. Cycle 20 r1 ended.
+| 21a | `cp/21a-suspension-settlement` | — | — | in progress |
+Resume cap 12, 0 used.
 
 
 ## Deferred
