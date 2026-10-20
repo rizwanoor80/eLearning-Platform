@@ -39,7 +39,7 @@ class PaymentWebhookController extends Controller
         $gatewayCode = PaymentGatewayCode::tryFrom($code);
         $row = $gatewayCode === null ? null : PaymentGatewayAccount::query()->where('code', $gatewayCode->value)->first();
 
-        if ($gatewayCode === null || $row === null || $gatewayCode === PaymentGatewayCode::Fake || ! $gatewayCode->hasDriver() || ! $row->hasCredential('webhook_secret')) {
+        if ($gatewayCode === null || $row === null || $gatewayCode === PaymentGatewayCode::Fake || ! $gatewayCode->hasDriver() || ! $row->hasCredential('webhook_secret') || ! $row->hasCredential('secret_key')) {
             return response()->json(['status' => 'unknown_gateway'], 404);
         }
 

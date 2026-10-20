@@ -1,11 +1,13 @@
 <?php
 
+use App\Enums\PaymentGatewayMode;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
 use App\Models\PaymentMethod;
 use App\Models\User;
+use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use App\Services\Payments\StripePaymentGateway;
 use App\Support\Money;
@@ -156,7 +158,7 @@ it('refuses to save a card from a setup that is not complete or not this account
 ]);
 
 it('charges a saved card off session with the caller\'s idempotency key', function () {
-    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway_customer_ref' => 'cus_test_1', 'gateway_token' => 'pm_test_1']);
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1', 'gateway_token' => 'pm_test_1']);
     $this->http->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_2']));
 
     $result = $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'lesson:7:attempt:1');
@@ -168,24 +170,59 @@ it('charges a saved card off session with the caller\'s idempotency key', functi
 });
 
 it('treats a decline and a card that needs the cardholder as ordinary failed attempts', function () {
-    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id]);
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
 
     $this->http->reply('POST /v1/payment_intents', ['error' => ['type' => 'card_error', 'code' => 'card_declined', 'decline_code' => 'insufficient_funds', 'message' => 'Declined']], 402);
 
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(PaymentCaptureException::class, 'insufficient_funds');
 
-    $this->http
-        ->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_3', 'status' => 'requires_action']))
-        ->reply('POST /v1/payment_intents/pi_test_3/cancel', stripeIntent(['id' => 'pi_test_3', 'status' => 'canceled']));
+    $this->http->reply('POST /v1/payment_intents', ['error' => ['type' => 'card_error', 'code' => 'authentication_required', 'message' => 'Needs the cardholder', 'payment_intent' => ['id' => 'pi_test_3', 'object' => 'payment_intent', 'status' => 'requires_payment_method']]], 402);
 
-    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k2'))->toThrow(PaymentCaptureException::class, 'authentication_required')
-        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_3/cancel'))->toHaveCount(1);
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k2'))->toThrow(PaymentCaptureException::class, 'authentication_required');
+
+    $this->http
+        ->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_4', 'status' => 'requires_action']))
+        ->reply('POST /v1/payment_intents/pi_test_4/cancel', stripeIntent(['id' => 'pi_test_4', 'status' => 'canceled']));
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k3'))->toThrow(PaymentCaptureException::class, 'authentication_required')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_4/cancel'))->toHaveCount(1);
 });
 
 it('lets a network failure on a saved-card charge propagate so the same key can be retried', function () {
-    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id]);
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
 
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(ApiConnectionException::class);
+});
+
+it('refuses a saved card that belongs to another gateway without calling Stripe', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'fake']);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(PaymentCaptureException::class, 'payment_method_not_stripe')
+        ->and($this->http->requests)->toHaveCount(0);
+});
+
+it('turns a card Stripe no longer knows into a failed attempt, so the slot is not stuck pending', function (int $status, array $error) {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
+    $this->http->reply('POST /v1/payment_intents', ['error' => $error], $status);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(PaymentCaptureException::class, 'card_unusable');
+})->with([
+    'unknown payment method' => [400, ['type' => 'invalid_request_error', 'code' => 'resource_missing', 'message' => 'No such PaymentMethod']],
+    'key reused with other parameters' => [400, ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']],
+]);
+
+it('lets a still-processing saved-card charge propagate and does not cancel it', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
+    $this->http->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_5', 'status' => 'processing']));
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(RuntimeException::class)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_5/cancel'))->toHaveCount(0);
+});
+
+it('turns an unknown setup intent into a decline, not a crash', function () {
+    $this->http->reply('GET /v1/setup_intents/seti_missing', ['error' => ['type' => 'invalid_request_error', 'code' => 'resource_missing', 'message' => 'No such setupintent']], 404);
+
+    expect(fn () => $this->gateway->saveCard($this->payer, 'seti_missing'))->toThrow(PaymentCaptureException::class, 'setup_not_found');
 });
 
 it('refunds a Stripe payment by its intent with the given idempotency key', function () {
@@ -221,15 +258,15 @@ it('verifies a webhook signature the way Stripe signs it, and nothing else', fun
 });
 
 it('is built by the manager from the row\'s credentials, in the row\'s mode', function () {
-    $row = PaymentGatewayAccount::factory()->create();
+    $test = app(PaymentGatewayManager::class)->forRow(PaymentGatewayAccount::factory()->make());
 
-    $driver = app(PaymentGatewayManager::class)->forRow($row);
-
-    expect($driver)->toBeInstanceOf(StripePaymentGateway::class)
-        ->and($driver->driver())->toBe('stripe');
+    expect($test)->toBeInstanceOf(StripePaymentGateway::class)
+        ->and($test->driver())->toBe('stripe')
+        ->and($test->__debugInfo())->toBe(['driver' => 'stripe', 'live' => false])
+        ->and(fn () => app(PaymentGatewayManager::class)->forRow(PaymentGatewayAccount::factory()->make(['mode' => PaymentGatewayMode::Live])))->toThrow(NoActivePaymentGateway::class);
 });
 
-it('never puts a key, a webhook secret or a card number in an exception message or the database', function () {
+it('never puts a key or a webhook secret in an exception message or a request body', function () {
     $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeIntent(['status' => 'requires_payment_method']));
     stripeChooses('pi_test_1');
 
@@ -239,5 +276,5 @@ it('never puts a key, a webhook secret or a card number in an exception message 
         expect($e->getMessage())->not->toContain('sk_test_example')->not->toContain('whsec_example');
     }
 
-    expect(json_encode(Payment::query()->get()->toArray()))->not->toContain('sk_test_example');
+    expect(json_encode($this->http->requests))->not->toContain('whsec_example');
 });

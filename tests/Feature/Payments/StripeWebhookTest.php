@@ -10,6 +10,7 @@ use App\Models\PaymentWebhookEvent;
 use App\Models\User;
 use App\Support\Money;
 use Illuminate\Cache\RateLimiter;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 
@@ -22,7 +23,14 @@ const STRIPE_TEST_WEBHOOK_SECRET = 'whsec_test_webhook_example';
 beforeEach(function () {
     PaymentGatewayAccount::factory()->create(['credentials' => ['publishable_key' => 'pk_test_example', 'secret_key' => 'sk_test_example', 'webhook_secret' => STRIPE_TEST_WEBHOOK_SECRET]]);
     $this->payment = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1', 'amount' => 10000]);
+    holdFor($this->payment);
 });
+
+/** The escrow hold a booking writes through `LedgerService`; a test may not use the service for a webhook that must not touch it. */
+function holdFor(Payment $payment): void
+{
+    DB::table('ledger_entries')->insert(['lesson_id' => $payment->lesson_id, 'account' => 'escrow', 'type' => 'hold', 'amount' => 10000, 'created_at' => now()]);
+}
 
 function stripeEvent(string $type, array $object, string $id = 'evt_test_1', array $overrides = []): string
 {
@@ -95,6 +103,15 @@ it('is a 404 for an unknown code, the fake gateway and a row with no webhook sec
     expect(PaymentWebhookEvent::query()->count())->toBe(0);
 });
 
+it('is a 404, not a 500, for a row with a webhook secret but no secret key', function () {
+    $row = PaymentGatewayAccount::query()->where('code', 'stripe')->firstOrFail();
+    $row->credentials = ['webhook_secret' => STRIPE_TEST_WEBHOOK_SECRET];
+    $row->save();
+
+    postStripe(stripeEvent('charge.refunded', refundedCharge(2500)))->assertStatus(404);
+    expect(PaymentWebhookEvent::query()->count())->toBe(0);
+});
+
 it('is a 404 for a live-mode row while the owner-only flag is off', function () {
     PaymentGatewayAccount::query()->where('code', 'stripe')->update(['mode' => 'live']);
 
@@ -140,6 +157,21 @@ it('records a partial refund as an absolute amount and tells the admins', functi
     expect($payment->refunded_amount->toFils())->toBe(2500)
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded);
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY && $e->payment->is($payment));
+});
+
+it('records a refund on a payment with no hold but leaves it captured, so ledger:verify still flags it', function () {
+    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured]);
+
+    postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
+
+    expect($unheld->fresh()->status)->toBe(PaymentStatus::Captured)
+        ->and($unheld->fresh()->refunded_amount->toFils())->toBe(10000);
+});
+
+it('serialises its payment for the queue', function () {
+    $event = new PaymentNeedsAttention($this->payment, PaymentNeedsAttention::DISPUTED_AT_GATEWAY);
+
+    expect(unserialize(serialize($event))->payment->is($this->payment))->toBeTrue();
 });
 
 it('records a full refund as refunded', function () {

@@ -4,6 +4,7 @@ namespace App\Events\Payments;
 
 use App\Models\Payment;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
 
 /**
  * A verified gateway webhook says something an admin must look at (23b, R247): a refund the ledger
@@ -14,7 +15,7 @@ use Illuminate\Foundation\Events\Dispatchable;
  */
 class PaymentNeedsAttention
 {
-    use Dispatchable;
+    use Dispatchable, SerializesModels;
 
     public const REFUNDED_AT_GATEWAY = 'refunded_at_gateway';
 

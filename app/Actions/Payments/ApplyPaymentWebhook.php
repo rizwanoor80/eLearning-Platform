@@ -2,10 +2,12 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\LedgerEntryType;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\Payment;
 use App\Support\Money;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 23b (R247): what a verified, first-seen gateway event does here. Deliberately little: the lesson
@@ -66,10 +68,18 @@ class ApplyPaymentWebhook
             return;
         }
 
-        $payment->forceFill([
-            'refunded_amount' => $new,
-            'status' => $new->equals($payment->amount) ? PaymentStatus::Refunded : PaymentStatus::PartiallyRefunded,
-        ])->save();
+        $payment->refunded_amount = $new;
+
+        // A captured payment with no hold is a stranded one (`LedgerService::strandedPayments()`); moving
+        // its status would hide it from `ledger:verify` while the platform still holds the money. The
+        // refunded amount is recorded either way, and admins are told below.
+        $held = DB::table('ledger_entries')->where('lesson_id', $payment->lesson_id)->where('type', LedgerEntryType::Hold->value)->exists();
+
+        if ($held) {
+            $payment->status = $new->equals($payment->amount) ? PaymentStatus::Refunded : PaymentStatus::PartiallyRefunded;
+        }
+
+        $payment->save();
 
         PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
     }

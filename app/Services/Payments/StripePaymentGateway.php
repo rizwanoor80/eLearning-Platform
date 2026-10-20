@@ -10,10 +10,12 @@ use App\Models\User;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
 use LogicException;
+use RuntimeException;
 use SensitiveParameter;
 use Stripe\Charge;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\CardException;
+use Stripe\Exception\IdempotencyException;
 use Stripe\Exception\InvalidRequestException;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
@@ -149,7 +151,11 @@ final class StripePaymentGateway implements PaymentGateway
      */
     public function saveCard(User $account, string $selection): SavedCard
     {
-        $setup = $this->client->setupIntents->retrieve($selection, ['expand' => ['payment_method']]);
+        try {
+            $setup = $this->client->setupIntents->retrieve($selection, ['expand' => ['payment_method']]);
+        } catch (InvalidRequestException) {
+            throw new PaymentCaptureException('setup_not_found');
+        }
 
         if ($setup->status !== 'succeeded' || $setup->payment_method === null || $setup->customer === null) {
             throw new PaymentCaptureException('setup_not_completed');
@@ -196,6 +202,12 @@ final class StripePaymentGateway implements PaymentGateway
      */
     public function chargeSavedCard(Lesson $lesson, Money $amount, PaymentMethod $method, string $idempotencyKey): PaymentCaptureResult
     {
+        // A card saved while another gateway was active (the fake, in a test environment) has no meaning
+        // here; sending its token would be a permanent error that the caller would retry for ever.
+        if ($method->gateway !== $this->driver()) {
+            throw new PaymentCaptureException('payment_method_not_stripe');
+        }
+
         try {
             $intent = $this->client->paymentIntents->create([
                 'amount' => $amount->toFils(),
@@ -213,6 +225,17 @@ final class StripePaymentGateway implements PaymentGateway
             ], ['idempotency_key' => $idempotencyKey]);
         } catch (CardException $e) {
             throw new PaymentCaptureException($this->declineCode($e));
+        } catch (InvalidRequestException|IdempotencyException) {
+            // Permanent: a missing or detached card, a deleted customer, a key reused with other
+            // parameters. Retrying with the same key would replay the same refusal, so it is a failed
+            // attempt (the next attempt has a new key). Outages and rate limits still rethrow.
+            throw new PaymentCaptureException('card_unusable');
+        }
+
+        if ($intent->status === PaymentIntent::STATUS_PROCESSING) {
+            // Not an outcome yet, and Stripe will not cancel it: leave the attempt pending so the retry
+            // reuses the key and sees the final state, instead of a second charge on a new key.
+            throw new RuntimeException('The card payment is still processing.');
         }
 
         if ($intent->status !== PaymentIntent::STATUS_SUCCEEDED) {
