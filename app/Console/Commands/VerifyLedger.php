@@ -10,7 +10,7 @@ class VerifyLedger extends Command
 {
     protected $signature = 'ledger:verify';
 
-    protected $description = 'Assert that every lesson\'s ledger entries add up to exactly zero (invariant #1)';
+    protected $description = 'Assert that every lesson\'s and every payout\'s ledger entries add up to exactly zero (invariant #1)';
 
     /**
      * Exit 1 when any lesson does not sum to zero (or the ledger table is missing).
@@ -39,8 +39,20 @@ class VerifyLedger extends Command
             $this->error("Payment {$row['payment_id']} on lesson {$row['lesson_id']} is {$row['status']} with no matching ledger hold (invariant #1).");
         }
 
-        if ($unbalanced->isEmpty() && $stranded->isEmpty()) {
-            $this->info('Ledger OK: every lesson sums to zero.');
+        $payouts = $ledger->unbalancedPayouts();
+
+        foreach ($payouts as $row) {
+            $this->error("Payout line {$row['payout_id']} ({$row['status']}, {$row['amount']} fils) does not match the ledger: entries sum to {$row['total']}, tutor account {$row['tutor_total']}.");
+        }
+
+        $stray = $ledger->strayEntries();
+
+        foreach ($stray as $id) {
+            $this->error("Ledger entry {$id} belongs to neither a lesson nor a payout (invariant #1).");
+        }
+
+        if ($unbalanced->isEmpty() && $stranded->isEmpty() && $payouts->isEmpty() && $stray->isEmpty()) {
+            $this->info('Ledger OK: every lesson and every payout sums to zero.');
 
             return self::SUCCESS;
         }

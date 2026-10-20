@@ -5,8 +5,10 @@ namespace App\Services\Tutors;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\LessonStatus;
+use App\Enums\PayoutLineStatus;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
+use App\Models\PayoutBatchLine;
 use App\Models\TutorProfile;
 use App\Support\Money;
 use Illuminate\Database\Query\Builder;
@@ -28,8 +30,8 @@ use Illuminate\Support\Facades\DB;
  *   then take it out of the ledger.
  * - available: released to the tutor (the ledger's `tutor` account, `release_tutor` and `release_reversal` legs) on
  *   lessons that are not disputed, and not yet in a payout batch.
- * - processing: in a payout batch line that is not yet paid. Always 0 until payout batches (23h) exist.
- * - paid to date: in a payout batch line that is paid. Always 0 until payout batches (23h) exist.
+ * - processing: in a payout batch line that is not yet paid or failed (23h).
+ * - paid to date: paid out; the `payout` entries on the ledger's `tutor` account (23h).
  *
  * `lifetime()` is the same total worked out a second way: straight from the ledger's tutor entries and the escrow
  * balances, with no status in it at all. The five buckets add up to it (the proof in the tests); a lesson that fell out
@@ -101,18 +103,27 @@ class TutorEarnings
     }
 
     /**
-     * Seam for 23h: the sum of the tutor's unpaid payout batch lines.
+     * The sum of the tutor's payout batch lines that are not yet paid or failed: money in a batch an admin has not
+     * settled. Read from the lines, because nothing is in the ledger until a line is paid.
      */
     private function processing(TutorProfile $profile): Money
     {
-        return Money::zero();
+        return Money::fils((int) PayoutBatchLine::query()
+            ->where('tutor_profile_id', $profile->getKey())
+            ->where('status', PayoutLineStatus::Pending->value)
+            ->sum('amount'));
     }
 
     /**
-     * Seam for 23h: the sum of the tutor's paid payout batch lines.
+     * What has left the platform for the tutor: minus the `payout` entries on their ledger `tutor` account. Read from the
+     * ledger, not from the lines, so it is the money that really moved; `ledger:verify` ties it to the paid lines.
      */
     private function paidToDate(TutorProfile $profile): Money
     {
-        return Money::zero();
+        return Money::fils(-(int) LedgerEntry::query()
+            ->where('tutor_profile_id', $profile->getKey())
+            ->where('account', LedgerAccount::Tutor->value)
+            ->where('type', LedgerEntryType::Payout->value)
+            ->sum('amount'));
     }
 }

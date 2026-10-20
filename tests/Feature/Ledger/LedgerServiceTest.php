@@ -7,6 +7,7 @@ use App\Exceptions\LedgerException;
 use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
+use App\Models\PayoutBatchLine;
 use App\Models\TutorStrike;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
@@ -193,8 +194,11 @@ it('records who did it', function () {
     expect(LedgerEntry::query()->pluck('created_by_user_id')->unique()->all())->toBe([$admin->id]);
 });
 
-it('declares payout for CP5 and refuses to run it', function () {
-    expect(fn () => lgLedger()->payout())->toThrow(LogicException::class, 'CP5');
+it('no longer stubs payout: it refuses a line that is not pending (23h, R253)', function () {
+    $line = PayoutBatchLine::factory()->paid()->create();
+
+    expect(fn () => lgLedger()->payout($line))->toThrow(LedgerException::class)
+        ->and(LedgerEntry::query()->where('payout_id', $line->id)->exists())->toBeFalse();
 });
 
 // ---- append-only (invariant #1) ----------------------------------------------------------------

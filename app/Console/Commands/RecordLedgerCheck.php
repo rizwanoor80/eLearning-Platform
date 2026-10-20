@@ -10,8 +10,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * R193: the ledger line of `/ops/status` is *read* from the cache this command writes, never computed
- * in a request. Runs the same two reads `ledger:verify` runs (`LedgerService::unbalancedLessons()` and
- * `strandedPayments()`) and stores the verdict, the two counts and the time. It records a failing
+ * in a request. Runs the same reads `ledger:verify` runs (`LedgerService::unbalancedLessons()`, `strandedPayments()` and, since 23h,
+ * `unbalancedPayouts()` and `strayEntries()`, which turn the verdict to `fail` without a count of its own) and stores the verdict, the two counts and the time. It records a failing
  * ledger as `fail` and still exits 0 — the check ran; `ledger:verify` stays the gate that exits 1.
  * Read-only on the database; a second run just overwrites the entry.
  */
@@ -32,7 +32,7 @@ class RecordLedgerCheck extends Command
 
         $unbalanced = $ledger->unbalancedLessons()->count();
         $stranded = $ledger->strandedPayments()->count();
-        $result = $unbalanced === 0 && $stranded === 0 ? 'ok' : 'fail';
+        $result = $unbalanced === 0 && $stranded === 0 && $ledger->unbalancedPayouts()->isEmpty() && $ledger->strayEntries()->isEmpty() ? 'ok' : 'fail';
 
         $this->store($result, $unbalanced, $stranded);
         $this->info("Ledger check recorded: {$result} ({$unbalanced} unbalanced lessons, {$stranded} stranded payments).");

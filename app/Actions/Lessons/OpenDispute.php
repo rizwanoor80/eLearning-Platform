@@ -8,9 +8,11 @@ use App\Enums\Role;
 use App\Exceptions\DisputeException;
 use App\Models\Dispute;
 use App\Models\Lesson;
+use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Lessons\LessonStateMachine;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * CP8 (R150): the account holder opens a dispute on their own lesson, once, within 48h of
@@ -47,6 +49,21 @@ class OpenDispute
 
         $dispute = null;
 
+        // 23h: the tutor's profile row is locked before the lesson row (which `transition()` locks), the same order
+        // `MarkPayoutLinePaid` and `LedgerService::payout()` use. A payout line is checked and paid under that lock, so a
+        // dispute that would put its money on hold either commits before the check (and the line is refused) or waits
+        // until the payment has committed; it can never land in between.
+        DB::transaction(function () use ($actor, $lesson, $reason, $description, &$dispute): void {
+            $this->open($actor, $lesson, $reason, $description, $dispute);
+        });
+
+        return $dispute;
+    }
+
+    private function open(User $actor, Lesson $lesson, DisputeReason $reason, string $description, ?Dispute &$dispute): void
+    {
+        TutorProfile::query()->whereKey($lesson->tutor_profile_id)->lockForUpdate()->first();
+
         LessonStateMachine::transition($lesson, LessonStatus::Disputed, function (Lesson $locked) use ($actor, $reason, $description, &$dispute): void {
             // The row lock is taken by `transition()` itself, so eligibility is decided on the
             // database's status and `ends_at`, not a possibly-stale in-memory model.
@@ -74,8 +91,6 @@ class OpenDispute
                 throw $e;
             }
         });
-
-        return $dispute;
     }
 
     /**
