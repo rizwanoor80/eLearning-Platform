@@ -324,6 +324,47 @@ it('tells the parent the truth, without an internal id, when the money was taken
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toBeEmpty();
 });
 
+it('keeps a captured-but-unclean payment visible instead of calling it a decline', function () {
+    $b = scBooking();
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', array_replace(scCaptured($b), ['status' => 'processing']))
+        ->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b));
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionHasErrors('slot');
+
+    $payment = Payment::query()->sole();
+
+    expect(session('errors')->first('slot'))->toContain('payment was taken')
+        ->and($payment->status)->toBe(PaymentStatus::Captured)
+        ->and($payment->gateway_ref)->toBe('pi_test_1')
+        ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired);
+
+    $this->travel(2)->hours();
+
+    expect(app(LedgerService::class)->strandedPayments()->pluck('payment_id')->all())->toBe([$payment->id]);
+});
+
+it('releases the hold when the quote went stale or the tutor stopped being bookable after the card was confirmed', function (string $case) {
+    $b = scBooking();
+    $form = scForm($b, ['payment_intent_id' => 'pi_test_1']);
+
+    match ($case) {
+        'a stale quote' => $form['quote_token'] = str_repeat('a', 64),
+        'a tutor who is not bookable' => $b['tutor']->forceFill(['status' => 'suspended'])->save(),
+    };
+
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/cancel', scHeld($b, ['status' => 'canceled']));
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), $form)->assertSessionHasErrors('slot');
+
+    expect(Lesson::query()->count())->toBe(0)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty()
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount(1);
+})->with(['a stale quote', 'a tutor who is not bookable']);
+
 it('leaves the fake driver alone: its booking ignores an intent id and never calls Stripe', function () {
     PaymentGatewayAccount::factory()->fake()->active()->create();
     $b = scBooking();

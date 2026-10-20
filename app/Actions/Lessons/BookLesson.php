@@ -7,6 +7,7 @@ use App\Enums\LessonType;
 use App\Enums\PaymentStatus;
 use App\Exceptions\BookingException;
 use App\Exceptions\LessonTransitionException;
+use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Learner;
 use App\Models\Lesson;
@@ -155,6 +156,27 @@ class BookLesson
             }
 
             throw $e;
+        } catch (PaymentCapturedUnverified $e) {
+            // The gateway took the capture but did not return a clean charge: not a decline. Keep the
+            // reference so the payment is findable, and leave it `captured` with no hold, which
+            // `ledger:verify` lists as stranded until it is settled by hand.
+            $payment->update([
+                'gateway_ref' => $e->gatewayRef,
+                'status' => PaymentStatus::Captured,
+                'failure_reason' => $e->getMessage(),
+                'raw_response' => $e->rawResponse,
+            ]);
+
+            try {
+                LessonStateMachine::transition($lesson, LessonStatus::Expired);
+            } catch (LessonTransitionException) {
+                // Already swept to `expired` — nothing left to undo.
+            }
+
+            throw new BookingException(
+                "Payment was captured but lesson {$lesson->id} could no longer be confirmed; this needs manual review.",
+                previous: $e,
+            );
         }
 
         try {

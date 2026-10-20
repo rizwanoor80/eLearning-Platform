@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -25,7 +26,8 @@ interface PaymentGateway
     public function driver(): string;
 
     /**
-     * @throws PaymentCaptureException
+     * @throws PaymentCaptureException the gateway declined or could not take the money
+     * @throws PaymentCapturedUnverified the gateway took the capture but did not return a clean, fully paid charge
      */
     public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult;
 

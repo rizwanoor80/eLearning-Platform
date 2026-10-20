@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\PaymentGatewayMode;
+use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -147,13 +148,20 @@ it('refuses an authorisation made by or for someone else', function (array $bind
     'no time recorded' => [['starts_at' => ''], 'booking_mismatch'],
 ]);
 
-it('refuses a capture that did not leave a clean, fully paid charge', function (array $override) {
+it('does not call a capture that did not leave a clean, fully paid charge a decline: it hands back the reference', function (array $override) {
     $this->http
         ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
         ->reply('POST /v1/payment_intents/pi_test_1/capture', stripeCaptured($override));
     stripeChooses('pi_test_1');
 
-    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_not_completed');
+    try {
+        $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+        $this->fail('Expected PaymentCapturedUnverified.');
+    } catch (PaymentCapturedUnverified $e) {
+        expect($e)->not->toBeInstanceOf(PaymentCaptureException::class)
+            ->and($e->gatewayRef)->toBe('pi_test_1')
+            ->and($e->rawResponse['id'])->toBe('pi_test_1');
+    }
 })->with([
     'still not succeeded' => [['status' => 'processing']],
     'not all received' => [['amount_received' => 5000]],

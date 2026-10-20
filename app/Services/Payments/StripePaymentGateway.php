@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -172,8 +173,9 @@ final class StripePaymentGateway implements PaymentGateway
 
         $charge = $captured->latest_charge;
 
+        // Stripe accepted the capture, so from here on this is not a decline: the money may have moved.
         if ($captured->status !== PaymentIntent::STATUS_SUCCEEDED || $captured->amount_received !== $amount->toFils() || ! $charge instanceof Charge || $charge->refunded || $charge->disputed) {
-            throw new PaymentCaptureException('payment_not_completed');
+            throw new PaymentCapturedUnverified($captured->id, $this->summary($captured));
         }
 
         return new PaymentCaptureResult(gatewayRef: $captured->id, rawResponse: $this->summary($captured));

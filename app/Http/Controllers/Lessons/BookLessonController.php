@@ -114,18 +114,28 @@ class BookLessonController extends Controller
         $learner = Learner::query()->withTrashed()->find($data['learner_id']);
         $tutor = TutorProfile::query()->bookable()->find($data['tutor_id']);
 
+        // R248: the browser has already held the card by the time it posts, so every refusal below
+        // releases that hold (a no-op when there is none, or when the intent is not this account's).
+        $heldIntent = $stripe->isActive() ? ($data['payment_intent_id'] ?? null) : null;
+
         if ($learner === null || $tutor === null || ! $user->can('bookFor', [Lesson::class, $learner])) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('That lesson cannot be booked.')]);
         }
 
         // No active gateway in the registry (R246): say so plainly instead of failing with a 500.
         if (! $gateways->available()) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         }
 
         $startsAt = $this->parseStartsAt($data['starts_at']);
 
         if ($startsAt === null) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['starts_at' => __('That time is not valid.')]);
         }
 
@@ -133,6 +143,8 @@ class BookLessonController extends Controller
         // the type and price shown. Someone who booked the trial in another tab, or a rate or discount
         // change since the page was drawn, makes it stale; refuse and let the page show the new quote.
         if (! $quotes->isCurrent($learner, $tutor, $data['quote_token'])) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('The type or price of this lesson has changed. Please review it and confirm again.')]);
         }
 
