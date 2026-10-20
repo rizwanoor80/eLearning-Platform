@@ -2,6 +2,7 @@
 
 use App\Actions\Admin\AnonymizeUser;
 use App\Actions\Payouts\SavePayoutPreference;
+use App\Enums\TutorProfileStatus;
 use App\Events\Payouts\PayoutDetailsChanged;
 use App\Filament\Resources\PayoutMethods\Pages\EditPayoutMethod;
 use App\Filament\Resources\PayoutMethods\Pages\ListPayoutMethods;
@@ -365,4 +366,116 @@ it('masks the payout details in the admin infolist state', function () {
     $lines = TutorProfileInfolist::payoutLines($profile->fresh());
 
     expect(implode('|', $lines))->not->toContain('secret@example.test')->toContain('s•••@example.test');
+});
+
+it('sends bank-detail changes made through onboarding to Settings once a payout method is chosen', function () {
+    $profile = payTutor(['payout_method' => 'bank_transfer', 'bank_iban' => 'AE070331234567890123456']);
+    $profile->forceFill(['status' => TutorProfileStatus::ChangesRequested])->save();
+
+    test()->actingAs($profile->user)->post(route('tutor.onboarding.bank'), [
+        'bank_name' => 'Other Bank',
+        'bank_account_name' => 'Other Holder',
+        'bank_iban' => 'AE999999999999999999999',
+        'bank_swift' => '',
+    ])->assertRedirect(route('payout.edit'));
+
+    expect($profile->fresh()->bank_iban)->toBe('AE070331234567890123456')
+        ->and($profile->fresh()->bank_name)->not->toBe('Other Bank')
+        ->and(AuditLog::query()->where('action', 'tutor.payout_method_saved')->count())->toBe(0);
+});
+
+it('lets onboarding save bank details while no payout method is chosen', function () {
+    $profile = payTutor();
+    $profile->forceFill(['status' => TutorProfileStatus::ChangesRequested])->save();
+
+    test()->actingAs($profile->user)->post(route('tutor.onboarding.bank'), [
+        'bank_name' => 'Other Bank',
+        'bank_account_name' => 'Other Holder',
+        'bank_iban' => 'AE999999999999999999999',
+        'bank_swift' => '',
+    ])->assertRedirect(route('tutor.onboarding'));
+
+    expect($profile->fresh()->bank_name)->toBe('Other Bank');
+});
+
+it('clears a pre-filled optional bank field when it is sent blank, and refuses a blank required one', function () {
+    $profile = payTutor(['payout_method' => 'bank_transfer', 'bank_swift' => 'TESTAEAA']);
+
+    confirmed($profile->user)->put(route('payout.update'), [
+        'method' => 'bank_transfer',
+        'bank_name' => $profile->bank_name,
+        'bank_account_name' => $profile->bank_account_name,
+        'bank_iban' => '',
+        'bank_swift' => '',
+    ])->assertSessionHasNoErrors();
+
+    expect($profile->fresh()->bank_swift)->toBeNull()
+        ->and($profile->fresh()->bank_iban)->toBe($profile->bank_iban);
+
+    confirmed($profile->user)->put(route('payout.update'), [
+        'method' => 'bank_transfer',
+        'bank_name' => '',
+        'bank_account_name' => $profile->bank_account_name,
+    ])->assertSessionHasErrors('bank_name');
+});
+
+it('says nothing changed, and sends no mail, when a save changes nothing', function () {
+    Mail::fake();
+    $profile = payTutor(['payout_method' => 'bank_transfer']);
+
+    expect(app(SavePayoutPreference::class)($profile->user, $profile, 'bank_transfer', []))->toBeFalse();
+
+    confirmed($profile->user)->put(route('payout.update'), ['method' => 'bank_transfer'])
+        ->assertRedirect(route('payout.edit'))
+        ->assertInertiaFlash('toast.message', 'Nothing changed.');
+
+    Mail::assertNothingQueued();
+});
+
+it('audits a method-only change as details unchanged', function () {
+    setMethod('wise', true);
+    setMethod('paypal', true);
+    $profile = payTutor(['payout_method' => 'wise', 'payout_email' => 'pay@example.test']);
+
+    expect(app(SavePayoutPreference::class)($profile->user, $profile, 'paypal', []))->toBeTrue();
+
+    $log = AuditLog::query()->where('action', 'tutor.payout_method_saved')->sole();
+    expect($log->before)->toBe(['payout_method' => 'wise'])
+        ->and($log->after)->toBe(['payout_method' => 'paypal', 'details_changed' => false]);
+});
+
+it('runs the whole chain from the Settings request to a queued mail to the account address', function () {
+    Mail::fake();
+    setMethod('wise', true);
+    $profile = payTutor([], ['email' => 'owner@example.test']);
+
+    confirmed($profile->user)->put(route('payout.update'), ['method' => 'wise', 'payout_email' => 'pay@example.test'])->assertSessionHasNoErrors();
+
+    Mail::assertQueued(PayoutDetailsChangedMail::class, fn (PayoutDetailsChangedMail $mail): bool => $mail->hasTo('owner@example.test'));
+});
+
+it('refuses to change payout details for a closed account, in the action', function () {
+    $profile = payTutor();
+    $profile->user->delete();
+
+    expect(fn () => app(SavePayoutPreference::class)($profile->user, $profile, 'bank_transfer', []))->toThrow(ValidationException::class);
+    expect($profile->fresh()->payout_method)->toBeNull();
+});
+
+it('keeps a parent and an admin out of the payout save route', function () {
+    foreach ([User::factory()->create(), User::factory()->admin()->create()] as $user) {
+        confirmed($user)->put(route('payout.update'), ['method' => 'bank_transfer'])->assertForbidden();
+    }
+});
+
+it('lists a tutor who can be paid when the filter is switched to No', function () {
+    $paid = payTutor(['payout_method' => 'bank_transfer']);
+    $unpaid = payTutor();
+
+    Livewire::actingAs(User::factory()->admin()->create())
+        ->test(ListTutorProfiles::class)
+        ->filterTable('cannot_be_paid', false)
+        ->filterTable('status', null)
+        ->assertCanSeeTableRecords([$paid])
+        ->assertCanNotSeeTableRecords([$unpaid]);
 });

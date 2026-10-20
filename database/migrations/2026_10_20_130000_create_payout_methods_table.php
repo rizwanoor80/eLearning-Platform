@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\PayoutMethodCode;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -33,15 +32,24 @@ return new class extends Migration
 
         $now = now();
 
-        DB::table('payout_methods')->insert(array_map(fn (PayoutMethodCode $code): array => [
-            'code' => $code->value,
-            'name' => $code->label(),
-            'is_active' => $code === PayoutMethodCode::BankTransfer,
+        // Listed explicitly, not from the enum: a later enum case must not change what this migration inserts.
+        $methods = [
+            ['bank_transfer', 'Bank transfer', true],
+            ['payoneer', 'Payoneer', false],
+            ['paypal', 'PayPal', false],
+            ['stripe', 'Stripe', false],
+            ['wise', 'Wise', false],
+        ];
+
+        DB::table('payout_methods')->insert(array_map(fn (array $method, int $index): array => [
+            'code' => $method[0],
+            'name' => $method[1],
+            'is_active' => $method[2],
             'countries' => '[]',
-            'sort' => $code->sort(),
+            'sort' => $index + 1,
             'created_at' => $now,
             'updated_at' => $now,
-        ], PayoutMethodCode::cases()));
+        ], $methods, array_keys($methods)));
 
         Schema::table('tutor_profiles', function (Blueprint $table) {
             $table->string('payout_method')->nullable();

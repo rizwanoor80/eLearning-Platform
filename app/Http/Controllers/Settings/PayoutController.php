@@ -14,7 +14,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * R249: where a tutor says how they want to be paid. Only masked values reach the browser: the IBAN as its last four
+ * R249: where a tutor says how they want to be paid. The IBAN and the payout email reach the browser masked only: the IBAN as its last four
  * and the account email with its local part cut, so a stolen session or a stray prop never carries the full detail.
  */
 class PayoutController extends Controller
@@ -61,11 +61,13 @@ class PayoutController extends Controller
         $user = $request->user();
         $profile = TutorProfile::query()->where('user_id', $user->id)->firstOrFail();
 
-        $savePayoutPreference($user, $profile, $request->validated('method'), $request->safe()->only([
+        $changed = $savePayoutPreference($user, $profile, $request->validated('method'), $request->safe()->only([
             'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift', 'payout_email',
         ]));
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Payout method saved. We emailed you a confirmation.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => $changed
+            ? __('Payout method saved. We emailed you a confirmation.')
+            : __('Nothing changed.')]);
 
         return to_route('payout.edit');
     }

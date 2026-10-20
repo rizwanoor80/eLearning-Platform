@@ -17,11 +17,13 @@ use Illuminate\Validation\ValidationException;
  * method an admin has just disabled cannot be saved) and on what the chosen method needs.
  *
  * Details are saved on the profile's encrypted columns. A blank value is saved as null (an encrypted column cannot
- * be searched or constrained, so "blank" must be one thing). A secret input left blank keeps the stored value, so
- * the page never has to send an IBAN or an address back to the browser. A change of bank details clears
+ * be searched or constrained, so "blank" must be one thing). The IBAN and the account email are write-only: left blank they
+ * keep the stored value, so the page never has to send them back to the browser. The other bank fields are shown
+ * pre-filled, so a blank there is a deliberate clear (the required ones are then refused). A change of bank details clears
  * `bank_verified_at`: an admin verified those exact values.
  *
- * The audit row carries the method code before and after and that details changed, never a value.
+ * The audit row carries the method code before and after and whether the details changed, never a value. Returns
+ * whether anything changed (and so whether the tutor was emailed).
  *
  * Lock order (as `RequestDisplayName`, R225(b)): the tutor's `users` row first, then the `tutor_profiles` row.
  *
@@ -34,7 +36,7 @@ class SavePayoutPreference
     /**
      * @param  Details  $details
      */
-    public function __invoke(User $tutor, TutorProfile $profile, string $methodCode, array $details): void
+    public function __invoke(User $tutor, TutorProfile $profile, string $methodCode, array $details): bool
     {
         if ($profile->user_id !== $tutor->id) {
             throw ValidationException::withMessages(['method' => 'You can only change your own payout method.']);
@@ -66,6 +68,7 @@ class SavePayoutPreference
             $label = $method->name;
             $before = ['payout_method' => $locked->payout_method];
             $changed = $locked->payout_method !== $code->value;
+            $detailsChanged = false;
             $attributes = ['payout_method' => $code->value];
 
             if ($code->needsBankDetails()) {
@@ -73,7 +76,11 @@ class SavePayoutPreference
 
                 foreach (['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift'] as $field) {
                     $given = $this->clean($details[$field] ?? null);
-                    $bank[$field] = $given ?? $locked->{$field};
+
+                    // Only the IBAN is write-only (the page never shows it back), so only a blank IBAN keeps the
+                    // stored value; the other fields are shown pre-filled, so a blank is a deliberate clear.
+                    $keeps = $field === 'bank_iban' || ! array_key_exists($field, $details);
+                    $bank[$field] = $keeps ? ($given ?? $locked->{$field}) : $given;
                 }
 
                 foreach (['bank_name', 'bank_account_name', 'bank_iban'] as $field) {
@@ -85,6 +92,7 @@ class SavePayoutPreference
                 foreach ($bank as $field => $value) {
                     if ($value !== $locked->{$field}) {
                         $changed = true;
+                        $detailsChanged = true;
                         $attributes['bank_verified_at'] = null;
                     }
                 }
@@ -97,7 +105,8 @@ class SavePayoutPreference
                     throw ValidationException::withMessages(['payout_email' => 'Enter the email address of your '.$method->name.' account.']);
                 }
 
-                $changed = $changed || $email !== $locked->payout_email;
+                $detailsChanged = $email !== $locked->payout_email;
+                $changed = $changed || $detailsChanged;
                 $attributes['payout_email'] = $email;
             }
 
@@ -112,15 +121,19 @@ class SavePayoutPreference
 
             ($this->recordAuditLog)($tutor, 'tutor.payout_method_saved', $locked, $before, [
                 'payout_method' => $code->value,
-                'details_changed' => true,
+                'details_changed' => $detailsChanged,
             ]);
         });
 
-        if ($label !== null) {
-            $profile->refresh();
-
-            PayoutDetailsChanged::dispatch($profile, $label);
+        if ($label === null) {
+            return false;
         }
+
+        $profile->refresh();
+
+        PayoutDetailsChanged::dispatch($profile, $label);
+
+        return true;
     }
 
     private function clean(?string $value): ?string

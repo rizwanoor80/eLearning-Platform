@@ -271,7 +271,7 @@ class TutorProfile extends Model
     }
 
     /**
-     * Approved tutors who cannot be paid yet, for the admin list's filter. SQL can null-check but not
+     * Tutors (any status) who cannot be paid yet, for the admin list's filter. SQL can null-check but not
      * read encrypted columns, so this is the same rule as `payoutMethodProblem()` at the level SQL can
      * state it: no method, or a method not offered for the tutor's country, or its detail columns null.
      * A value that is set but blank/invalid cannot exist: `SavePayoutPreference` saves blanks as null.
