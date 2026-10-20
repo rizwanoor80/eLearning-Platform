@@ -2,6 +2,7 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
@@ -18,7 +19,9 @@ use Illuminate\Support\Facades\DB;
  * - `charge.refunded`: the charge's total refunded amount is absolute, so the payment's
  *   `refunded_amount` is set to it only when it is larger (never lowered, so a late or out-of-order
  *   event cannot undo a newer one), and admins are told that the gateway moved money the platform did
- *   not. A refund the platform made itself (23d) is already recorded and so changes nothing here.
+ *   not. A refund the platform made itself (23d) is already recorded and so changes nothing here; one
+ *   that only the ledger has recorded so far (the gateway call is queued) is recorded on the payment
+ *   but not reported.
  * - `charge.dispute.created`: admins are told. No state changes.
  * - Anything else is ignored by the controller before it is stored.
  */
@@ -81,6 +84,16 @@ class ApplyPaymentWebhook
 
         $payment->save();
 
-        PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+        // A refund the ledger already returned to the parent is the platform's own (23d), arriving back
+        // as a webhook before or after the listener recorded it: recorded above, but nothing to tell anyone.
+        $ledgerRefunded = (int) DB::table('ledger_entries')
+            ->where('lesson_id', $payment->lesson_id)
+            ->where('account', LedgerAccount::Refund->value)
+            ->where('amount', '>', 0)
+            ->sum('amount');
+
+        if ($new->toFils() > $ledgerRefunded) {
+            PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+        }
     }
 }

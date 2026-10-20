@@ -21,6 +21,7 @@ use Stripe\Exception\InvalidRequestException;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
 use Stripe\PaymentMethod as StripePaymentMethod;
+use Stripe\Refund;
 use Stripe\StripeClient;
 use Stripe\WebhookSignature;
 
@@ -29,7 +30,8 @@ use Stripe\WebhookSignature;
  * Cashier. It is built by `PaymentGatewayManager::forRow()` from the registry row's encrypted
  * credentials and holds them only in memory; nothing here logs, stores or returns a key, a card
  * number or a raw gateway body (invariants 15 and 16). Only the fields of `summary()` ever reach
- * `payments.raw_response`.
+ * `payments.raw_response` from this driver; `RefundParentAtGateway` (23d) later adds the refund ids it
+ * made (`refunds`) and the refusals it recorded (`refund_failures`), keyed by ledger entry.
  *
  * Money is integer fils on our side and Stripe's minor units for AED are fils, so amounts pass
  * through unchanged. Every amount sent and every amount checked is in `AED`.
@@ -288,6 +290,11 @@ final class StripePaymentGateway implements PaymentGateway
      * Refunds part or all of a captured payment. The payment's `gateway_ref` is the PaymentIntent id.
      * A refusal is a `PaymentCaptureException` (the caller lists it to admins, R256); the network
      * and the like rethrow so the queue retries with the same key.
+     *
+     * Stripe forgets an idempotency key after 24 hours, and a retry (a queue retry, a sweep, an admin
+     * re-running a failed job) can come later than that. The key is therefore also written onto the
+     * refund as metadata and looked up before anything is created, so the same ledger entry never
+     * refunds twice whatever the age of the retry.
      */
     public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
     {
@@ -296,15 +303,28 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         try {
+            $existing = $this->client->refunds->all(['payment_intent' => $payment->gateway_ref, 'limit' => 100]);
+
+            foreach ($existing->data as $made) {
+                if (($made->metadata['idempotency_key'] ?? null) === $idempotencyKey) {
+                    return $this->refundResult($made);
+                }
+            }
+
             $refund = $this->client->refunds->create([
                 'payment_intent' => $payment->gateway_ref,
                 'amount' => $amount->toFils(),
-                'metadata' => ['payment_id' => (string) $payment->id],
+                'metadata' => ['payment_id' => (string) $payment->id, 'idempotency_key' => $idempotencyKey],
             ], ['idempotency_key' => $idempotencyKey]);
         } catch (CardException|InvalidRequestException $e) {
             throw new PaymentCaptureException($e->getStripeCode() ?? 'refund_refused');
         }
 
+        return $this->refundResult($refund);
+    }
+
+    private function refundResult(Refund $refund): PaymentCaptureResult
+    {
         return new PaymentCaptureResult(
             gatewayRef: $refund->id,
             rawResponse: ['driver' => $this->driver(), 'id' => $refund->id, 'status' => $refund->status, 'amount' => $refund->amount, 'currency' => $refund->currency],

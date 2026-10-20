@@ -54,6 +54,11 @@ Schedule::command('lessons:auto-release-reports')->everyFiveMinutes()->onOneServ
 // run finds nothing to delete); onOneServer + withoutOverlapping only stop a second worker starting.
 Schedule::command('video:prune-webhook-deliveries')->dailyAt('03:30')->onOneServer()->withoutOverlapping(10);
 
+// 23d (R256): the net under the queued gateway refund. The ledger already returned the money; this asks the
+// gateway for any refund entry it was never asked about or whose job was lost. Idempotent (each refund is keyed
+// on its ledger entry and recorded on the payment); a second run is a no-op.
+Schedule::command('payments:retry-refunds')->hourly()->onOneServer()->withoutOverlapping(10);
+
 // The scheduler's own pulse (R193): `/ops/status` reports how long ago this last ran, which is how a deploy
 // check tells that the scheduler is alive without ssh. In-process (no subprocess every minute), no
 // onOneServer: the key is shared, so any server's tick keeps it fresh and a second write the same second is
