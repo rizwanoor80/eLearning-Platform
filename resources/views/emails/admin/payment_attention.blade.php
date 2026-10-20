@@ -6,6 +6,12 @@
             A dispute was opened with the card network on payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}).
             Nothing has been changed on the lesson or in the ledger.
         </p>
+    @elseif ($reason === \App\Events\Payments\PaymentNeedsAttention::REFUND_FAILED)
+        <p>
+            The ledger has returned money to the parent for lesson {{ $payment->lesson_id }}, but the payment gateway has not
+            refunded it to the card (payment {{ $payment->id }}). Failed refunds are retried automatically, except a
+            refusal by the gateway, which needs you. The ledger has not been changed.
+        </p>
     @else
         <p>
             The payment gateway has refunded {{ ($payment->refunded_amount ?? \App\Support\Money::zero())->format($payment->currency) }}
