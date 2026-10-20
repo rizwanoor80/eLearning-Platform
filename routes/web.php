@@ -16,6 +16,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\CheckoutIntentController;
 use App\Http\Controllers\Payments\PaymentMethodController;
+use App\Http\Controllers\Payments\ReceiptController;
 use App\Http\Controllers\Payments\WeeklySlotController;
 use App\Http\Controllers\Reviews\ReviewController;
 use App\Http\Controllers\Safeguarding\AbuseReportController;
@@ -132,6 +133,10 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area', 'throttle:accou
     Route::post('payment-methods', [PaymentMethodController::class, 'store'])->name('payment-methods.store');
     Route::post('payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent'])->middleware('throttle:bookings')->name('payment-methods.setup-intent');
     Route::post('payment-methods/stripe', [PaymentMethodController::class, 'storeStripe'])->middleware('throttle:bookings')->name('payment-methods.store-stripe');
+
+    // R257: the parent's receipts: the list, and one printable receipt per payment.
+    Route::get('receipts', [ReceiptController::class, 'index'])->name('receipts.index');
+    Route::get('receipts/{payment}', [ReceiptController::class, 'show'])->whereNumber('payment')->name('receipts.show');
 
     Route::get('weekly-slots/create', [WeeklySlotController::class, 'create'])->name('weekly-slots.create');
     Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->middleware('throttle:bookings')->name('weekly-slots.store');
