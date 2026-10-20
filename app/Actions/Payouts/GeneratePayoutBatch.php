@@ -24,9 +24,10 @@ use Illuminate\Support\Facades\DB;
  * `TutorEarnings` bucket, computed here under the tutor's row lock) is at least `payout_min` and `canBePaid()`; the line's
  * amount is that whole available amount, in the tutor's method, with the account details copied onto it.
  *
- * The period is a label for the admin's records. Available money is not cut at the period's end: everything the ledger
- * has released to the tutor and not yet put in a line is paid, because holding back money that is already theirs to
- * fit a date helps nobody. It defaults to the last `payout_weekday` on or before today.
+ * The period is a label for the admin's records. Available money is not cut at the period's end, but it is cut at the
+ * dispute window (R258): only money released to the tutor, on a lesson that is not disputed and whose window has closed
+ * (48 hours after it ended, 7 days if it was settled after a suspension), is paid. Money inside its window stays pending.
+ * The period defaults to the last `payout_weekday` on or before today.
  *
  * Left out, and reported (only when the tutor had at least the minimum available): a tutor who cannot be paid yet (no
  * method, method no longer offered, details incomplete, or an anonymised account) and a tutor who already has an unpaid

@@ -80,7 +80,7 @@ class TutorProfileInfolist
         }
 
         if (app(TutorEarnings::class)->isOverpaid($record)) {
-            $lines[] = 'Negative balance: a dispute took back money already paid out. The next payout batch deducts it.';
+            $lines[] = 'Negative balance: a dispute has put money that was already paid out on hold, or took it back. The next payout batch deducts it.';
         }
 
         return $lines;

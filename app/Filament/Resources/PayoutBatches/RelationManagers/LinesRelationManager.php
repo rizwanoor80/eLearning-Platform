@@ -51,7 +51,7 @@ class LinesRelationManager extends RelationManager
                     ->state(fn (PayoutBatchLine $record): string => app(TutorEarnings::class)->isOverpaid($record->tutorProfile) ? 'Negative' : '—')
                     ->badge()
                     ->color(fn (string $state): string => $state === 'Negative' ? 'danger' : 'gray')
-                    ->tooltip('A dispute took back money that was already paid out. The next batch deducts it.'),
+                    ->tooltip('A dispute has put money that was already paid out on hold, or took it back. The next batch deducts it.'),
                 TextColumn::make('external_reference')->label('Payment reference')->placeholder('—'),
                 TextColumn::make('failure_reason')->label('Why it failed')->placeholder('—')->wrap(),
                 TextColumn::make('paid_at')->label('Paid')->dateTime()->placeholder('—'),

@@ -423,8 +423,8 @@ it('records a paid transfer even when a lesson in it is disputed afterwards, and
     $line = pbLine($tutor);
     $lesson = Lesson::query()->where('tutor_profile_id', $tutor->id)->first();
 
-    // The window had closed when the batch was made; a dispute opened by an admin's hand afterwards (the settlement path
-    // the reviewer described) puts the lesson's money on hold while the line is still unpaid.
+    // The window had closed when the batch was made; a dispute that lands afterwards (forced here, as the dispute actions refuse
+    // it past the window) puts the lesson's money on hold while the line is still unpaid.
     Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::Disputed])->save());
     expect(app(TutorEarnings::class)->buckets($tutor)->available->isNegative())->toBeTrue();
 
