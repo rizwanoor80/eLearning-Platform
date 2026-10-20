@@ -1,11 +1,11 @@
-# STATUS — cycle 23 r2 — programme "money in, money out", 23a merged, rehearsal deploy next; written 2026-10-20 (23a record)
+# STATUS — cycle 23 r2 — programme "money in, money out", 23a done (merged, deployed, R213 green), 23b next; written 2026-10-20 (23a record)
 Tests: **2924 / 21783** on `4641de9` (baseline 2892 / 21630; +32 tests) · `ledger:verify` OK · pint, PHPStan 0 errors, vue-tsc, RTL grep and `npm run build` green · push CI on the PR head green on PostgreSQL 16 and 18 · Advisor: consulted 1 time (23a, Opus 5.5; one Fable 5.1 attempt failed on a rate limit and does not count) · Review: 23a round 1 (Opus 5.5), 0 High, fix round 1 of 2 applied · Context size: not measured by the tool (cloud session, no `/context`)
 
 ## §1 Git state
-- `main` = `bdb6481` (PR #68 squash-merged: 23a gateway registry) plus this record commit. `rehearsal` = `a652726` until the 23a deploy below. No open PR. No production deploy. No branch deleted (`cp/23a-gateway-registry` stays on origin).
+- `main` = `bdb6481` (PR #68 squash-merged: 23a gateway registry) plus docs-only records. `rehearsal` = `bdb6481` (deployed, R213 green: pending 0). No open PR. No production deploy. No branch deleted (`cp/23a-gateway-registry` stays on origin).
 
 ## §2 Step map
-1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [merged `bdb6481`; record written; rehearsal deploy and R213 next]. 3. 23b Stripe driver. 4. 23c Stripe checkout. 5. 23d gateway refunds. 6. 23e receipts. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
+1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [done: merged `bdb6481`, record, rehearsal deployed, R213 green]. 3. 23b Stripe driver [next]. 4. 23c Stripe checkout. 5. 23d gateway refunds. 6. 23e receipts. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
 
 ## §3 What changed this cycle
 - ADR-030 (R245, R254) added to `docs/DECISIONS.md`; START entry (plan echo, R222, R240 name check) in `docs/CYCLE-LOG.md`.
@@ -34,8 +34,8 @@ Nothing is waiting on the owner. Carried: Owner action 5 (`mail.from_name`, `tru
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 23a gateway registry (R246) | `cp/23a-gateway-registry` | #68 | Opus 5.5 round 1: 0 High; fix round 1 applied | merged `bdb6481`; rehearsal deploy next |
-| 23b Stripe driver (R247, R255) | `cp/23b-stripe-driver` | - | - | queued |
+| 23a gateway registry (R246) | `cp/23a-gateway-registry` | #68 | Opus 5.5 round 1: 0 High; fix round 1 applied | done; rehearsal `bdb6481`, R213 green |
+| 23b Stripe driver (R247, R255) | `cp/23b-stripe-driver` | - | - | starting |
 | 23c Stripe checkout (R248) | `cp/23c-stripe-checkout` | - | - | queued |
 | 23d gateway refunds (R256) | `cp/23d-gateway-refunds` | - | - | queued |
 | 23e receipts (R257) | `cp/23e-receipts` | - | - | queued |
