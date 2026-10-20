@@ -2,6 +2,8 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 
+type RefundState = 'returned' | 'pending' | 'refused';
+
 defineProps<{
     receipt: {
         id: number;
@@ -18,9 +20,15 @@ defineProps<{
         amount: string;
         net: string;
         reference: string;
-        refunds: Array<{ date: string; amount: string; returned: boolean }>;
+        refunds: Array<{ date: string; amount: string; state: RefundState }>;
     };
 }>();
+
+const refundNote: Record<RefundState, string> = {
+    returned: '(returned to your card)',
+    pending: '(being returned to your card)',
+    refused: '(could not be returned to your card; please contact support)',
+};
 
 function print() {
     window.print();
@@ -78,13 +86,13 @@ defineOptions({
                         <td class="py-1">
                             Refund, {{ refund.date }}
                             <span class="text-muted-foreground text-xs">
-                                {{ refund.returned ? '(returned to your card)' : '(being returned to your card)' }}
+                                {{ refundNote[refund.state] }}
                             </span>
                         </td>
                         <td class="py-1 text-end">-{{ refund.amount }}</td>
                     </tr>
                     <tr class="border-t font-semibold">
-                        <td class="py-1">Total paid</td>
+                        <td class="py-1">Total paid (refunds returned to your card deducted)</td>
                         <td class="py-1 text-end">{{ receipt.net }}</td>
                     </tr>
                 </tbody>
@@ -92,3 +100,14 @@ defineOptions({
         </article>
     </div>
 </template>
+
+<style>
+/* Print only the receipt: hide the app sidebar, header and footer around it. */
+@media print {
+    body:has([data-testid='receipt']) [data-slot='sidebar'],
+    body:has([data-testid='receipt']) main > header,
+    body:has([data-testid='receipt']) main > footer {
+        display: none !important;
+    }
+}
+</style>

@@ -67,15 +67,18 @@ it('includes refunded and partly refunded payments, with the refunded amount', f
 });
 
 it('paginates the list, newest first', function () {
+    // Created first (lowest id) but latest by time, so ordering by id alone would put it last.
+    $newest = rcPaid($this->parent, ['created_at' => now()->addMinute()]);
+
     foreach (range(1, 22) as $i) {
         rcPaid($this->parent, ['created_at' => now()->subMinutes(30 - $i)]);
     }
 
     $this->actingAs($this->parent)->get(route('receipts.index'))
-        ->assertInertia(fn ($page) => $page->has('receipts', 20)->whereNot('next_page_url', null)->where('previous_page_url', null));
+        ->assertInertia(fn ($page) => $page->has('receipts', 20)->where('receipts.0.id', $newest->id)->whereNot('next_page_url', null)->where('previous_page_url', null));
 
     $this->get(route('receipts.index', ['page' => 2]))
-        ->assertInertia(fn ($page) => $page->has('receipts', 2)->where('next_page_url', null)->whereNot('previous_page_url', null));
+        ->assertInertia(fn ($page) => $page->has('receipts', 3)->where('next_page_url', null)->whereNot('previous_page_url', null));
 });
 
 it('shows an empty state with no receipts', function () {
@@ -99,6 +102,7 @@ it('renders one printable receipt per payment with no VAT line', function () {
             ->where('receipt.learner_display_name', $lesson->learner->display_name)
             ->where('receipt.payer_name', $this->parent->name)
             ->where('receipt.timezone', 'Asia/Dubai')
+            ->where('receipt.paid_at', $payment->created_at->setTimezone('Asia/Dubai')->format('D, j M Y, g:i A'))
             ->where('receipt.lesson_at', $lesson->starts_at->setTimezone('Asia/Dubai')->format('D, j M Y, g:i A'))
             ->where('receipt.refunds', [])
             ->missing('receipt.vat'));
@@ -113,6 +117,7 @@ it('converts times to the viewer\'s timezone', function () {
 
     $this->actingAs($viewer)->get(route('receipts.show', $payment))
         ->assertInertia(fn ($page) => $page
+            ->where('receipt.paid_at', $payment->created_at->setTimezone('America/New_York')->format('D, j M Y, g:i A'))
             ->where('receipt.lesson_at', $payment->lesson->starts_at->setTimezone('America/New_York')->format('D, j M Y, g:i A'))
             ->where('receipt.timezone', 'America/New_York'));
 });
@@ -128,18 +133,25 @@ it('lists refund lines from the ledger, marking the ones the gateway has returne
 
     $entry = LedgerEntry::query()->where('lesson_id', $lesson->id)->where('account', LedgerAccount::Refund->value)->sole();
 
-    // Ledger owes the refund but the gateway has not confirmed it yet.
+    // The ledger owes the refund but the gateway has not confirmed it: the line says so and the total is not reduced.
     $this->actingAs($this->parent)->get(route('receipts.show', $payment))
         ->assertInertia(fn ($page) => $page
             ->has('receipt.refunds', 1)
             ->where('receipt.refunds.0.amount', 'AED 37.00')
-            ->where('receipt.refunds.0.returned', false)
-            ->where('receipt.net', 'AED 63.00'));
+            ->where('receipt.refunds.0.state', 'pending')
+            ->where('receipt.net', 'AED 100.00'));
 
+    // The gateway permanently refused it: still not returned, and the receipt says so.
+    $payment->update(['raw_response' => ['refund_failures' => [(string) $entry->id => ['reason' => 'refund_failed']]]]);
+
+    $this->get(route('receipts.show', $payment))
+        ->assertInertia(fn ($page) => $page->where('receipt.refunds.0.state', 'refused')->where('receipt.net', 'AED 100.00'));
+
+    // Confirmed by the gateway: the total drops by the amount returned.
     $payment->update(['raw_response' => ['refunds' => [(string) $entry->id => ['id' => 're_1', 'amount_fils' => 3700]]]]);
 
     $this->get(route('receipts.show', $payment))
-        ->assertInertia(fn ($page) => $page->where('receipt.refunds.0.returned', true));
+        ->assertInertia(fn ($page) => $page->where('receipt.refunds.0.state', 'returned')->where('receipt.net', 'AED 63.00'));
 });
 
 it('404s a receipt that is another account\'s or never took money', function () {
@@ -161,7 +173,9 @@ it('sends a guest to log in and keeps tutors out of the parent area', function (
     $this->get(route('receipts.index'))->assertRedirect(route('login'));
     $this->get(route('receipts.show', $payment))->assertRedirect(route('login'));
 
-    $this->actingAs(User::factory()->tutor()->create())->get(route('receipts.index'))->assertForbidden();
+    $this->actingAs(User::factory()->tutor()->create());
+    $this->get(route('receipts.index'))->assertForbidden();
+    $this->get(route('receipts.show', $payment))->assertForbidden();
 });
 
 it('links to the receipts from the dashboard', function () {

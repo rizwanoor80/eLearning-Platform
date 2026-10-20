@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Payments;
+namespace App\Services\Receipts;
 
 use App\Enums\LedgerAccount;
 use App\Models\LedgerEntry;
@@ -11,12 +11,20 @@ use App\Support\Money;
 /**
  * R257: shapes one payment as a parent's receipt. Reads only; nothing here writes money or lesson state.
  * The amount is what the gateway charged; refund lines come from the ledger's Refund-account entries
- * (the ledger decides what is owed back) and are marked "returned" once the gateway confirmed the refund
- * (`raw_response.refunds.<entry id>`, written by 23d). No VAT line: D-04 has not decided whether or how
+ * (the ledger decides what is owed back). Each is "returned" once the gateway confirmed it
+ * (`raw_response.refunds.<entry id>`), "refused" if the gateway permanently refused it
+ * (`raw_response.refund_failures.<entry id>`), otherwise "pending"; both written by 23d. Only returned
+ * refunds reduce the total, so the receipt never claims money came back that has not. No VAT line: D-04 has not decided whether or how
  * VAT applies.
  */
 class ReceiptPresenter
 {
+    private const RETURNED = 'returned';
+
+    private const PENDING = 'pending';
+
+    private const REFUSED = 'refused';
+
     private const DATE_FORMAT = 'D, j M Y, g:i A';
 
     /**
@@ -54,7 +62,9 @@ class ReceiptPresenter
         $net = $payment->amount;
 
         foreach ($refunds as $line) {
-            $net = $net->subtract($line['amount']);
+            if ($line['state'] === self::RETURNED) {
+                $net = $net->subtract($line['amount']);
+            }
         }
 
         return [
@@ -70,7 +80,7 @@ class ReceiptPresenter
             'refunds' => array_map(fn (array $line): array => [
                 'date' => $line['entry']->created_at->setTimezone($viewer->timezone)->format('j M Y'),
                 'amount' => $line['amount']->format($payment->currency),
-                'returned' => $line['returned'],
+                'state' => $line['state'],
             ], $refunds),
             // A refund can never return more than was paid (23d caps each at the payment), but never print a negative total.
             'net' => ($net->isNegative() ? Money::zero() : $net)->format($payment->currency),
@@ -78,11 +88,12 @@ class ReceiptPresenter
     }
 
     /**
-     * @return list<array{entry: LedgerEntry, amount: Money, returned: bool}>
+     * @return list<array{entry: LedgerEntry, amount: Money, state: string}>
      */
     private function refundLines(Payment $payment): array
     {
         $confirmed = is_array($payment->raw_response['refunds'] ?? null) ? $payment->raw_response['refunds'] : [];
+        $refused = is_array($payment->raw_response['refund_failures'] ?? null) ? $payment->raw_response['refund_failures'] : [];
 
         $lines = [];
 
@@ -97,7 +108,11 @@ class ReceiptPresenter
             $lines[] = [
                 'entry' => $entry,
                 'amount' => Money::fils($entry->amount),
-                'returned' => array_key_exists((string) $entry->id, $confirmed),
+                'state' => match (true) {
+                    array_key_exists((string) $entry->id, $confirmed) => self::RETURNED,
+                    array_key_exists((string) $entry->id, $refused) => self::REFUSED,
+                    default => self::PENDING,
+                },
             ];
         }
 

@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\User;
 use App\Policies\PaymentPolicy;
-use App\Services\Payments\ReceiptPresenter;
+use App\Services\Receipts\ReceiptPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
