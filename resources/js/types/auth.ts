@@ -14,6 +14,7 @@ export type Auth = {
     user: User;
     home: string;
     can_message: boolean;
+    is_tutor: boolean;
     needs_onboarding: boolean;
 };
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\DisplayNameController;
+use App\Http\Controllers\Settings\PayoutController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -17,6 +18,12 @@ Route::middleware(['auth', 'throttle:account-writes'])->group(function () {
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area', 'throttle:display-name'])->group(function () {
     Route::post('settings/display-name', [DisplayNameController::class, 'store'])->name('display-name.store');
+});
+
+// R249: a tutor's payout method. Money is redirected by these details, so the page needs a recent password confirmation.
+Route::middleware(['auth', 'verified', 'can:access-tutor-area', RequirePassword::class, 'throttle:account-writes'])->group(function () {
+    Route::get('settings/payout', [PayoutController::class, 'edit'])->name('payout.edit');
+    Route::put('settings/payout', [PayoutController::class, 'update'])->name('payout.update');
 });
 
 Route::middleware(['auth', 'verified', 'throttle:account-writes'])->group(function () {

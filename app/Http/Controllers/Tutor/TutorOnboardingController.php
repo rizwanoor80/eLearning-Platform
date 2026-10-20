@@ -264,6 +264,14 @@ class TutorOnboardingController extends Controller
         $profile = $this->profileFor($user);
         $this->guardStepNotAhead($user, $profile, 'bank');
 
+        // Once a payout method is chosen (Settings → Payouts) the bank details are payout details, and a change to
+        // them needs the password confirmation, the change email and the audit row that page gives (R249).
+        if ($profile->payout_method !== null) {
+            Inertia::flash('toast', ['type' => 'info', 'message' => __('Your bank details are now changed under Settings → Payouts.')]);
+
+            return to_route('payout.edit');
+        }
+
         $profile->update($request->validated());
 
         return redirect()->route('tutor.onboarding');

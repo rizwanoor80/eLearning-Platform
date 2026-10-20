@@ -6,6 +6,7 @@ use App\Actions\Lessons\ReviewLateReports;
 use App\Enums\AbuseReportStatus;
 use App\Enums\AbuseReportSubjectType;
 use App\Enums\DisputeStatus;
+use App\Enums\PayoutMethodCode;
 use App\Enums\TutorDocumentStatus;
 use App\Enums\TutorProfileStatus;
 use App\Support\Facades\Settings;
@@ -44,6 +45,9 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $bank_iban
  * @property string|null $bank_swift
  * @property Carbon|null $bank_verified_at
+ * @property string|null $payout_method The tutor's preferred payout method (R249), a `payout_methods.code`. Never mass-assignable: only `SavePayoutPreference` writes it.
+ * @property string|null $payout_email The account email for the non-bank methods. Encrypted, hidden from serialisation.
+ * @property Carbon|null $payout_details_changed_at
  * @property string $rating_avg
  * @property int $rating_count
  * @property int $lessons_completed
@@ -78,6 +82,7 @@ class TutorProfile extends Model
     protected $hidden = [
         'display_name_requested', 'display_name_requested_at',
         'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
+        'payout_email',
     ];
 
     protected $fillable = [
@@ -104,6 +109,8 @@ class TutorProfile extends Model
             'bank_iban' => 'encrypted',
             'bank_swift' => 'encrypted',
             'bank_verified_at' => 'datetime',
+            'payout_email' => 'encrypted',
+            'payout_details_changed_at' => 'datetime',
             'approved_at' => 'datetime',
             'submitted_at' => 'datetime',
             'display_name_requested_at' => 'datetime',
@@ -206,6 +213,93 @@ class TutorProfile extends Model
         }
 
         return str_repeat('•', max(strlen($this->bank_iban) - 4, 0)).substr($this->bank_iban, -4);
+    }
+
+    /**
+     * The account email for a non-bank payout method, with the local part cut to its first character
+     * (`a•••@example.com`). The full address is shown only on the payout export (23h).
+     */
+    public function payoutEmailMasked(): ?string
+    {
+        if ($this->payout_email === null || ! str_contains($this->payout_email, '@')) {
+            return null;
+        }
+
+        [$local, $domain] = explode('@', $this->payout_email, 2);
+
+        return mb_substr($local, 0, 1).'•••@'.$domain;
+    }
+
+    /**
+     * Why this tutor cannot be paid yet (R249), or null when they can: no method chosen, the chosen
+     * method is not active for their country (an admin disabled it or narrowed its countries after they
+     * chose), or the details that method needs are incomplete. The one place the rule lives; the admin
+     * list, the Settings page and the payout batch (23h) all read it. Never reads a ledger or a lesson.
+     */
+    public function payoutMethodProblem(): ?string
+    {
+        if ($this->payout_method === null) {
+            return 'No payout method chosen.';
+        }
+
+        $code = PayoutMethodCode::tryFrom($this->payout_method);
+
+        if ($code === null || ! PayoutMethod::query()->offeredFor($this->country)->where('code', $code->value)->exists()) {
+            return 'The chosen payout method is not available for this tutor.';
+        }
+
+        if ($code->needsBankDetails()) {
+            foreach (['bank_name', 'bank_account_name', 'bank_iban'] as $field) {
+                if (trim((string) $this->{$field}) === '') {
+                    return 'The bank details are incomplete.';
+                }
+            }
+
+            return null;
+        }
+
+        if (filter_var($this->payout_email, FILTER_VALIDATE_EMAIL) === false) {
+            return 'The payout account email is missing.';
+        }
+
+        return null;
+    }
+
+    public function canBePaid(): bool
+    {
+        return $this->payoutMethodProblem() === null;
+    }
+
+    /**
+     * Tutors (any status) who cannot be paid yet, for the admin list's filter. SQL can null-check but not
+     * read encrypted columns, so this is the same rule as `payoutMethodProblem()` at the level SQL can
+     * state it: no method, or a method not offered for the tutor's country, or its detail columns null.
+     * A value that is set but blank/invalid cannot exist: `SavePayoutPreference` saves blanks as null.
+     *
+     * @param  Builder<TutorProfile>  $query
+     * @return Builder<TutorProfile>
+     */
+    public function scopeCannotBePaid(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q): void {
+            $q->whereNull('payout_method')
+                ->orWhere(function (Builder $q): void {
+                    $q->where('payout_method', PayoutMethodCode::BankTransfer->value)
+                        ->where(fn (Builder $q) => $q->whereNull('bank_name')->orWhereNull('bank_account_name')->orWhereNull('bank_iban'));
+                })
+                ->orWhere(function (Builder $q): void {
+                    $q->where('payout_method', '!=', PayoutMethodCode::BankTransfer->value)->whereNull('payout_email');
+                })
+                ->orWhereNotExists(function ($sub): void {
+                    $sub->select(DB::raw(1))->from('payout_methods')
+                        ->whereColumn('payout_methods.code', 'tutor_profiles.payout_method')
+                        ->where('payout_methods.is_active', true)
+                        ->where(function ($m): void {
+                            $m->whereRaw("payout_methods.countries = '[]'::jsonb")
+                                ->orWhereRaw("payout_methods.countries @> to_jsonb(upper(trim(coalesce(tutor_profiles.country, ''))))");
+                        });
+                });
+        });
     }
 
     /**

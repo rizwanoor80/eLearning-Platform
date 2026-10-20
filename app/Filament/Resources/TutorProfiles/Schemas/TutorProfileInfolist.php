@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TutorProfiles\Schemas;
 
+use App\Enums\PayoutMethodCode;
 use App\Enums\TutorReviewSection;
 use App\Models\AbuseReport;
 use App\Models\AuditLog;
@@ -53,6 +54,33 @@ class TutorProfileInfolist
         throw new InvalidArgumentException("Unknown checklist group [{$key}].");
     }
 
+    /**
+     * The payout method and masked details, or why the tutor cannot be paid yet. Built from masked helpers only:
+     * no raw column and no decrypted IBAN or email is ever put into component state.
+     *
+     * @return list<string>
+     */
+    public static function payoutLines(TutorProfile $record): array
+    {
+        $code = $record->payout_method === null ? null : PayoutMethodCode::tryFrom($record->payout_method);
+        $lines = [$code === null ? 'No payout method chosen' : 'Method: '.$code->label()];
+
+        if ($code?->needsBankDetails()) {
+            $lines[] = 'Bank: '.($record->bank_name ?? '—');
+            $lines[] = 'IBAN: '.($record->bankIbanMasked() ?? '—');
+        } elseif ($code !== null) {
+            $lines[] = 'Account email: '.($record->payoutEmailMasked() ?? '—');
+        }
+
+        $problem = $record->payoutMethodProblem();
+
+        if ($problem !== null) {
+            $lines[] = 'Cannot be paid yet: '.$problem;
+        }
+
+        return $lines;
+    }
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -63,6 +91,13 @@ class TutorProfileInfolist
                     ->label('Email'),
                 TextEntry::make('status')
                     ->badge(),
+
+                // R249: the payout method and its details, masked. The full values appear only on the payout export (23h).
+                TextEntry::make('payout_summary')
+                    ->label('Payout')
+                    ->columnSpanFull()
+                    ->listWithLineBreaks()
+                    ->getStateUsing(fn (TutorProfile $record): array => self::payoutLines($record)),
 
                 // R186: the same three groups the tutor sees, ticked from the same server-side checks.
                 ...collect([

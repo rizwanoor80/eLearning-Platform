@@ -105,6 +105,10 @@ class AnonymizeUser
                     'display_name' => null,
                     'display_name_requested' => null,
                     'display_name_requested_at' => null,
+                    // R249: a payout method and its account email are personal data and go with the account.
+                    'payout_method' => null,
+                    'payout_email' => null,
+                    'payout_details_changed_at' => null,
                 ]);
             }
 
