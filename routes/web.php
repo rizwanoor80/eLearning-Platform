@@ -14,6 +14,7 @@ use App\Http\Controllers\Match\MatchRequestController;
 use App\Http\Controllers\Messaging\MessageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\Payments\CheckoutIntentController;
 use App\Http\Controllers\Payments\TestCardController;
 use App\Http\Controllers\Payments\WeeklySlotController;
 use App\Http\Controllers\Reviews\ReviewController;
@@ -120,6 +121,8 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area', 'throttle:accou
     // R114: the single-booking screen. The GET is the parent's page for one chosen slot; a guest is sent to login and returned here.
     Route::get('tutors/{tutor}/book', [BookLessonController::class, 'create'])->where('tutor', '[0-9]{1,18}')->name('tutors.book');
     Route::post('lessons', [BookLessonController::class, 'store'])->middleware('throttle:bookings')->name('lessons.store');
+    // R248: the hold the browser confirms before `lessons.store` runs; 404 unless Stripe is the active gateway.
+    Route::post('payments/checkout-intent', [CheckoutIntentController::class, 'store'])->middleware('throttle:bookings')->name('payments.checkout-intent.store');
     Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
     Route::resource('learners', LearnerController::class);
