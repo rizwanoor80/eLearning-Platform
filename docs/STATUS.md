@@ -1,11 +1,11 @@
-# STATUS — cycle 23 r2 — programme "money in, money out", 23a, 23b and 23c merged (23c awaiting its rehearsal deploy), 23d next; written 2026-10-20 (23c record)
+# STATUS — cycle 23 r2 — programme "money in, money out", 23a, 23b and 23c done (rehearsal at 23c), 23d in progress; written 2026-10-20 (23c deploy record)
 Tests: **3050 / 22430** on `fb2722f` (23c PR head; baseline 2985 / 21980; +65 tests) · `ledger:verify` OK · pint, PHPStan 0 errors, `npm run build` (vue-tsc clean) and RTL grep green · CI on the PR head green on PostgreSQL 16 and 18 · Advisor: consulted 3 times in the cycle (23a, 23b, 23c, all Opus 5.5; one Fable 5.1 attempt failed on a rate limit and does not count) · Review: 23c round 1 (Opus 5.5) FAIL (Medium), 0 High, fix round 1 of 2 applied, no second pass · Context size: not measured by the tool (cloud session, no `/context`)
 
 ## §1 Git state
-- `main` = `509e654` (PR #70 squash-merged: 23c Stripe checkout) plus this docs-only record. `rehearsal` = `b568853` (23b; the 23c deploy follows the push CI on `main`). No open PR. No production deploy. No branch deleted (`cp/23a-…`, `cp/23b-…`, `cp/23c-stripe-checkout` stay on origin).
+- `main` = `509e654` (PR #70 squash-merged: 23c Stripe checkout) plus this docs-only record. `rehearsal` = `509e654` (23c; R213 green). No open PR. No production deploy. No branch deleted (`cp/23a-…`, `cp/23b-…`, `cp/23c-stripe-checkout` stay on origin).
 
 ## §2 Step map
-1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [done: `bdb6481`]. 3. 23b Stripe driver — [done: `b568853`, rehearsal deployed]. 4. 23c Stripe checkout — [merged `509e654`; record written; rehearsal deploy pending push CI]. 5. 23d gateway refunds [next]. 6. 23e receipts. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
+1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [done: `bdb6481`]. 3. 23b Stripe driver — [done: `b568853`, rehearsal deployed]. 4. 23c Stripe checkout — [done: `509e654`, rehearsal deployed, R213 green]. 5. 23d gateway refunds [in progress on `cp/23d-gateway-refunds`]. 6. 23e receipts. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
 
 ## §3 What changed this cycle
 - Earlier: ADR-030; **23a** the `payment_gateways` registry and manager (`bdb6481`); **23b** `StripePaymentGateway`, webhook route and event table, two additive migrations (`b568853`). Full text: `git show 31a8c0a:docs/STATUS.md` §3.
@@ -37,7 +37,7 @@ Nothing is waiting on the owner. Next: push CI on the `main` record, deploy `reh
 |---|---|---|---|---|
 | 23a gateway registry (R246) | `cp/23a-gateway-registry` | #68 | Opus 5.5 round 1: 0 High; fix round 1 applied | done; rehearsal `bdb6481`, R213 green |
 | 23b Stripe driver (R247, R255) | `cp/23b-stripe-driver` | #69 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | done; rehearsal `b568853`, R213 green |
-| 23c Stripe checkout (R248) | `cp/23c-stripe-checkout` | #70 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | merged `509e654`; rehearsal deploy pending |
+| 23c Stripe checkout (R248) | `cp/23c-stripe-checkout` | #70 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | done; rehearsal `509e654`, R213 green |
 | 23d gateway refunds (R256) | `cp/23d-gateway-refunds` | - | - | next |
 | 23e receipts (R257) | `cp/23e-receipts` | - | - | queued |
 | 23f payout methods (R249) | `cp/23f-payout-methods` | - | - | queued |
