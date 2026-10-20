@@ -72,6 +72,9 @@ function cancel(lesson: UpcomingLesson) {
             <Link href="/tutors" class="text-sm underline underline-offset-4">
                 Find a tutor
             </Link>
+            <Link href="/receipts" class="text-sm underline underline-offset-4">
+                Your receipts
+            </Link>
             <Link
                 v-if="$page.props.features.match_requests"
                 href="/match-requests"

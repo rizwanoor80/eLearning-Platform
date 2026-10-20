@@ -8248,3 +8248,10 @@ Quoting the plan: "CC may … merge under R224(2)/R147"; R224(2): "a PR meeting 
 
 ### 2026-10-20 — VERIFICATION (23d merged, rehearsal deployed, R213, CC)
 PR #71 squash-merged under R224(2) at head `00d1e01` (CI green on PostgreSQL 16 and 18; last review 0 High; no frozen file; no migration) -> `main` `e5a30cb`; CI on `e5a30cb` green on both jobs. `git push origin e5a30cb:refs/heads/rehearsal`; `/ops/status`: `git_sha` `e5a30cb`, `debug` false, `migrations.pending` 0, `horizon.status` running, `queues.failed_jobs` 0, `queues.default_size` 0, `scheduler.status` ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0, `mail.from_name` "trusTutor Team"; `/`, `/login`, `/tutors`, `/terms` all 200. Production untouched.
+
+### 2026-10-20 — START (23e receipts, R257, CC)
+Branch `cp/23e-receipts` from `origin/main` `bd535f1`. Scope per R257: receipts list and one printable receipt per paid lesson; no VAT line (D-04), no email receipt. Advisor minimum for 23e is 0; none consulted. No migration, no frozen file.
+
+### 2026-10-20 — VERIFICATION (23e built, CC)
+Built: `PaymentPolicy::viewReceipt`, `ReceiptPresenter`, `ReceiptController` (index, show), two parent-area routes, Vue pages `receipts/Index` and `receipts/Show` (Print button, `print:` styles), a dashboard link. Gates: `php artisan test --compact` 3080 passed / 22669 assertions (was 3069 / 22517; +11 tests in `tests/Feature/Payments/ReceiptTest.php`); `ledger:verify` "Ledger OK: every lesson sums to zero."; Pint passed; PHPStan 0 errors (one `list` return type fixed); RTL grep passed; `npm run build` built. The first test run failed on a stale Vite manifest (the new pages were not built yet), fixed by `npm run build`.
+
