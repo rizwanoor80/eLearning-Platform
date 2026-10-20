@@ -5,6 +5,7 @@ namespace App\Services\Payments;
 use App\Enums\TestCard;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
+use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\Money;
@@ -59,5 +60,21 @@ final class FakePaymentGateway implements PaymentGateway
             gatewayRef: 'fake_'.$idempotencyKey.'_'.Str::random(8),
             rawResponse: ['driver' => 'fake', 'idempotency_key' => $idempotencyKey, 'amount_fils' => $amount->toFils(), 'saved_card' => true],
         );
+    }
+
+    public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+    {
+        return new PaymentCaptureResult(
+            gatewayRef: 'fake_re_'.$idempotencyKey.'_'.Str::random(8),
+            rawResponse: ['driver' => 'fake', 'idempotency_key' => $idempotencyKey, 'amount_fils' => $amount->toFils(), 'refund' => true],
+        );
+    }
+
+    /**
+     * The fake gateway has no webhook: nothing it receives can be authentic.
+     */
+    public function verifyWebhook(string $payload, array $headers): bool
+    {
+        return false;
     }
 }

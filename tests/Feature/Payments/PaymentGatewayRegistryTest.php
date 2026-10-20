@@ -11,6 +11,7 @@ use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use App\Services\Payments\StripePaymentGateway;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -95,14 +96,34 @@ it('re-checks the fake allow-list on every resolution, not only when the row is 
         ->and(fn () => $manager->forCode('fake'))->toThrow(NoActivePaymentGateway::class);
 });
 
-it('has no driver for stripe yet, so its row cannot be made active', function () {
+it('lets a stripe row with complete credentials become the active driver, and switches the driver with it', function () {
     $stripe = PaymentGatewayAccount::factory()->create();
 
     expect($stripe->hasCompleteCredentials())->toBeTrue()
-        ->and($stripe->activationProblem())->toContain('no driver')
-        ->and(fn () => app(ActivatePaymentGateway::class)($stripe, null))->toThrow(LogicException::class, 'no driver')
-        ->and(fn () => $stripe->forceFill(['is_active' => true])->save())->toThrow(LogicException::class)
-        ->and(fn () => app(PaymentGatewayManager::class)->forCode('stripe'))->toThrow(NoActivePaymentGateway::class, 'no driver');
+        ->and($stripe->activationProblem())->toBeNull()
+        ->and(app(PaymentGatewayManager::class)->forCode('stripe'))->toBeInstanceOf(StripePaymentGateway::class);
+
+    app(DeactivatePaymentGateway::class)(pgFake(), null);
+    app(ActivatePaymentGateway::class)($stripe, null);
+
+    $manager = app(PaymentGatewayManager::class);
+
+    expect($manager->active())->toBeInstanceOf(StripePaymentGateway::class)
+        ->and(app(PaymentGateway::class))->toBeInstanceOf(StripePaymentGateway::class)
+        ->and($manager->testMode())->toBeTrue();
+
+    app(DeactivatePaymentGateway::class)($stripe->fresh(), null);
+    app(ActivatePaymentGateway::class)(pgFake(), null);
+
+    expect(app(PaymentGateway::class))->toBeInstanceOf(FakePaymentGateway::class);
+});
+
+it('refuses to activate a stripe row that has no credentials', function () {
+    $stripe = pgStripe();
+
+    expect($stripe->activationProblem())->toContain('missing credentials')
+        ->and(fn () => app(ActivatePaymentGateway::class)($stripe, null))->toThrow(LogicException::class, 'missing credentials')
+        ->and(fn () => $stripe->forceFill(['is_active' => true])->save())->toThrow(LogicException::class);
 
     expect(pgFake()->is_active)->toBeTrue();
 });

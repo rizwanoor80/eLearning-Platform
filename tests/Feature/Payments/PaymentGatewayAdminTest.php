@@ -109,7 +109,7 @@ it('clears a typed secret from component state when the save is refused', functi
         ->and($component->html())->not->toContain('sk_test_refused_probe');
 });
 
-it('activates and deactivates from the table, and refuses a gateway with no driver', function () {
+it('activates and deactivates from the table, and refuses a gateway with no credentials', function () {
     Livewire::actingAs($this->admin)
         ->test(ListPaymentGateways::class)
         ->callTableAction('deactivate', $this->fake);

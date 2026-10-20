@@ -26,6 +26,7 @@ use App\Http\Controllers\Tutor\TutorProfileController;
 use App\Http\Controllers\Tutor\TutorSearchController;
 use App\Http\Controllers\Tutor\TutorWeeklySlotController;
 use App\Http\Controllers\UnreadCountsController;
+use App\Http\Controllers\Webhooks\PaymentWebhookController;
 use App\Http\Controllers\Webhooks\VideoWebhookController;
 use App\Support\PublicPages;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +38,7 @@ foreach (PublicPages::all() as $path => $page) {
 }
 
 Route::post('webhooks/video/{code}', VideoWebhookController::class)->where('code', '[a-z]{2,16}')->middleware('throttle:video-webhooks')->name('webhooks.video');
+Route::post('webhooks/payments/{code}', PaymentWebhookController::class)->where('code', '[a-z]{2,16}')->middleware('throttle:payment-webhooks')->name('webhooks.payments');
 
 Route::get('tutors', TutorSearchController::class)->name('tutors.index');
 Route::get('tutors/{tutor}', TutorProfileController::class)->where('tutor', '[0-9]{1,18}')->name('tutors.show');

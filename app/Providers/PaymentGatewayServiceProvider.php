@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Payments\PaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use App\Support\Payments\CheckoutIntent;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -36,6 +37,7 @@ class PaymentGatewayServiceProvider extends ServiceProvider
 
     public function register(): void
     {
+        $this->app->scoped(CheckoutIntent::class);
         $this->app->bind(PaymentGateway::class, fn ($app): PaymentGateway => $app->make(PaymentGatewayManager::class)->active());
     }
 }

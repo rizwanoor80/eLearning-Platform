@@ -57,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
         // Named, so its counter is its own: an unnamed throttle:N,M shares one with every other unnamed throttle of the same numbers.
         RateLimiter::for('lesson-room', fn (Request $request) => Limit::perMinute(20)->by((string) ($request->user()->id ?? $request->ip())));
         RateLimiter::for('video-webhooks', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
+        // Payment gateway events (23b): its own counter, so a burst of one webhook family never throttles the other.
+        RateLimiter::for('payment-webhooks', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
         // The operator status document (R193): per address, before the token is checked, so a guessing client is slowed whether or not it is right. 30 a minute is far above a person or a deploy check.
         RateLimiter::for('ops-status', fn (Request $request) => Limit::perMinute(30)->by((string) $request->ip()));
         // A tutor asking for a display name (R195): each request lands in an admin's queue, so 10 an hour per user.

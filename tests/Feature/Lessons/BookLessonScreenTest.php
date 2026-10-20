@@ -159,6 +159,16 @@ function bkDecliningGateway(): void
             return 'fake';
         }
 
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
+        }
+
         public function saveCard(User $account, string $selection): SavedCard
         {
             throw new LogicException('not used');

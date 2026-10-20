@@ -1,0 +1,17 @@
+@extends('emails.layout')
+
+@section('content')
+    @if ($reason === \App\Events\Payments\PaymentNeedsAttention::DISPUTED_AT_GATEWAY)
+        <p>
+            A dispute was opened with the card network on payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}).
+            Nothing has been changed on the lesson or in the ledger.
+        </p>
+    @else
+        <p>
+            The payment gateway has refunded {{ ($payment->refunded_amount ?? \App\Support\Money::zero())->format($payment->currency) }}
+            of payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}), which the platform did not record.
+            Nothing has been changed on the lesson or in the ledger.
+        </p>
+    @endif
+    <p>Check the payment in the gateway dashboard and decide what to do.</p>
+@endsection
