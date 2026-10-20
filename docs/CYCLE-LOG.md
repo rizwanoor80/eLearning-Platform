@@ -8245,3 +8245,6 @@ Fixes: (1) `RateLimitException` and `lock_timeout` are rethrown for the queue; (
 
 ### 2026-10-20 — DECISION — 23d merge authorisation (CC)
 Quoting the plan: "CC may … merge under R224(2)/R147"; R224(2): "a PR meeting the merge rule merges without asking". The merge rule is: last review 0 High, no frozen file touched, CI green on both PostgreSQL jobs. 23d: 0 High, no frozen file (only `StripePaymentGateway.php`, as R255 allows), no migration. Merge follows once CI is green on the fix-round head.
+
+### 2026-10-20 — VERIFICATION (23d merged, rehearsal deployed, R213, CC)
+PR #71 squash-merged under R224(2) at head `00d1e01` (CI green on PostgreSQL 16 and 18; last review 0 High; no frozen file; no migration) -> `main` `e5a30cb`; CI on `e5a30cb` green on both jobs. `git push origin e5a30cb:refs/heads/rehearsal`; `/ops/status`: `git_sha` `e5a30cb`, `debug` false, `migrations.pending` 0, `horizon.status` running, `queues.failed_jobs` 0, `queues.default_size` 0, `scheduler.status` ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0, `mail.from_name` "trusTutor Team"; `/`, `/login`, `/tutors`, `/terms` all 200. Production untouched.

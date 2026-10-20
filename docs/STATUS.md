@@ -1,11 +1,11 @@
-# STATUS — cycle 23 r2 — programme "money in, money out", 23a–23c done (rehearsal at 23c), 23d in review (PR #71, fix round 1); written 2026-10-20 (23d fix round 1)
-Tests: **3069 / 22517** on the 23d fix-round-1 head (code commit `18e9b65`: 3064 / 22501; baseline 3050 / 22430; +19 tests) · `ledger:verify` OK · pint, PHPStan 0 errors, `npm run build` and RTL grep green · CI on the fix-round head: pending · Advisor: consulted 4 times in the cycle (23a, 23b, 23c, 23d, all Opus 5.5; one Fable 5.1 attempt failed on a rate limit and does not count) · Review: 23d round 1 FAIL (Medium), 0 High, fix round 1 applied (earlier: 23c round 1 FAIL (Medium), 0 High, fixed) · Context size: not measured by the tool (cloud session, no `/context`)
+# STATUS — cycle 23 r2 — programme "money in, money out", 23a–23d done (rehearsal at 23d); written 2026-10-20 (23d merged)
+Tests: **3069 / 22517** on the 23d fix-round-1 head (code commit `18e9b65`: 3064 / 22501; baseline 3050 / 22430; +19 tests) · `ledger:verify` OK · pint, PHPStan 0 errors, `npm run build` and RTL grep green · CI on `e5a30cb` green on PostgreSQL 16 and 18 · Advisor: consulted 4 times in the cycle (23a, 23b, 23c, 23d, all Opus 5.5; one Fable 5.1 attempt failed on a rate limit and does not count) · Review: 23d round 1 FAIL (Medium), 0 High, fix round 1 applied (earlier: 23c round 1 FAIL (Medium), 0 High, fixed) · Context size: not measured by the tool (cloud session, no `/context`)
 
 ## §1 Git state
-- `main` = `fac7a24` (docs-only on top of `509e654`, PR #70, 23c). `rehearsal` = `509e654` (23c; R213 green). Branch `cp/23d-gateway-refunds` carries `18e9b65` (code), `560b4a1` (docs) and the fix-round-1 commit; PR #71 open. No production deploy. No branch deleted.
+- `main` = `e5a30cb` (PR #71, 23d) plus this docs commit. `rehearsal` = `e5a30cb` (R213 green). Branch `cp/23d-gateway-refunds` merged, not deleted. No production deploy. No production deploy. No branch deleted.
 
 ## §2 Step map
-1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [done: `bdb6481`]. 3. 23b Stripe driver — [done: `b568853`]. 4. 23c Stripe checkout — [done: `509e654`, rehearsal deployed, R213 green]. 5. 23d gateway refunds — [PR #71, review round 1 done, fix round 1 applied; CI and merge next]. 6. 23e receipts. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
+1. START, R222 check, board, ADR-030 — [done]. 2. 23a gateway registry — [done: `bdb6481`]. 3. 23b Stripe driver — [done: `b568853`]. 4. 23c Stripe checkout — [done: `509e654`, rehearsal deployed, R213 green]. 5. 23d gateway refunds — [done: `e5a30cb`, rehearsal deployed, R213 green]. 6. 23e receipts — [next]. 7. 23f payout methods. 8. 23g tutor earnings. 9. 23h payout batches + `hold/23h-ledger-payout`, then HALT for GO (R253). 10. On GO: merge, record, deploy rehearsal, R213, END. Resume cap 16, 0 used.
 
 ## §3 What changed this cycle
 - Earlier: ADR-030; **23a** registry and manager (`bdb6481`); **23b** `StripePaymentGateway`, webhook route and event table, two additive migrations (`b568853`); **23c** Stripe checkout with manual capture, saved card, `PaymentCapturedUnverified` (`509e654`). Full text: `git show fac7a24:docs/STATUS.md` §3.
@@ -29,7 +29,7 @@ Not stopping: the programme runs on under R224 to its one planned halt (R253, af
 - **Do not take Stripe live.** The Stripe row may be activated on rehearsal with **test** keys, not `live`, and Claude Code never reads or enters a key. Before any live-money switch Deferred item (a) of the 23c notes must be resolved.
 
 ## §7 Next step / Owner actions
-Nothing is waiting on the owner. Next: CI on both PostgreSQL jobs for the fix-round head, merge PR #71 under R224(2), record, deploy `rehearsal` (no migration), R213, then 23e on `cp/23e-receipts`. Carried: Owner action 5 (`mail.from_name`, `trusTutor Team`), 2, 3, 4, 6–12 (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
+Nothing is waiting on the owner. Next: 23e on `cp/23e-receipts` (R257). Carried: Owner action 5 (`mail.from_name`, `trusTutor Team`), 2, 3, 4, 6–12 (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
@@ -37,7 +37,7 @@ Nothing is waiting on the owner. Next: CI on both PostgreSQL jobs for the fix-ro
 | 23a gateway registry (R246) | `cp/23a-gateway-registry` | #68 | Opus 5.5 round 1: 0 High; fix round 1 applied | done; rehearsal `bdb6481`, R213 green |
 | 23b Stripe driver (R247, R255) | `cp/23b-stripe-driver` | #69 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | done; rehearsal `b568853`, R213 green |
 | 23c Stripe checkout (R248) | `cp/23c-stripe-checkout` | #70 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | done; rehearsal `509e654`, R213 green |
-| 23d gateway refunds (R256) | `cp/23d-gateway-refunds` | #71 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | fix round pushed; CI then merge |
+| 23d gateway refunds (R256) | `cp/23d-gateway-refunds` | #71 | Opus 5.5 round 1: FAIL (Medium), 0 High; fix round 1 applied | done; rehearsal `e5a30cb`, R213 green |
 | 23e receipts (R257) | `cp/23e-receipts` | - | - | queued |
 | 23f payout methods (R249) | `cp/23f-payout-methods` | - | - | queued |
 | 23g tutor earnings (R250) | `cp/23g-tutor-earnings` | - | - | queued |
