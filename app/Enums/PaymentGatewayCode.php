@@ -13,14 +13,14 @@ enum PaymentGatewayCode: string
     case Stripe = 'stripe';
 
     /**
-     * Whether a driver for this code exists yet. Stripe is registered by 23a and gets its driver in
-     * 23b, so until then its row cannot be made active.
+     * Whether a driver for this code exists. Stripe was registered by 23a and got its driver in 23b;
+     * a future code without one cannot be made active.
      */
     public function hasDriver(): bool
     {
         return match ($this) {
             self::Fake => true,
-            self::Stripe => false,
+            self::Stripe => true,
         };
     }
 

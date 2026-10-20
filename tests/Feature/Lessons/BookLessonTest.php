@@ -484,6 +484,16 @@ it('expires the lesson and records a failed payment when capture is declined, wr
             return 'fake';
         }
 
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
+        }
+
         public function saveCard(User $account, string $selection): SavedCard
         {
             throw new LogicException('not used by BookLesson');
@@ -528,6 +538,16 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
         public function driver(): string
         {
             return 'fake';
+        }
+
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
         }
 
         public function saveCard(User $account, string $selection): SavedCard
@@ -651,6 +671,16 @@ it('lets the same slot and trial be rebooked after a declined capture expires th
         public function driver(): string
         {
             return 'fake';
+        }
+
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
         }
 
         public function saveCard(User $account, string $selection): SavedCard

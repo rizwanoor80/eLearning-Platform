@@ -108,6 +108,11 @@ class PaymentGatewayManager
 
         return match ($code) {
             PaymentGatewayCode::Fake => new FakePaymentGateway,
+            PaymentGatewayCode::Stripe => new StripePaymentGateway(
+                (string) ($row->credentials['secret_key'] ?? ''),
+                (string) ($row->credentials['webhook_secret'] ?? ''),
+                $row->mode === PaymentGatewayMode::Live,
+            ),
             default => throw new NoActivePaymentGateway("There is no driver for {$row->code}."),
         };
     }

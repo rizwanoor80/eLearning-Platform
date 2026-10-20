@@ -502,6 +502,16 @@ it('flags money taken for a lesson that could not be confirmed, instead of hidin
             return 'fake';
         }
 
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
+        }
+
         public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
         {
             throw new LogicException('not used');
@@ -567,6 +577,16 @@ it('reports a lesson whose gateway call blows up, leaves it pending for the next
         public function driver(): string
         {
             return 'fake';
+        }
+
+        public function refund(Payment $payment, Money $amount, string $idempotencyKey): PaymentCaptureResult
+        {
+            throw new LogicException('not used');
+        }
+
+        public function verifyWebhook(string $payload, array $headers): bool
+        {
+            return false;
         }
 
         public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
