@@ -85,6 +85,21 @@ class SettleSuspendedLesson
     }
 
     /**
+     * Whether this sweep settled the lesson: the audit row `settled()` writes, inside the transaction that holds the
+     * transitions. The cancellation listeners read it (R242) because the `confirmed -> cancelled_by_parent` it writes
+     * is announced to nobody after the lesson has ended, while `account_suspended` alone also marks the free release of
+     * `reserved` lessons (`CancelSuspendedAccountLessons`), whose notifications stand.
+     */
+    public static function wasSettled(Lesson $lesson): bool
+    {
+        return AuditLog::query()
+            ->where('action', self::AUDIT_SETTLED)
+            ->where('subject_type', Lesson::class)
+            ->where('subject_id', $lesson->id)
+            ->exists();
+    }
+
+    /**
      * The tutor's user id and the account owner's, whichever of them has a closed-room audit row on this lesson.
      *
      * @return list<int>

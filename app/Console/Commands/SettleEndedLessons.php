@@ -25,7 +25,7 @@ class SettleEndedLessons extends Command
     public function handle(SettleEndedLesson $settle): int
     {
         $now = Carbon::now();
-        $done = ['completed' => 0, 'refunded' => 0];
+        $done = ['completed' => 0, 'refunded' => 0, 'suspension' => 0];
 
         Lesson::query()
             ->where(function ($query) use ($now): void {
@@ -48,11 +48,14 @@ class SettleEndedLessons extends Command
                 match ($to) {
                     LessonStatus::Completed => $done['completed']++,
                     LessonStatus::Refunded => $done['refunded']++,
+                    // `SettleEndedLesson` returns `CompletedReported` only from `SettleSuspendedLesson` (R244): a suspended parent's
+                    // lesson, the tutor paid. A suspended tutor's lesson ends `refunded` and counts under "refunded".
+                    LessonStatus::CompletedReported => $done['suspension']++,
                     default => null,
                 };
             });
 
-        $this->info("Completed {$done['completed']}, refunded {$done['refunded']}.");
+        $this->info("Completed {$done['completed']}, refunded {$done['refunded']}, settled after a suspension {$done['suspension']}.");
 
         return self::SUCCESS;
     }

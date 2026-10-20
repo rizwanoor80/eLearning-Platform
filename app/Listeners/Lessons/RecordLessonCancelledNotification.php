@@ -2,6 +2,7 @@
 
 namespace App\Listeners\Lessons;
 
+use App\Actions\Lessons\SettleSuspendedLesson;
 use App\Enums\LessonCancelReason;
 use App\Enums\LessonStatus;
 use App\Events\Lessons\LessonStatusChanged;
@@ -13,7 +14,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
  * mail listeners, so it fires on exactly the union of their conditions — each branch below is named for
  * the mail listener it mirrors, and must be kept in sync with it:
  *
- * - `SendLessonCancelledMail`: a paid cancellation, `confirmed -> cancelled_by_parent`/`cancelled_by_tutor`.
+ * - `SendLessonCancelledMail`: a paid cancellation, `confirmed -> cancelled_by_parent`/`cancelled_by_tutor`; none
+ *   when `SettleSuspendedLesson` wrote it after the lesson ended (R242).
  * - `SendLessonSkippedMail`: a free skip, `reserved -> cancelled_by_parent`/`cancelled_by_tutor`, with a
  *   person's own cancel note (not a machine `LessonCancelReason` value — those are slot pauses/ends and
  *   have their own slot-level email, or the two branches below, or are the deliberately silent case).
@@ -31,7 +33,8 @@ class RecordLessonCancelledNotification implements ShouldQueue
         $lesson = $event->lesson;
         $toCancelled = in_array($event->to, [LessonStatus::CancelledByParent, LessonStatus::CancelledByTutor], true);
 
-        $paidCancellation = $event->from === LessonStatus::Confirmed && $toCancelled;
+        $paidCancellation = $event->from === LessonStatus::Confirmed && $toCancelled
+            && ! ($event->to === LessonStatus::CancelledByParent && SettleSuspendedLesson::wasSettled($lesson));
 
         $freeSkip = $event->from === LessonStatus::Reserved && $toCancelled
             && ! LessonCancelReason::isReserved($lesson->cancel_reason);
