@@ -16,9 +16,11 @@ use App\Models\PaymentGatewayAccount;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonSettlement;
+use App\Services\Payments\NoActivePaymentGateway;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Stripe\Exception\ApiErrorException;
+use Stripe\Exception\RateLimitException;
 use Tests\Support\Payments\FakeStripeHttp;
 
 /**
@@ -237,15 +239,53 @@ it('does not tell admins about a charge.refunded webhook for a refund the ledger
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
 });
 
-it('answers a gateway that is no longer in the registry as a refusal for admins, not a crash', function () {
+it('treats a gateway that is momentarily not in the registry as a retry, not a permanent refusal, and tells admins once a day', function () {
     ['lesson' => $lesson, 'payment' => $payment] = grDisputed(gateway: 'stripe');
     Event::fake([PaymentNeedsAttention::class]);
     PaymentGatewayAccount::query()->delete();
     app(LedgerService::class)->refund($lesson);
 
+    expect(fn () => app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson)))->toThrow(NoActivePaymentGateway::class);
+    expect($payment->fresh()->raw_response)->not->toHaveKey('refund_failures');
+
+    $this->travel(11)->minutes();
+    $this->artisan('payments:retry-refunds')->assertSuccessful();
+    $this->travel(1)->hours();
+    $this->artisan('payments:retry-refunds')->assertSuccessful();
+    Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+
+    PaymentGatewayAccount::factory()->active()->create();
+    grStripeWillRefund($this->http, 10000);
+    $this->artisan('payments:retry-refunds')->expectsOutput('Made 1 gateway refund(s).')->assertSuccessful();
+    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) grRefundEntry($lesson)->id);
+});
+
+it('keeps a rate-limited refund for the retry instead of recording it as refused', function () {
+    ['lesson' => $lesson, 'payment' => $payment] = grDisputed();
+    app(LedgerService::class)->refund($lesson);
+
+    $this->http->reply('GET /v1/refunds', ['object' => 'list', 'data' => [], 'has_more' => false]);
+    $this->http->reply('POST /v1/refunds', ['error' => ['type' => 'invalid_request_error', 'code' => 'rate_limit', 'message' => 'Too many requests.']], 429);
+
+    expect(fn () => app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson)))->toThrow(RateLimitException::class);
+    expect($payment->fresh()->raw_response)->not->toHaveKey('refund_failures');
+
+    grStripeWillRefund($this->http, 10000);
+    app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson));
+    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) grRefundEntry($lesson)->id);
+});
+
+it('records a refund Stripe reports as failed as a refusal, not as returned money', function () {
+    ['lesson' => $lesson, 'payment' => $payment] = grDisputed();
+    Event::fake([PaymentNeedsAttention::class]);
+    app(LedgerService::class)->refund($lesson);
+
+    $this->http->reply('GET /v1/refunds', ['object' => 'list', 'data' => [], 'has_more' => false]);
+    $this->http->reply('POST /v1/refunds', ['id' => 're_test_1', 'object' => 'refund', 'status' => 'failed', 'amount' => 10000, 'currency' => 'aed', 'payment_intent' => 'pi_test_1']);
     app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson));
 
-    expect($payment->fresh()->raw_response['refund_failures'][grRefundEntry($lesson)->id]['code'])->toBe('gateway_unavailable');
+    expect($payment->fresh()->raw_response['refund_failures'][grRefundEntry($lesson)->id]['code'])->toBe('refund_failed')
+        ->and($payment->fresh()->raw_response)->not->toHaveKey('refunds');
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
 });
 

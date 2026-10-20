@@ -14,6 +14,7 @@ use App\Services\Payments\StripePaymentGateway;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
 use Stripe\Exception\ApiConnectionException;
+use Stripe\Exception\InvalidRequestException;
 use Tests\Support\Payments\FakeStripeHttp;
 
 /**
@@ -348,6 +349,26 @@ it('turns a refusal to refund into a declined result carrying Stripe\'s code', f
     $this->http->reply('POST /v1/refunds', ['error' => ['type' => 'invalid_request_error', 'code' => 'charge_already_refunded', 'message' => 'Charge has already been refunded.']], 400);
 
     expect(fn () => $this->gateway->refund($payment, Money::fils(4000), 'refund-pi_test_1-55'))->toThrow(PaymentCaptureException::class, 'charge_already_refunded');
+});
+
+it('lets a rate limit or a lock timeout on a refund through for a retry instead of calling it a refusal', function (int $status, string $code, string $type) {
+    $payment = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1', 'amount' => 10000]);
+    $this->http->reply('GET /v1/refunds', ['object' => 'list', 'data' => [], 'has_more' => false]);
+    $this->http->reply('POST /v1/refunds', ['error' => ['type' => $type, 'code' => $code, 'message' => 'Try again.']], $status);
+
+    expect(fn () => $this->gateway->refund($payment, Money::fils(4000), 'refund-pi_test_1-55'))->toThrow(InvalidRequestException::class);
+})->with([
+    'rate limit' => [429, 'rate_limit', 'invalid_request_error'],
+    'lock timeout' => [400, 'lock_timeout', 'invalid_request_error'],
+]);
+
+it('refuses a refund that Stripe reports as failed or canceled, also one found by its key', function () {
+    $payment = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1', 'amount' => 10000]);
+    $this->http->reply('GET /v1/refunds', ['object' => 'list', 'has_more' => false, 'data' => [
+        ['id' => 're_made', 'object' => 'refund', 'status' => 'canceled', 'amount' => 4000, 'currency' => 'aed', 'metadata' => ['idempotency_key' => 'refund-pi_test_1-55']],
+    ]]);
+
+    expect(fn () => $this->gateway->refund($payment, Money::fils(4000), 'refund-pi_test_1-55'))->toThrow(PaymentCaptureException::class, 'refund_canceled');
 });
 
 it('refuses to refund a payment that is not a Stripe payment', function () {

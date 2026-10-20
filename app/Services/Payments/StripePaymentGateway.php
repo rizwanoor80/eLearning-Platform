@@ -18,6 +18,7 @@ use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\CardException;
 use Stripe\Exception\IdempotencyException;
 use Stripe\Exception\InvalidRequestException;
+use Stripe\Exception\RateLimitException;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
 use Stripe\PaymentMethod as StripePaymentMethod;
@@ -317,6 +318,12 @@ final class StripePaymentGateway implements PaymentGateway
                 'metadata' => ['payment_id' => (string) $payment->id, 'idempotency_key' => $idempotencyKey],
             ], ['idempotency_key' => $idempotencyKey]);
         } catch (CardException|InvalidRequestException $e) {
+            // A rate limit (a subclass of InvalidRequestException) or a lock timeout is Stripe asking us to try
+            // again, not refusing: it must reach the queue, because a refusal is recorded as permanent.
+            if ($e instanceof RateLimitException || $e->getStripeCode() === 'lock_timeout') {
+                throw $e;
+            }
+
             throw new PaymentCaptureException($e->getStripeCode() ?? 'refund_refused');
         }
 
@@ -325,6 +332,12 @@ final class StripePaymentGateway implements PaymentGateway
 
     private function refundResult(Refund $refund): PaymentCaptureResult
     {
+        // A refund Stripe reports as failed or canceled (also one found by its metadata key) returned nothing to
+        // the card; it is a refusal for admins, not a confirmation.
+        if (in_array($refund->status, ['failed', 'canceled'], true)) {
+            throw new PaymentCaptureException('refund_'.$refund->status);
+        }
+
         return new PaymentCaptureResult(
             gatewayRef: $refund->id,
             rawResponse: ['driver' => $this->driver(), 'id' => $refund->id, 'status' => $refund->status, 'amount' => $refund->amount, 'currency' => $refund->currency],

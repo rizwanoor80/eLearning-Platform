@@ -9,7 +9,6 @@ use App\Exceptions\PaymentCaptureException;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
-use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use App\Support\Money;
 use Illuminate\Support\Facades\DB;
@@ -26,8 +25,8 @@ use Illuminate\Support\Facades\DB;
  * What was confirmed is kept in `payments.raw_response`, no new table (R252 authorises none):
  * `refunds.{entry id}` = `{id, amount_fils, at}` for a refund the gateway made, and
  * `refund_failures.{entry id}` = `{code, at}` for one it refused. A refusal is permanent, is listed to
- * admins and is left alone by the queue and the sweep; any other failure propagates so the queue
- * retries it. A failed refund never reverses the ledger.
+ * admins and is left alone by the queue and the sweep; any other failure (the network, a rate limit, a
+ * gateway that is momentarily not resolvable) propagates so the queue retries it. A failed refund never reverses the ledger.
  *
  * The gateway is called with no lock held; the payment row is locked only to record the outcome,
  * so a webhook for the same payment never waits on Stripe.
@@ -83,8 +82,8 @@ class RefundParentAtGateway
 
         try {
             $result = $this->gateways->forCode($payment->gateway)->refund($payment, $amount, "refund-{$payment->gateway_ref}-{$entry->id}");
-        } catch (PaymentCaptureException|NoActivePaymentGateway $e) {
-            $this->recordFailure($payment, $entry, $e instanceof PaymentCaptureException ? $e->getMessage() : 'gateway_unavailable');
+        } catch (PaymentCaptureException $e) {
+            $this->recordFailure($payment, $entry, $e->getMessage());
 
             return false;
         }

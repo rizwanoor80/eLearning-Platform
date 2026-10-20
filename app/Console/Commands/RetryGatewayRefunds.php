@@ -9,6 +9,7 @@ use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\LazyCollection;
 use Throwable;
 
@@ -47,7 +48,8 @@ class RetryGatewayRefunds extends Command
 
                 $payment = $lesson->payment()->first();
 
-                if ($payment !== null) {
+                // One alert per payment a day: a lasting outage must not mail admins every hour.
+                if ($payment !== null && Cache::add("refund-sweep-alert:{$payment->id}", true, now()->addDay())) {
                     PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUND_FAILED);
                 }
             }
