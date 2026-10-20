@@ -11,6 +11,7 @@ use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\TutorStrike;
 use App\Services\Scheduling\BookingLeadTime;
+use App\Services\Tutors\TutorEarnings;
 use App\Services\Tutors\TutorOnboardingChecklist;
 use App\Support\Money;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -76,6 +77,10 @@ class TutorProfileInfolist
 
         if ($problem !== null) {
             $lines[] = 'Cannot be paid yet: '.$problem;
+        }
+
+        if (app(TutorEarnings::class)->isOverpaid($record)) {
+            $lines[] = 'Negative balance: a dispute has put money that was already paid out on hold, or took it back. The next payout batch deducts it.';
         }
 
         return $lines;

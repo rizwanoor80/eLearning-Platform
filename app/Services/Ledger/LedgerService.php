@@ -5,17 +5,19 @@ namespace App\Services\Ledger;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PaymentStatus;
+use App\Enums\PayoutLineStatus;
 use App\Exceptions\LedgerException;
 use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PayoutBatchLine;
+use App\Models\TutorProfile;
 use App\Models\User;
 use App\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use LogicException;
 
 /**
  * The only writer of `ledger_entries` (invariant #1, R52). Amounts are signed
@@ -36,8 +38,12 @@ use LogicException;
  *
  * DATA_MODEL v1.3 wrote HOLD as a bare `escrow +price`, which cannot sum to zero;
  * the `gateway` leg is the counter-entry (v1.4, ADR-008). RELEASE is two
- * zero-sum pairs so each escrow leg has an honest `type`. PAYOUT is
- * declared for CP5 and refuses to run until then.
+ * zero-sum pairs so each escrow leg has an honest `type`.
+ *
+ *   PAYOUT   tutor −amount · bank +amount                       (23h, R253; belongs to a payout batch line, not to a lesson)
+ *
+ * A payout has no lesson: it pays out what many lessons released. So it is balanced by the line it pays (`payout_id`),
+ * and `unbalancedPayouts()` is to payouts what `unbalancedLessons()` is to lessons.
  */
 final class LedgerService
 {
@@ -211,11 +217,76 @@ final class LedgerService
     }
 
     /**
-     * Declared for tutor payouts (CP5); nothing calls it in CP3.
+     * Pays one payout batch line (R253): `tutor −amount`, `bank +amount`, both tagged with the line (`payout_id`) and the
+     * tutor, neither with a lesson. The caller (`MarkPayoutLinePaid`) owns the line's own `paid` columns; this writes the
+     * ledger side only, in its own transaction that:
+     *
+     *  - locks the tutor's profile row, then the line row (the order every payout action uses), so two payers of the
+     *    same line (or two lines of the same tutor) are taken one at a time;
+     *  - refuses a line that is not `pending`, or that already has entries (a second call would pay it twice);
+     *  - refuses an amount larger than the tutor's whole balance on the ledger's `tutor` account, the one limit that
+     *    needs no status: money that was never released to the tutor cannot be paid to them;
+     *  - re-sums the line's entries and throws, rolling back, unless they add up to exactly zero.
+     *
+     * The tutor account's balance may be driven below zero later by a dispute settlement that reverses a lesson which
+     * was already paid out (a clawback). That is a fact of the ledger, not an error here.
      */
-    public function payout(): never
+    public function payout(PayoutBatchLine $line, ?User $by = null): void
     {
-        throw new LogicException('LedgerService::payout() arrives with payouts (CP5).');
+        DB::transaction(function () use ($line, $by): void {
+            // One lock order everywhere: the tutor's profile first, then the line. `tutor_profile_id` never changes on a line.
+            TutorProfile::query()->whereKey($line->tutor_profile_id)->lockForUpdate()->firstOrFail();
+            $locked = PayoutBatchLine::query()->whereKey($line->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== PayoutLineStatus::Pending) {
+                throw new LedgerException("Payout line {$locked->id} is {$locked->status->value}, not pending.");
+            }
+
+            $amount = $locked->amount->toFils();
+
+            if ($amount <= 0) {
+                throw new LedgerException("Payout line {$locked->id} has no amount to pay.");
+            }
+
+            if (LedgerEntry::query()->where('payout_id', $locked->id)->exists()) {
+                throw new LedgerException("Payout line {$locked->id} has already been paid.");
+            }
+
+            $balance = (int) LedgerEntry::query()
+                ->where('tutor_profile_id', $locked->tutor_profile_id)
+                ->where('account', LedgerAccount::Tutor->value)
+                ->sum('amount');
+
+            if ($amount > $balance) {
+                throw new LedgerException("Payout line {$locked->id} ({$amount} fils) is more than the tutor's ledger balance ({$balance} fils).");
+            }
+
+            $memo = "Payout — line {$locked->id}";
+
+            self::$writing++;
+
+            try {
+                foreach ([[LedgerAccount::Tutor, -$amount, $locked->tutor_profile_id], [LedgerAccount::Bank, $amount, null]] as [$account, $signed, $tutorProfileId]) {
+                    LedgerEntry::query()->create([
+                        'payout_id' => $locked->id,
+                        'account' => $account,
+                        'type' => LedgerEntryType::Payout,
+                        'amount' => $signed,
+                        'tutor_profile_id' => $tutorProfileId,
+                        'memo' => $memo,
+                        'created_by_user_id' => $by?->getKey(),
+                    ]);
+                }
+            } finally {
+                self::$writing--;
+            }
+
+            $total = (int) LedgerEntry::query()->where('payout_id', $locked->id)->sum('amount');
+
+            if ($total !== 0) {
+                throw new LedgerException("Payout line {$locked->id} would not sum to zero (it sums to {$total} fils).");
+            }
+        });
     }
 
     /**
@@ -251,6 +322,45 @@ final class LedgerService
                 'total' => (int) $row->getAttribute('total'),
             ])
             ->values();
+    }
+
+    /**
+     * Every payout batch line whose ledger entries do not tell the same story as the line: its entries do not add up to
+     * zero, it is `paid` and the tutor-account entries are not exactly minus its amount, or it is not `paid` and has entries
+     * at all. What `ledger:verify` adds for payouts, which have no lesson for `unbalancedLessons()` to group by.
+     * Empty means every payout is sound.
+     *
+     * @return Collection<int, array{payout_id: int, status: string, total: int, tutor_total: int, amount: int}>
+     */
+    public function unbalancedPayouts(): Collection
+    {
+        return DB::table('payout_batch_lines as l')
+            ->leftJoin('ledger_entries as le', 'le.payout_id', '=', 'l.id')
+            ->groupBy('l.id', 'l.status', 'l.amount')
+            ->selectRaw('l.id as payout_id, l.status, l.amount, coalesce(sum(le.amount), 0) as total, coalesce(sum(le.amount) filter (where le.account = ?), 0) as tutor_total, count(le.id) as entries', [LedgerAccount::Tutor->value])
+            ->havingRaw('coalesce(sum(le.amount), 0) <> 0 or (l.status = ? and coalesce(sum(le.amount) filter (where le.account = ?), 0) <> -l.amount) or (l.status <> ? and count(le.id) > 0)', [PayoutLineStatus::Paid->value, LedgerAccount::Tutor->value, PayoutLineStatus::Paid->value])
+            ->orderBy('l.id')
+            ->get()
+            ->map(fn (object $row): array => [
+                'payout_id' => (int) $row->payout_id,
+                'status' => (string) $row->status,
+                'total' => (int) $row->total,
+                'tutor_total' => (int) $row->tutor_total,
+                'amount' => (int) $row->amount,
+            ])
+            ->values();
+    }
+
+    /**
+     * Ids of ledger entries that belong to neither a lesson nor a payout line. Both of the other checks group by one of
+     * those two, so such an entry would be invisible to them. The database refuses a payout entry without a line, so this
+     * is a backstop for any other kind of entry written without a lesson. Empty means there are none.
+     *
+     * @return Collection<int, int>
+     */
+    public function strayEntries(): Collection
+    {
+        return LedgerEntry::query()->whereNull('lesson_id')->whereNull('payout_id')->orderBy('id')->pluck('id')->map(fn (mixed $id): int => (int) $id);
     }
 
     /**

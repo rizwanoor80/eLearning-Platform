@@ -1,13 +1,16 @@
 <?php
 
+use App\Actions\Lessons\SettleSuspendedLesson;
 use App\Enums\LessonStatus;
 use App\Enums\TutorProfileStatus;
+use App\Models\AuditLog;
 use App\Models\Dispute;
 use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Tutors\TutorEarnings;
+use Carbon\CarbonInterface;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -20,12 +23,14 @@ function ernTutor(): TutorProfile
 }
 
 /** A lesson of AED 100.00 (tutor share AED 75.00, commission AED 25.00) in the given status; held in escrow if `$held`. */
-function ernLesson(TutorProfile $tutor, LessonStatus $status = LessonStatus::Confirmed, bool $held = true): Lesson
+function ernLesson(TutorProfile $tutor, LessonStatus $status = LessonStatus::Confirmed, bool $held = true, ?CarbonInterface $endedAt = null): Lesson
 {
     static $slot = 0;
 
-    // A tutor cannot have two lessons at one start time, so each lesson gets its own hour.
-    $lesson = Lesson::factory()->withStatus($status)->startingAt(now()->addDays(3)->startOfHour()->addHours($slot++))->create(['tutor_profile_id' => $tutor->id]);
+    // A tutor cannot have two lessons at one start time, so each lesson gets its own hour. By default a lesson ended
+    // days ago, so its dispute window (R258) has closed; `$endedAt` places the end exactly.
+    $start = $endedAt?->copy()->subHour() ?? now()->subDays(60)->startOfHour()->addHours($slot++);
+    $lesson = Lesson::factory()->withStatus($status)->startingAt($start)->create(['tutor_profile_id' => $tutor->id]);
 
     if ($held) {
         app(LedgerService::class)->hold($lesson);
@@ -310,4 +315,72 @@ it('still shows the page to a suspended tutor', function () {
     $this->actingAs($tutor->user)->get('/tutor/earnings')
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->where('buckets.available', 'AED 75.00'));
+});
+
+// --- R258: released money waits for the dispute window -----------------------------------------------------------
+
+it('keeps released money in pending, with its date, until 48 hours after the lesson ended, then moves it to available', function () {
+    $this->freezeTime();
+    $tutor = ernTutor();
+    $ended = now()->subHours(47);
+    $lesson = ernLesson($tutor, LessonStatus::Completed, endedAt: $ended);
+    app(LedgerService::class)->release($lesson);
+    ernSetStatus($lesson, LessonStatus::CompletedReported);
+
+    $buckets = app(TutorEarnings::class)->buckets($tutor);
+
+    expect(ernBuckets($tutor))->toBe(['pending' => 7500, 'on_hold' => 0, 'available' => 0, 'processing' => 0, 'paid' => 0])
+        ->and($buckets->pendingAvailableAt?->toIso8601String())->toBe($ended->copy()->addHours(48)->utc()->toIso8601String());
+    ernAssertSumsToLifetime($tutor);
+
+    $this->travel(2)->hours();
+
+    expect(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 7500, 'processing' => 0, 'paid' => 0])
+        ->and(app(TutorEarnings::class)->buckets($tutor)->pendingAvailableAt)->toBeNull();
+    ernAssertSumsToLifetime($tutor);
+});
+
+it('waits seven days for a lesson that was settled after a suspension', function () {
+    $this->freezeTime();
+    $tutor = ernTutor();
+    $lesson = ernLesson($tutor, LessonStatus::Completed, endedAt: now()->subHours(49));
+    app(LedgerService::class)->release($lesson);
+    ernSetStatus($lesson, LessonStatus::CompletedReported);
+    AuditLog::query()->create([
+        'actor_user_id' => null,
+        'action' => SettleSuspendedLesson::AUDIT_SETTLED,
+        'subject_type' => Lesson::class,
+        'subject_id' => $lesson->id,
+    ]);
+
+    expect(ernBuckets($tutor)['pending'])->toBe(7500)->and(ernBuckets($tutor)['available'])->toBe(0);
+
+    // It ended 49 hours ago, so the seven days run out 119 hours from now.
+    $this->travel(118)->hours();
+    expect(ernBuckets($tutor)['available'])->toBe(0);
+
+    $this->travel(2)->hours();
+    expect(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 7500, 'processing' => 0, 'paid' => 0]);
+    ernAssertSumsToLifetime($tutor);
+});
+
+it('does not delay money on a lesson that can no longer be disputed', function () {
+    $this->freezeTime();
+    $tutor = ernTutor();
+    $lesson = ernLesson($tutor, LessonStatus::Completed, endedAt: now()->subHour());
+    app(LedgerService::class)->release($lesson);
+    ernSetStatus($lesson, LessonStatus::Settled);
+
+    expect(ernBuckets($tutor)['available'])->toBe(7500)->and(ernBuckets($tutor)['pending'])->toBe(0);
+});
+
+it('shows a tutor the date released money becomes available', function () {
+    $this->freezeTime();
+    $tutor = ernTutor();
+    $lesson = ernLesson($tutor, LessonStatus::Completed, endedAt: now()->subHours(1));
+    app(LedgerService::class)->release($lesson);
+    ernSetStatus($lesson, LessonStatus::CompletedReported);
+
+    $this->actingAs($tutor->user)->get('/tutor/earnings')->assertInertia(fn (Assert $page) => $page
+        ->where('buckets.pending_available_on', now()->addHours(47)->setTimezone($tutor->user->timezone)->format('j M Y')));
 });

@@ -102,6 +102,17 @@ final readonly class Money implements Castable, JsonSerializable
         return $this->fils <=> $other->fils;
     }
 
+    /**
+     * Plain decimal amount for a file a person pays from ("123.45"): no currency, no grouping, a dot.
+     */
+    public function toDecimalString(): string
+    {
+        $sign = $this->fils < 0 ? '-' : '';
+        $absolute = abs($this->fils);
+
+        return sprintf('%s%d.%02d', $sign, intdiv($absolute, 100), $absolute % 100);
+    }
+
     public function format(string $currencyCode = 'AED'): string
     {
         $sign = $this->fils < 0 ? '-' : '';

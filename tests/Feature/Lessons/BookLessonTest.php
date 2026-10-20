@@ -657,7 +657,7 @@ it('leaves ledger:verify clean after a normal successful booking, even past the 
     $this->travel(6)->minutes();
 
     $this->artisan('ledger:verify')
-        ->expectsOutputToContain('Ledger OK: every lesson sums to zero.')
+        ->expectsOutputToContain('Ledger OK: every lesson and every payout sums to zero.')
         ->assertExitCode(0);
 });
 

@@ -12,6 +12,7 @@ type Buckets = {
     processing: string;
     paid_to_date: string;
     total: string;
+    pending_available_on: string | null;
 };
 
 defineProps<{
@@ -30,9 +31,9 @@ defineOptions({
 });
 
 const definitions = [
-    { key: 'pending', title: 'Pending', text: 'Your share of lessons that are booked, under way or taught, until the payment is released to you.' },
+    { key: 'pending', title: 'Pending', text: 'Your share of lessons that are booked, under way or taught, until the payment is released to you, and for a short while after, while the family can still dispute the lesson.' },
     { key: 'on_hold', title: 'On hold', text: 'Your share of a lesson that is in a dispute. It is paid or returned when the dispute is settled.' },
-    { key: 'available', title: 'Available', text: 'Released to you and not yet in a payout. It is included in the next payout once it reaches the minimum.' },
+    { key: 'available', title: 'Available', text: 'Released to you, past the time the family can dispute the lesson, and not yet in a payout. It is included in the next payout once it reaches the minimum.' },
     { key: 'processing', title: 'Processing', text: 'In a payout we are preparing or have sent, and not yet confirmed as paid.' },
     { key: 'paid_to_date', title: 'Paid to date', text: 'Paid out to you, with the payment reference.' },
 ] as const;
@@ -57,7 +58,12 @@ const definitions = [
                         <CardDescription>{{ definition.title }}</CardDescription>
                         <CardTitle class="text-2xl">{{ buckets[definition.key] }}</CardTitle>
                     </CardHeader>
-                    <CardContent class="text-muted-foreground text-sm">{{ definition.text }}</CardContent>
+                    <CardContent class="text-muted-foreground space-y-1 text-sm">
+                        <p>{{ definition.text }}</p>
+                        <p v-if="definition.key === 'pending' && buckets.pending_available_on" data-testid="pending-available-on">
+                            Part of this becomes available on {{ buckets.pending_available_on }}.
+                        </p>
+                    </CardContent>
                 </Card>
             </div>
         </template>
