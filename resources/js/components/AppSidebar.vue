@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { Bell, BookOpen, ClipboardCheck, FolderGit2, LayoutGrid, MessageSquare } from '@lucide/vue';
+import { Bell, BookOpen, ClipboardCheck, FolderGit2, LayoutGrid, MessageSquare, Wallet } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
@@ -39,6 +39,8 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: LayoutGrid,
     },
     ...(needsOnboarding.value ? [{ title: 'Complete your profile', href: '/tutor/onboarding', icon: ClipboardCheck }] : []),
+    // R250: a tutor's earnings page.
+    ...(page.props.auth.is_tutor ? [{ title: 'Earnings', href: '/tutor/earnings', icon: Wallet }] : []),
     ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
     // CP7 8e (R139): the notification centre bell, always shown (not gated on `can_message`).
     { title: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications.value },

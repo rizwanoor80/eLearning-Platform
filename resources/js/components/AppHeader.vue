@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { Bell, BookOpen, Folder, LayoutGrid, Menu, MessageSquare, Search } from '@lucide/vue';
+import { Bell, BookOpen, Folder, LayoutGrid, Menu, MessageSquare, Search, Wallet } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import BrandLockup from '@/components/BrandLockup.vue';
@@ -65,6 +65,8 @@ const mainNavItems = computed<NavItem[]>(() => [
         href: auth.value.home,
         icon: LayoutGrid,
     },
+    // R250: a tutor's earnings page.
+    ...(auth.value.is_tutor ? [{ title: 'Earnings', href: '/tutor/earnings', icon: Wallet }] : []),
     ...(messagingOn.value ? [{ title: 'Messages', href: '/messages', icon: MessageSquare, badge: unreadMessages.value }] : []),
     // CP7 8e (R139): the notification centre bell, always shown (not gated on `can_message`).
     { title: 'Notifications', href: '/notifications', icon: Bell, badge: unreadNotifications.value },
