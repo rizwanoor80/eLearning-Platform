@@ -8148,3 +8148,12 @@ Fix round 1 (cap 2): 16, 17, 22 fixed in `f3212c1` (wording from `WINDOW_DAYS`; 
 
 ### 2026-10-20 — DECISION — merge authorisation, 22a (CC)
 Authorisation quoted: plan cycle 22 r1 "CC may … run reviews and the R224 fix loop, merge under R224(2)/R147" and R224(2) "a PR meeting the merge rule merges without asking". Merge rule check: last review 0 High / 0 Medium; no frozen file, no migration; CI to be green on both PostgreSQL jobs on `f3212c1` before the merge call (R177 poll, 2 minutes, up to 20).
+
+### 2026-10-20 — VERIFICATION (22a post-merge record, rehearsal deploy under R228, R213, CC)
+PR #67 squash-merged as `a652726` (CC's single attempt under R224(2)/R147). Push CI on `a652726` (run 39440376106): success on both PostgreSQL jobs. ADR-029 committed to `main` as `bc7ed04` (docs-only, `[skip ci]`). Deploy authorisation quoted in the plan boundary above ("deploy rehearsal and verify under R228"): `git push origin a652726:refs/heads/rehearsal` fast-forwarded `2b3e0a4..a652726`. Authenticated `GET /ops/status` (token from the environment, not printed): 200, git_sha `a652726`, environment rehearsal, `debug` false, pending migrations 0, Horizon running, `failed_jobs` 0, queue `default` 0, scheduler ok, ledger ok (0 unbalanced, 0 stranded). Public smoke `/`, `/login`, `/tutors`, `/terms`: 200. R214: `mail.from_name` = `trusTutor Team`.
+
+### 2026-10-20 — HANDOFF (CC)
+Context size: not measured by the tool (cloud session); compactions this session: 1. Done: 22a merged (`a652726`), ADR-029 and record on `main`, rehearsal verified. Next: the planner's next PLAN. Ruled out: a dispute path for the `Refunded` tutor row (frozen state machine); any mail to the parent about an admin-opened dispute.
+
+### 2026-10-20 — END (cycle 22 r1, CC)
+Queue: 22a done (PR #67 merged `a652726`, rehearsal verified, R213 green). Tests 2892 / 21630; `ledger:verify` OK; build, RTL and PHPStan green; push CI on `a652726` green on both PostgreSQL jobs. Advisor summary: consulted 1 time (22a, Opus 5.5; minimum 1 met; no failed attempts). Review: 22a round 1 (Opus 5.5), 0 High / 0 Medium / 3 Low, all fixed; fix rounds 1 of 2. Resume cap 12, 0 used. Parked PRs: none. Default-taken decisions: none. No production deploy, no frozen file touched, no migration, no branch deleted. Halt: END.

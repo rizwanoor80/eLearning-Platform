@@ -1,49 +1,53 @@
-# STATUS — cycle 22 r1 — programme steady state V, 22a in progress; written 2026-10-20 09:05
-Tests: **2864 passed / 21441 assertions** on `main` code `2b3e0a4` (cycle 21's last green; 22a not yet run) · Advisor: 0 so far this cycle (minimum 1 for 22a) · Review: n/a yet · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 0. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000, `CLAUDE_CODE_REMOTE`=true.
+# STATUS — cycle 22 r1 — programme steady state V, 22a done; written 2026-10-20 (END)
+Tests: **2892 passed / 21630 assertions** (baseline 2864 / 21441; +28 new) on the 22a head `f3212c1`; push CI green on `a652726`, both PostgreSQL jobs · `ledger:verify` OK · `npm run build` green · RTL check green · Advisor: consulted 1 time (Opus 5.5) · Review: 22a round 1, 0 High / 0 Medium / 3 Low (all fixed) · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 1. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000, `CLAUDE_CODE_REMOTE`=true.
 
 ## §1 Git state
-- `main` = `daaf80a` (PLAN cycle 22 r1, docs-only) over code `2b3e0a4`. `rehearsal` = `2b3e0a4`. No open PR. No production deploy.
+- `main` = docs-only commits over code `a652726` (PR #67 squash). `rehearsal` = `a652726`. No open PR. No production deploy. Branch `cp/22a-suspension-settlement-finish` is merged and kept (no branch deleted).
 
 ## §2 Step map
-1. START, R222 check, board — [done]. 2. 22a (R242–R244, ADR-029) — [in progress]. 3. END — [not started].
+1. START, R222 check, board — [done]. 2. 22a (R242–R244, ADR-029) — [done: merged `a652726`, ADR-029 and record on `main`, rehearsal deployed, R213 green]. 3. END — [done]. Resume cap 12, 0 used.
 
 ## §3 What changed this cycle
-- 21a (PR #66, `2b3e0a4`): new `app/Actions/Lessons/SettleSuspendedLesson.php`, called first by `SettleEndedLesson` for `in_progress` and `confirmed` lessons past end + `video.close_grace_minutes`. Keyed on a `lesson.room_closed_suspension` audit row naming the lesson's own tutor user or account owner. Parent only + `confirmed`: `Confirmed → CancelledByParent → CompletedReported`, `payTutor`, `cancel_reason` `account_suspended`. Parent only + `in_progress` and not both joined: `InProgress → NoShowStudent → CompletedReported`, `payTutor`. Tutor (alone or with the parent) + `in_progress` and not both joined: `InProgress → NoShowTutor → Refunded`, `refundParent`, no strike. Everything else unchanged. Every settled row writes `lesson.settled_suspension`. Atomic: both transitions and the audit row in one transaction; the join facts are re-read on the locked row (a late join throws `LessonTransitionException` and the next sweep completes the lesson). No frozen file, no migration.
-- 19 tests in `tests/Feature/Lessons/SettleSuspendedLessonTest.php` (suite +19 over 2845). Red/green shown: with the `SettleEndedLesson` call removed 9 fail; with the party filter removed the stranger-row test fails.
-- Verified on rehearsal: `/ops/status` 200 with git_sha `2b3e0a4`, `debug` false, 0 pending migrations, Horizon running, 0 failed jobs, scheduler ok, ledger ok; `/`, `/login`, `/tutors`, `/terms` 200; unauthenticated `/ops/status` 404.
+- **R242:** `SendLessonCancelledMail` and `RecordLessonCancelledNotification` send nothing for the `confirmed → cancelled_by_parent` that `SettleSuspendedLesson` writes. Detection is the new `SettleSuspendedLesson::wasSettled()` (the `lesson.settled_suspension` audit row, written inside the same transaction as the transitions, so the afterCommit listeners see it). The free `reserved` `account_suspended` release is unchanged (it never had a mail or bell for the paid-cancellation branch and still has none; asserted by test).
+- **R243:** new `app/Actions/Lessons/OpenSuspensionDispute.php` (admin only, active; `lesson.settled_suspension` row; `completed_reported`; within 7 days of `ends_at`; one dispute per lesson via the lock and the existing unique index; audited `lesson.dispute_opened_by_admin`; the description is never audited) and one Filament action "Open dispute" on `LessonsTable`, visible only when `problemFor()` is null. `ResolveDispute` settles it unchanged. Money proof (28-test file `tests/Feature/Lessons/OpenSuspensionDisputeTest.php`): both `completed_reported` rows at 0/0, 100/0, 0/100, 50/50 and 100/100, status settled, zero-sum, escrow 0, exactly 4 `ReleaseReversal` legs, an odd price at 50/50, `ledger:verify` 0.
+- **R244:** `lessons:settle-ended` prints `Completed X, refunded Y, settled after a suspension N.`; pinned by test, second run prints 0/0/0.
+- **R241:** ADR-029 in `docs/DECISIONS.md`.
+- Not touched: `LessonStateMachine`, `LedgerService`, `app/Services/Payments/*`, the ledger migration, `OpenDispute`, `ResolveDispute`, `CancelSuspendedAccountLessons`; no migration; `docs/cloud/ENVIRONMENT.md` and `.claude/settings.json` unchanged.
+- Verified on rehearsal at `a652726`: `/ops/status` 200 with `git_sha` `a652726…`, environment rehearsal, `debug` false, 0 pending migrations, Horizon running, 0 queued, 0 failed jobs, scheduler ok, ledger ok (0 unbalanced, 0 stranded); `/`, `/login`, `/tutors`, `/terms` 200.
 
 ## §4 Decisions and by whom
-- Owner: R238 (suspended party is the no-show party, existing edges only). Planner: R239 (checks the state machine).
-- CC, under R224(2)/R147: merged PR #66 once (conditions quoted in the log); deployed rehearsal under R228. Advisor (Opus 5.5, quoted in the log): a new single-purpose action, one transaction, null actor.
+- Owner: R241 (notes 1–3 accepted), R242, R243, R244. Planner: R240 (name check).
+- CC, under R224(2)/R147: merged PR #67 once (conditions quoted in the log); deployed rehearsal under R228. Advisor (Opus 5.5, quoted in the log): audit row over a marker for detection; the listener timing is safe; ReleaseReversal legs expected.
+- Review (fresh subagent, Opus 5.5): 22 numbered verdicts, 0 High, 0 Medium, 3 Low fixed in round 1 of 2.
 - Advisor summary: consulted 1 time; minimum met.
-- R214: `mail.from_name` = `trusTutor Team` (read at the 21a deploy). Owner action 5 stays open.
+- R214: `mail.from_name` = `trusTutor Team` (read at the 22a deploy). Owner action 5 stays open.
 
 ## §5 Why stopping
-Not stopping: 22a is in progress (programme mode, R224). Cycle 21's record below (§3, §4, §6) carries until 22a rewrites it.
+END of the programme: queue empty, nothing parked, no halt condition hit. Nothing further is authorised. Handoff for a new session: done = 22a merged and deployed; next = whatever the next PLAN says (none yet); ruled out = building any dispute path for the `Refunded` tutor row (frozen state machine) and any mail to the parent about an admin-opened dispute.
 
 ## §6 Mismatches
-- **Planner text vs repo, "system user":** R238 says `cancelled_by_user_id` and the actor are "the system user"; none exists. The code uses the null actor, as `SettleEndedLesson::unattended()` already does.
-- **"Five balance buckets":** R238's proof asks for the tutor's five buckets; they do not exist before CP5. The tests assert per-account ledger balances (escrow, tutor, platform, refund) and `ledger:verify`.
-- **"Nothing here blocks a dispute" is not true:** `Refunded` has no outgoing edge and `OpenDispute` allows only the account owner from `Completed`/`CompletedReported`. The tutor row (`Refunded`) can never be disputed; the parent rows can be disputed only by the suspended parent; no admin path opens a dispute. Closing it needs a state-machine edge or a new admin action (frozen file / a new plan).
-- **Product notes the owner may want to confirm (all match R238 literally):** (1) parent suspended, `in_progress`, only the learner joined (tutor absent): the tutor is paid, and the suspended parent cannot mark the no-show. (2) A tutor who attended but is suspended is refunded as a "tutor no-show". (3) The audit row exists only if a room existed, and rooms open `room_lead_minutes` = 15 before the start: a parent suspended 14 minutes before the start pays; 16 minutes before gets the unattended refund; a reinstated parent is still charged. This overrides R138's "confirmed lessons are an admin decision" for lessons that had a room. (4) The parent-confirmed row fires the existing `SendLessonCancelledMail` and `RecordLessonCancelledNotification` listeners: a "cancelled" mail and bell after the lesson ended, the tutor included; the reason is hidden because `account_suspended` is reserved.
-- **Audit row is the only signal:** a late row (a retried `CloseSuspendedAccountRooms` listener writing after end + grace), a provider outage across all retries, a crash between its conditional UPDATE and the audit insert, no room, and the 3-strikes `SuspendTutor` path (writes no row) all fall back to the old behaviour (unattended refund or left in progress). Fails toward the parent.
-- **`SettleEndedLessons` summary counters** ignore `CompletedReported` (the command was out of the boundary): suspension payouts do not show in its "Completed X, refunded Y" line. Deferred.
+- **Plan wording vs repo (R242):** the plan says free `reserved` `account_suspended` releases "keep their notifications". Today they send none (the cancellation listeners' paid-cancellation branch needs `from = Confirmed`, and the mail goes only for a paid cancellation). They stay exactly as they were, and a test pins that they stay silent. No behaviour was changed there.
+- **R244 wording:** the tutor-suspension refund (`no_show_tutor → refunded`) is counted under "refunded", not under "settled after a suspension"; only `CompletedReported` outcomes (the two paid-tutor rows) use the new counter. `CompletedReported` comes only from `SettleSuspendedLesson`, so the label is exact.
+- **Admin-opened disputes notify the tutor and admins only:** the existing dispute-opened mail and bell go to the tutor and admins, never the parent (invariant 7 and the existing listeners). The suspended parent, who cannot log in, is not told. No new message was added.
+- **Advisor notes for CP5 and later:** `ResolveDispute` never updates `payments.status` / `refunded_amount`; the already-released lesson settles by reversing the release (4 `ReleaseReversal` legs) and redistributing, and 100/100 produces a goodwill delta; `escrow_released_at` is not cleared by the reversal, so CP5's payout eligibility must read the ledger, not that column; a lesson in `disputed` drops out of the lists that show only `completed_reported`.
+- **Audit row is the only signal** for the settlement (unchanged from cycle 21): a late row, a provider outage across all retries, a crash between the conditional UPDATE and the audit insert, no room, and the 3-strikes `SuspendTutor` path fall back to the old behaviour. Fails toward the parent.
 - Cycle 19's §6 items (19c gaps 1–8, 19d notes, known over-masks) carry unchanged.
 
 ## §7 Next step / Owner actions
-Parked PRs: none. Default-taken decisions: none.
-Owner action 15: answered by R238 (2026-10-19), closed. No new Owner action is needed to continue; the product notes in §6 (items 1–4) are for the owner and planner to rule on in the next PLAN. When convenient: `/clear` this session and reply `update`.
+Parked PRs: none. Default-taken decisions: none. Nothing is waiting on the owner for 22a.
+Owner action 16: when the next PLAN is ready, then `/clear` this session and reply `update` (the environment has not changed).
 Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non-blocking; Owner actions 2, 3, 4, 6–12 carry unchanged (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel; authorising `trustutor-production`; Postmark wiring (R120).
 
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 22a | `cp/22a-suspension-settlement-finish` | — | — | in progress |
+| 22a | `cp/22a-suspension-settlement-finish` | #67 | 0 High / 0 Medium / 3 Low (fixed) | merged `a652726`, rehearsal deployed, R213 green |
 Resume cap 12, 0 used.
 
 
 ## Deferred
-- **21a follow-ups (REVIEW 2026-10-19):** `SettleEndedLessons` summary line omits `CompletedReported` (suspension payouts); a dispute path for the `Refunded` tutor row and an admin-opened dispute (state machine, frozen); a suppression or reworded template for the post-end "cancelled" mail and bell on the parent-confirmed row; the audit-row timing windows in §6.
+- **21a follow-ups still open (closed in 22a: the summary line, the admin-opened dispute, the post-end "cancelled" mail and bell):** a dispute path for the `Refunded` tutor row (needs a state-machine edge, frozen; the parent was refunded in full and tutors do not open disputes, PRD §2.10); the audit-row timing windows in §6.
+- **22a review notes (REVIEW 2026-10-20, all Low or notes, not built):** the reserved-release silence test builds the edge directly instead of calling `CancelSuspendedAccountLessons`; `visible()` on the Open dispute action runs `problemFor` per visible `completed_reported` row inside 7 days (a bounded N+1); a whitespace-only dispute description passes (same as `OpenDispute`); the 23505 branch of `OpenSuspensionDispute` has no test (the row lock makes it unreachable).
 - **19a corpus follow-ups (REVIEW 2026-10-18 20:08):** the garbled nested placeholders in 218 baseline outputs (a masker defect; 19b may fix it); the placeholder-for-everything and unchecked `masked` limits; (the `LessonPageTest` Dubai-midnight flake closed in 20c).
 - **Cycle-17 follow-ups found by the 17a review (the twins and the hook lines closed in 18c):** a `::warning::` annotation when the build only goes green on a retry (the empty-`DB_PASSWORD` mismatch closed in 19d); `APP_ENV`/`DB_CONNECTION` and the two published passwords in `docs/cloud/ENVIRONMENT.md` (planner's file).
 - **`max_participants: 2` on Daily rooms** — built and tested in 19c, unverified against live Daily (connection-count caveats in §6 gap 5).
