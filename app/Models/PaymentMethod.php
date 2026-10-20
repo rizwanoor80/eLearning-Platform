@@ -66,6 +66,30 @@ class PaymentMethod extends Model
     }
 
     /**
+     * What the card page tells the parent about this card, or null when there is nothing to say: it has
+     * expired or been marked failed (replace it), or it expires within the next 30 days.
+     */
+    public function expiryNotice(): ?string
+    {
+        $lastDay = CarbonImmutable::create($this->exp_year, $this->exp_month, 1)->endOfMonth()->startOfDay();
+        $today = now()->startOfDay();
+
+        if ($lastDay->lessThan($today)) {
+            return __('This card has expired. Add a new one so weekly lessons keep being charged.');
+        }
+
+        if ($this->status !== PaymentMethodStatus::Active) {
+            return __('The last charge to this card failed. Add a new one so weekly lessons keep being charged.');
+        }
+
+        if ($lastDay->lessThanOrEqualTo($today->addDays(30))) {
+            return __('This card expires soon. Add a new one before it does so weekly lessons keep being charged.');
+        }
+
+        return null;
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function account(): BelongsTo

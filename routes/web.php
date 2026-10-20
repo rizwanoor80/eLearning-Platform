@@ -15,7 +15,7 @@ use App\Http\Controllers\Messaging\MessageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Payments\CheckoutIntentController;
-use App\Http\Controllers\Payments\TestCardController;
+use App\Http\Controllers\Payments\PaymentMethodController;
 use App\Http\Controllers\Payments\WeeklySlotController;
 use App\Http\Controllers\Reviews\ReviewController;
 use App\Http\Controllers\Safeguarding\AbuseReportController;
@@ -127,9 +127,11 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area', 'throttle:accou
 
     Route::resource('learners', LearnerController::class);
 
-    // R100: the fake driver's add-card page; both routes 404 outside the fake-gateway environments (R107).
-    Route::get('payment-methods/create', [TestCardController::class, 'create'])->name('payment-methods.create');
-    Route::post('payment-methods', [TestCardController::class, 'store'])->name('payment-methods.store');
+    // R100/R248: the add-card page. The fake form 404s outside the fake-gateway environments (R107); the Stripe routes 404 unless Stripe is active.
+    Route::get('payment-methods/create', [PaymentMethodController::class, 'create'])->name('payment-methods.create');
+    Route::post('payment-methods', [PaymentMethodController::class, 'store'])->name('payment-methods.store');
+    Route::post('payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent'])->middleware('throttle:bookings')->name('payment-methods.setup-intent');
+    Route::post('payment-methods/stripe', [PaymentMethodController::class, 'storeStripe'])->middleware('throttle:bookings')->name('payment-methods.store-stripe');
 
     Route::get('weekly-slots/create', [WeeklySlotController::class, 'create'])->name('weekly-slots.create');
     Route::post('weekly-slots', [WeeklySlotController::class, 'store'])->middleware('throttle:bookings')->name('weekly-slots.store');
