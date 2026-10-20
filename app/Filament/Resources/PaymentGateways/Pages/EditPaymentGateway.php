@@ -59,6 +59,7 @@ class EditPaymentGateway extends EditRecord
             $record->save();
         } catch (LogicException $e) {
             Notification::make()->danger()->title('Not saved')->body($e->getMessage())->send();
+            $this->clearSecretState();
             $this->halt();
         }
 
@@ -87,6 +88,14 @@ class EditPaymentGateway extends EditRecord
     }
 
     protected function afterSave(): void
+    {
+        $this->clearSecretState();
+    }
+
+    /**
+     * A typed secret never stays in component state, whether the save went through or was refused.
+     */
+    private function clearSecretState(): void
     {
         foreach (array_keys($this->data ?? []) as $field) {
             if (str_starts_with((string) $field, PaymentGatewayForm::SECRET_PREFIX)) {

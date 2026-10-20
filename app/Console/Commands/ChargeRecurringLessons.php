@@ -6,6 +6,7 @@ use App\Actions\RecurringSlots\ChargeReservedLesson;
 use App\Enums\ChargeOutcome;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
+use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use Illuminate\Console\Command;
@@ -29,7 +30,11 @@ class ChargeRecurringLessons extends Command
      */
     public function handle(ChargeReservedLesson $charge): int
     {
-        $gateway = app(PaymentGatewayManager::class)->available() ? app(PaymentGateway::class) : null;
+        try {
+            $gateway = app(PaymentGatewayManager::class)->available() ? app(PaymentGateway::class) : null;
+        } catch (NoActivePaymentGateway) {
+            $gateway = null;
+        }
 
         if ($gateway === null) {
             $this->warn('No payment gateway is configured: nothing will be charged.');

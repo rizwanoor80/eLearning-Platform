@@ -68,8 +68,8 @@ class HandleInertiaRequests extends Middleware
             // renamed one shows in the footer at once.
             'footerPages' => fn (): array => PublicPages::footerLinks(),
             // True while the active gateway is in test mode (R246): pages that book, save a card or show
-            // a charge render the "Test mode — no real card is charged" banner from this. Lazy, so the
-            // registry is read only by a page that asks.
+            // a charge render the "Test mode — no real card is charged" banner from this. A closure, so it
+            // is read when the page props are resolved: one registry query per Inertia response.
             'paymentTestMode' => fn (): bool => app(PaymentGatewayManager::class)->testMode(),
             'features' => [
                 'match_requests' => EnsureFeatureEnabled::enabled('match_requests'),

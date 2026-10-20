@@ -146,7 +146,7 @@ it('does not resolve a row that was raw-updated to live', function () {
         ->and(fn () => $manager->active())->toThrow(NoActivePaymentGateway::class);
 });
 
-it('still lets an admin deactivate a live row after the flag is turned off under it', function () {
+it('still lets a live row that the flag no longer allows be saved without changing its mode', function () {
     config(['payments.live_mode_allowed' => true]);
     $stripe = pgStripe();
     $stripe->mode = PaymentGatewayMode::Live;

@@ -13,6 +13,7 @@ use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
@@ -140,6 +141,9 @@ class BookLessonController extends Controller
             ]);
         } catch (BookingException $e) {
             throw ValidationException::withMessages(['slot' => $e->getMessage()]);
+        } catch (NoActivePaymentGateway) {
+            // An admin deactivated the gateway between the check above and the action: nothing was written.
+            throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         } catch (PaymentCaptureException) {
             throw ValidationException::withMessages(['slot' => __('Payment did not go through. Nothing was booked.')]);
         }

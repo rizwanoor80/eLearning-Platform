@@ -31,6 +31,10 @@ class ActivatePaymentGateway
         }
 
         DB::transaction(function () use ($gateway, $actor): void {
+            // Lock every row first so two admins activating at once queue here instead of one of them
+            // meeting the one-active index.
+            PaymentGatewayAccount::query()->lockForUpdate()->get();
+
             $previous = PaymentGatewayAccount::query()->active()->value('code');
 
             PaymentGatewayAccount::query()->where('is_active', true)->update(['is_active' => false]);
