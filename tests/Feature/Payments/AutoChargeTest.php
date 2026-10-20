@@ -31,6 +31,7 @@ use App\Models\Learner;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PaymentGatewayAccount;
 use App\Models\PaymentMethod;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
@@ -403,8 +404,7 @@ it('renders the missed-window wording only for a charge_window_missed cancellati
 });
 
 it('still cancels a missed lesson when no gateway is configured, and charges nothing', function () {
-    app()->forgetInstance(PaymentGateway::class);
-    app()->offsetUnset(PaymentGateway::class);
+    PaymentGatewayAccount::query()->update(['is_active' => false]);
 
     ['slot' => $slot] = acSetup();
     $due = acLesson($slot, '2026-09-25 12:00:00', '2026-09-14 05:00:00');
@@ -685,8 +685,7 @@ it('leaves the lesson of an unbookable tutor alone until it falls due, and cance
 
 it('cancels for an unbookable tutor even when no gateway is configured, and says so rather than "could not be charged in time"', function () {
     Mail::fake();
-    app()->forgetInstance(PaymentGateway::class);
-    app()->offsetUnset(PaymentGateway::class);
+    PaymentGatewayAccount::query()->update(['is_active' => false]);
 
     ['tutor' => $tutor, 'slot' => $slot] = acSetup();
     $due = acLesson($slot);

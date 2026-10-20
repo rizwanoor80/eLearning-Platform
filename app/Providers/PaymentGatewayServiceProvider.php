@@ -2,15 +2,20 @@
 
 namespace App\Providers;
 
-use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Binds `FakePaymentGateway` to `PaymentGateway` on development-like environments only (R107,
- * ADR-016) — a stopgap for invariant 16 until CP5's `payment_gateways` registry replaces it. It
- * is an allow-list: every environment not named below, `production` above all, a typo and a
- * missing `APP_ENV` included, leaves the interface unbound, so resolving it fails loudly.
+ * Binds `PaymentGateway` to whichever driver the active `payment_gateways` row names (invariant 16,
+ * R246). The binding is not a singleton and the manager caches nothing: each resolution reads the
+ * registry, so deactivating a row takes effect for the next charge even in a long-lived worker.
+ * With no active row, or a row that may not run here, resolving throws `NoActivePaymentGateway`;
+ * callers that must degrade ask `PaymentGatewayManager::available()` first.
+ *
+ * `FAKE_ENVIRONMENTS` is the allow-list for the fake gateway and the fake video provider (R107,
+ * ADR-016, R131): every environment not named, `production` above all, a typo and a missing
+ * `APP_ENV` included, fails closed.
  */
 class PaymentGatewayServiceProvider extends ServiceProvider
 {
@@ -20,8 +25,9 @@ class PaymentGatewayServiceProvider extends ServiceProvider
     public const FAKE_ENVIRONMENTS = ['local', 'testing', 'rehearsal'];
 
     /**
-     * Whether this environment runs on the fake gateway: it decides the binding, the "Test mode"
-     * banner and whether a test card may be saved (`SaveTestCard::available()`).
+     * Whether this environment may run the fake gateway: the registry refuses to activate or
+     * resolve the fake row elsewhere, and `SaveTestCard::available()` needs it for the test-card
+     * screen.
      */
     public static function fakeGatewayAllowed(): bool
     {
@@ -30,8 +36,6 @@ class PaymentGatewayServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        if (self::fakeGatewayAllowed()) {
-            $this->app->bind(PaymentGateway::class, FakePaymentGateway::class);
-        }
+        $this->app->bind(PaymentGateway::class, fn ($app): PaymentGateway => $app->make(PaymentGatewayManager::class)->active());
     }
 }

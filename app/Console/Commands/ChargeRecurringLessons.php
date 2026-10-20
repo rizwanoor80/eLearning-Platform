@@ -7,6 +7,7 @@ use App\Enums\ChargeOutcome;
 use App\Enums\LessonStatus;
 use App\Models\Lesson;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -22,14 +23,13 @@ class ChargeRecurringLessons extends Command
      * `charge_attempts` / `next_charge_at` move only when an attempt's result is recorded — see
      * `ChargeReservedLesson`. One lesson that throws is reported and the rest still run.
      *
-     * `PaymentGateway` is bound only on `local`, `testing` and `rehearsal` until CP5 (R107,
-     * ADR-016). Where it is not bound (production above all) the command charges nothing, says so
-     * and exits 0, but still cancels lessons whose start has passed, because that never touches a
+     * The gateway is the active `payment_gateways` row (R246). Where there is none that can run
+     * (production until an admin activates one) the command charges nothing, says so and exits 0, but still cancels lessons whose start has passed, because that never touches a
      * gateway.
      */
     public function handle(ChargeReservedLesson $charge): int
     {
-        $gateway = app()->bound(PaymentGateway::class) ? app(PaymentGateway::class) : null;
+        $gateway = app(PaymentGatewayManager::class)->available() ? app(PaymentGateway::class) : null;
 
         if ($gateway === null) {
             $this->warn('No payment gateway is configured: nothing will be charged.');

@@ -14,13 +14,14 @@ use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
+use App\Models\Payment;
+use App\Models\PaymentGatewayAccount;
 use App\Models\PaymentMethod;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
 use App\Models\TutorSubject;
 use App\Models\User;
-use App\Providers\PaymentGatewayServiceProvider;
 use App\Services\Ledger\LedgerService;
 use App\Services\Payments\PaymentCaptureResult;
 use App\Services\Payments\PaymentGateway;
@@ -145,10 +146,8 @@ function bkCurrency(): string
 
 function bkBootAs(string $env): void
 {
-    app()->offsetUnset(PaymentGateway::class);
     app()['env'] = $env;
     config(['app.env' => $env]);
-    (new PaymentGatewayServiceProvider(app()))->register();
 }
 
 function bkDecliningGateway(): void
@@ -539,23 +538,24 @@ it('says the payment did not go through when the gateway declines, and leaves no
 
 // --- Gateway binding (R107) -------------------------------------------------------------------------
 
-it('shows the test-mode flag where the fake gateway is bound (not on production), and refuses booking plainly when no gateway is bound', function () {
+it('shows the test-mode flag where the fake gateway is active (not on production), and shows the unavailable page when no gateway is usable', function () {
     $setup = bkTutor();
     ['parent' => $parent, 'learner' => $learner] = bkParent();
 
-    $this->actingAs($parent)->get(bkUrl($setup['tutor']))->assertInertia(fn ($page) => $page->where('paymentTestMode', true)->where('can_pay', true));
+    $this->actingAs($parent)->get(bkUrl($setup['tutor']))->assertInertia(fn ($page) => $page->component('lessons/Book')->where('paymentTestMode', true));
 
     bkBootAs('production');
 
-    $this->actingAs($parent)->get(bkUrl($setup['tutor']))->assertInertia(fn ($page) => $page->where('paymentTestMode', false)->where('can_pay', false));
+    $this->actingAs($parent)->get(bkUrl($setup['tutor']))->assertInertia(fn ($page) => $page->component('lessons/BookingUnavailable')->where('paymentTestMode', false)->where('tutor.id', $setup['tutor']->id));
 
-    // The POST half tests the unbound-gateway guard in store(): the gateway binding is removed but the environment is put back to testing, so CSRF handling stays as in every other test.
+    // The POST half tests the no-gateway guard in store(): the row is switched off and the environment put back to testing, so CSRF handling stays as in every other test.
     bkBootAs('testing');
-    app()->offsetUnset(PaymentGateway::class);
+    PaymentGatewayAccount::query()->update(['is_active' => false]);
     $this->actingAs($parent)->post(route('lessons.store'), bkForm($setup, $learner))
         ->assertSessionHasErrors(['slot' => 'Booking is not available yet.']);
 
     expect(Lesson::query()->count())->toBe(0)
+        ->and(Payment::query()->count())->toBe(0)
         ->and(file_get_contents(resource_path('js/pages/lessons/Book.vue')))->toContain('<TestModeBanner')->toContain('Confirm and pay');
 });
 
