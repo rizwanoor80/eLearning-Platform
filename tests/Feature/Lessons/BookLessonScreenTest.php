@@ -576,7 +576,7 @@ it('has no card form and never sends a type or price from the browser', function
     expect($page)->not->toContain('card_number')->not->toContain('cvc')
         ->and($form)->toContain('learner_id')->toContain('starts_at')
         ->and($form)->not->toContain('type')->not->toContain('price')
-        ->and($page)->toContain("post('/lessons')");
+        ->and($page)->toContain(".post('/lessons'");
 });
 
 // --- Stale quote (review 1, item 10) ----------------------------------------------------------
