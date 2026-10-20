@@ -3,12 +3,14 @@
 namespace App\Actions\Payments;
 
 use App\Actions\RecordAuditLog;
+use App\Enums\PaymentGatewayCode;
 use App\Enums\PaymentMethodStatus;
 use App\Enums\TestCard;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Providers\PaymentGatewayServiceProvider;
 use App\Services\Payments\FakePaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
 use RuntimeException;
 
 /**
@@ -27,12 +29,14 @@ class SaveTestCard
     public function __construct(private readonly RecordAuditLog $audit) {}
 
     /**
-     * Whether the fake add-card page may be used here: only where the fake gateway is bound — an
-     * allow-list, so `production` and any unlisted `APP_ENV` are refused (R100, R107).
+     * Whether the fake add-card page may be used here: the active registry row is the fake gateway
+     * and this environment is on the allow-list, so `production` and any unlisted `APP_ENV` are
+     * refused (R100, R107, R246).
      */
     public static function available(): bool
     {
-        return PaymentGatewayServiceProvider::fakeGatewayAllowed();
+        return PaymentGatewayServiceProvider::fakeGatewayAllowed()
+            && app(PaymentGatewayManager::class)->activeRow()?->gatewayCode() === PaymentGatewayCode::Fake;
     }
 
     public function __invoke(User $account, TestCard $card): PaymentMethod

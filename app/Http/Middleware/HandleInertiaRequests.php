@@ -6,7 +6,7 @@ use App\Enums\Role;
 use App\Enums\TutorProfileStatus;
 use App\Models\TutorProfile;
 use App\Models\User;
-use App\Providers\PaymentGatewayServiceProvider;
+use App\Services\Payments\PaymentGatewayManager;
 use App\Support\Facades\Settings;
 use App\Support\PublicPages;
 use Illuminate\Http\Request;
@@ -67,9 +67,10 @@ class HandleInertiaRequests extends Middleware
             // Read from the pages table when a page renders, so a new page or a
             // renamed one shows in the footer at once.
             'footerPages' => fn (): array => PublicPages::footerLinks(),
-            // True only where the fake gateway runs (R107): pages that book, save a card or show a
-            // charge render the "Test mode — no real card is charged" banner from this.
-            'paymentTestMode' => PaymentGatewayServiceProvider::fakeGatewayAllowed(),
+            // True while the active gateway is in test mode (R246): pages that book, save a card or show
+            // a charge render the "Test mode — no real card is charged" banner from this. A closure, so it
+            // is read when the page props are resolved: one registry query per Inertia response.
+            'paymentTestMode' => fn (): bool => app(PaymentGatewayManager::class)->testMode(),
             'features' => [
                 'match_requests' => EnsureFeatureEnabled::enabled('match_requests'),
                 'reviews' => EnsureFeatureEnabled::enabled('reviews'),

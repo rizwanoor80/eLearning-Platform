@@ -6,52 +6,57 @@ use App\Enums\LessonStatus;
 use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PaymentGatewayAccount;
 use App\Models\PaymentMethod;
 use App\Models\RecurringSlot;
 use App\Models\TutorProfile;
 use App\Models\User;
 use App\Providers\PaymentGatewayServiceProvider;
 use App\Services\Payments\FakePaymentGateway;
+use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Support\Facades\Artisan;
 
 /**
- * CP4 (4f, R107 / ADR-016): the fake gateway is bound by an allow-list of environments and by
- * nothing else. These tests do not bind it by hand: they re-run the provider under each `APP_ENV`.
+ * CP4 (4f, R107 / ADR-016), reworked in 23a (R246): the fake gateway is resolved from the active
+ * `payment_gateways` row and runs only on an allow-list of environments. The migration leaves the
+ * fake row active under `testing`, so each test changes the environment (not the binding) and
+ * asserts what the registry resolves.
  */
 afterEach(function () {
     gbBootAs('testing');
 });
 
 /**
- * Re-runs the provider's registration as if the application had booted under `$env`.
+ * Re-runs the application as if it had booted under `$env`.
  */
 function gbBootAs(string $env): void
 {
-    app()->offsetUnset(PaymentGateway::class);
     app()['env'] = $env;
     config(['app.env' => $env]);
-    (new PaymentGatewayServiceProvider(app()))->register();
 }
 
-it('leaves the gateway unbound on production, staging and unknown environments', function (string $env) {
+it('resolves no gateway on production, staging and unknown environments, even with the fake row active', function (string $env) {
     gbBootAs($env);
 
-    expect(app()->bound(PaymentGateway::class))->toBeFalse()
+    expect(PaymentGatewayAccount::query()->active()->value('code'))->toBe('fake')
+        ->and(app(PaymentGatewayManager::class)->available())->toBeFalse()
         ->and(PaymentGatewayServiceProvider::fakeGatewayAllowed())->toBeFalse()
-        ->and(fn () => app(PaymentGateway::class))->toThrow(BindingResolutionException::class);
+        ->and(fn () => app(PaymentGatewayManager::class)->active())->toThrow(NoActivePaymentGateway::class)
+        ->and(fn () => app(PaymentGateway::class))->toThrow(NoActivePaymentGateway::class);
 })->with(['production', 'staging', 'prod', '']);
 
-it('binds the fake gateway on local, testing and rehearsal', function (string $env) {
+it('resolves the fake gateway on local, testing and rehearsal', function (string $env) {
     gbBootAs($env);
 
     expect(PaymentGatewayServiceProvider::fakeGatewayAllowed())->toBeTrue()
+        ->and(app(PaymentGatewayManager::class)->available())->toBeTrue()
         ->and(app(PaymentGateway::class))->toBeInstanceOf(FakePaymentGateway::class);
 })->with(['local', 'testing', 'rehearsal']);
 
-it('only allows a test card to be saved where the fake gateway is bound', function (string $env, bool $allowed) {
+it('only allows a test card to be saved where the fake gateway is the active one', function (string $env, bool $allowed) {
     gbBootAs($env);
 
     expect(SaveTestCard::available())->toBe($allowed);
@@ -62,6 +67,12 @@ it('only allows a test card to be saved where the fake gateway is bound', functi
     ['testing', true],
     ['rehearsal', true],
 ]);
+
+it('does not allow a test card to be saved when no gateway is active', function () {
+    PaymentGatewayAccount::query()->update(['is_active' => false]);
+
+    expect(SaveTestCard::available())->toBeFalse();
+});
 
 it('shares the test-mode flag with every page from the same predicate', function (string $env, bool $expected) {
     gbBootAs($env);
@@ -74,6 +85,13 @@ it('shares the test-mode flag with every page from the same predicate', function
     ['production', false],
     ['rehearsal', true],
 ]);
+
+it('shares no test-mode flag when no gateway is active', function () {
+    PaymentGatewayAccount::query()->update(['is_active' => false]);
+
+    test()->actingAs(User::factory()->create())->get(route('learners.index'))
+        ->assertInertia(fn ($page) => $page->where('paymentTestMode', false));
+});
 
 it('renders the banner through one component that all three portal pages use', function () {
     $component = file_get_contents(resource_path('js/components/TestModeBanner.vue'));
@@ -94,7 +112,7 @@ it('resolves BookLesson from the container on rehearsal with no manual binding',
 it('cannot resolve BookLesson on production', function () {
     gbBootAs('production');
 
-    expect(fn () => app(BookLesson::class))->toThrow(BindingResolutionException::class);
+    expect(fn () => app(BookLesson::class))->toThrow(NoActivePaymentGateway::class);
 });
 
 it('charges through the fake gateway on rehearsal when recurring:charge runs, and charges nothing on production', function () {

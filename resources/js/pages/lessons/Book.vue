@@ -21,7 +21,6 @@ const props = defineProps<{
     cancel_notice: string | null;
     alternatives: Array<{ starts_at: string; label: string }>;
     timezone: string;
-    can_pay: boolean;
 }>();
 
 defineOptions({
@@ -57,7 +56,7 @@ const form = useForm({
 // `slot` is a server-side form error key that is not one of the form's fields.
 const slotError = computed(() => (form.errors as Record<string, string | undefined>).slot);
 
-const canSubmit = computed(() => props.can_pay && props.slot_available && learner.value !== null && subject.value !== '' && learner.value.price !== null);
+const canSubmit = computed(() => props.slot_available && learner.value !== null && subject.value !== '' && learner.value.price !== null);
 
 function submit() {
     const [curriculum, subj] = subject.value.split('|');
@@ -95,8 +94,6 @@ function submit() {
             </ul>
             <p v-else class="text-muted-foreground text-sm">No open slots right now.</p>
         </div>
-
-        <p v-if="!can_pay" class="rounded-md border p-3 text-sm">Booking is not available yet.</p>
 
         <p v-if="learners.length === 0" class="rounded-md border p-3 text-sm">
             Add a learner before booking a lesson.

@@ -13,7 +13,8 @@ use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
-use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\NoActivePaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
 use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
@@ -35,7 +36,7 @@ use Inertia\Response;
  */
 class BookLessonController extends Controller
 {
-    public function create(Request $request, SlotCalculator $calculator): RedirectResponse|Response
+    public function create(Request $request, SlotCalculator $calculator, PaymentGatewayManager $gateways): RedirectResponse|Response
     {
         /** @var User $user */
         $user = $request->user();
@@ -49,6 +50,12 @@ class BookLessonController extends Controller
 
         if ($startsAt === null) {
             return to_route('tutors.show', $tutor->id);
+        }
+
+        // No active gateway: say so before any form, so nothing here can lead to a `payments` row. The
+        // parent sees a plain notice and the admin sees the matching one on the Payment gateways list.
+        if (! $gateways->available()) {
+            return Inertia::render('lessons/BookingUnavailable', ['tutor' => ['id' => $tutor->id, 'name' => $tutor->displayName()]]);
         }
 
         $slots = $calculator->forTutor($tutor, $user->timezone);
@@ -88,11 +95,10 @@ class BookLessonController extends Controller
                 'label' => $slot->startsAt->format('D j M, H:i'),
             ], array_slice($slots, 0, 12)),
             'timezone' => $user->timezone,
-            'can_pay' => app()->bound(PaymentGateway::class),
         ]);
     }
 
-    public function store(StoreLessonBookingRequest $request): RedirectResponse
+    public function store(StoreLessonBookingRequest $request, PaymentGatewayManager $gateways): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
@@ -109,8 +115,8 @@ class BookLessonController extends Controller
             throw ValidationException::withMessages(['slot' => __('That lesson cannot be booked.')]);
         }
 
-        // Production has no gateway bound until CP5 (ADR-016): say so plainly instead of failing with a 500.
-        if (! app()->bound(PaymentGateway::class)) {
+        // No active gateway in the registry (R246): say so plainly instead of failing with a 500.
+        if (! $gateways->available()) {
             throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         }
 
@@ -135,6 +141,9 @@ class BookLessonController extends Controller
             ]);
         } catch (BookingException $e) {
             throw ValidationException::withMessages(['slot' => $e->getMessage()]);
+        } catch (NoActivePaymentGateway) {
+            // An admin deactivated the gateway between the check above and the action: nothing was written.
+            throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         } catch (PaymentCaptureException) {
             throw ValidationException::withMessages(['slot' => __('Payment did not go through. Nothing was booked.')]);
         }
