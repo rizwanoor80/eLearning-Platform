@@ -38,8 +38,8 @@ function stripeIntent(array $overrides = []): array
         'amount_received' => 10000,
         'currency' => 'aed',
         'livemode' => false,
-        'latest_charge' => 'ch_test_1',
-        'metadata' => ['account_user_id' => (string) test()->payer->id],
+        'latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => false, 'amount_refunded' => 0],
+        'metadata' => ['kind' => 'checkout', 'account_user_id' => (string) test()->payer->id],
     ], $overrides);
 }
 
@@ -78,8 +78,14 @@ it('refuses an intent that is not what was booked', function (array $override, s
     'not all received' => [['amount_received' => 5000], 'amount_mismatch'],
     'wrong currency' => [['currency' => 'usd'], 'amount_mismatch'],
     'live intent on a test row' => [['livemode' => true], 'mode_mismatch'],
-    'someone else paid' => [['metadata' => ['account_user_id' => '999999']], 'payer_mismatch'],
-    'no payer recorded' => [['metadata' => []], 'payer_mismatch'],
+    'someone else paid' => [['metadata' => ['kind' => 'checkout', 'account_user_id' => '999999']], 'payer_mismatch'],
+    'no payer recorded' => [['metadata' => ['kind' => 'checkout']], 'payer_mismatch'],
+    'a saved-card charge, not a checkout' => [['metadata' => ['kind' => 'recurring', 'account_user_id' => '1']], 'not_a_checkout_intent'],
+    'no purpose recorded' => [['metadata' => ['account_user_id' => '1']], 'not_a_checkout_intent'],
+    'refunded afterwards' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => true, 'disputed' => false, 'amount_refunded' => 10000]], 'payment_not_completed'],
+    'partly refunded' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => false, 'amount_refunded' => 100]], 'payment_not_completed'],
+    'disputed' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => true, 'amount_refunded' => 0]], 'payment_not_completed'],
+    'no charge to check' => [['latest_charge' => null], 'payment_not_completed'],
 ]);
 
 it('refuses an intent that already pays for another lesson', function () {
@@ -88,6 +94,24 @@ it('refuses an intent that already pays for another lesson', function () {
     stripeChooses('pi_test_1');
 
     expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_already_used');
+});
+
+it('turns an unknown intent id into a decline, not a crash', function () {
+    $this->http->reply('GET /v1/payment_intents/pi_nope', ['error' => ['type' => 'invalid_request_error', 'code' => 'resource_missing', 'message' => 'No such payment_intent']], 404);
+    stripeChooses('pi_nope');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_not_found');
+});
+
+it('keeps its keys out of a dump and refuses to be serialised', function () {
+    $gateway = new StripePaymentGateway('sk_test_dump_probe', 'whsec_dump_probe');
+
+    ob_start();
+    var_dump($gateway);
+    $dump = (string) ob_get_clean();
+
+    expect($dump)->not->toContain('dump_probe')
+        ->and(fn () => serialize($gateway))->toThrow(LogicException::class);
 });
 
 it('lets an ambiguous failure propagate instead of calling it a decline', function () {

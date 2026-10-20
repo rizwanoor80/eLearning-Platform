@@ -9,7 +9,9 @@ use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
+use LogicException;
 use SensitiveParameter;
+use Stripe\Charge;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\CardException;
 use Stripe\Exception\InvalidRequestException;
@@ -37,6 +39,11 @@ final class StripePaymentGateway implements PaymentGateway
 {
     public const CURRENCY = 'aed';
 
+    /** The `metadata.kind` the checkout (23c) puts on the intent it creates for a booking. */
+    public const KIND_CHECKOUT = 'checkout';
+
+    private const KIND_RECURRING = 'recurring';
+
     /** Stripe's own default: a webhook timestamp older than this is a replay. */
     private const WEBHOOK_TOLERANCE_SECONDS = 300;
 
@@ -57,6 +64,24 @@ final class StripePaymentGateway implements PaymentGateway
     }
 
     /**
+     * A dump or a serialisation of this object must not carry the keys it holds.
+     *
+     * @return array<string, mixed>
+     */
+    public function __debugInfo(): array
+    {
+        return ['driver' => $this->driver(), 'live' => $this->live];
+    }
+
+    /**
+     * @return never
+     */
+    public function __serialize(): array
+    {
+        throw new LogicException('A payment gateway holds credentials and cannot be serialised.');
+    }
+
+    /**
      * Verifies, and moves no money: the parent's browser already confirmed the intent (R256). `capture`
      * takes no PaymentIntent id (the interface is frozen, R255), so the checkout (23c) names it in the
      * request-scoped `CheckoutIntent` before `BookLesson` runs; without one nothing is captured. The
@@ -74,7 +99,12 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('no_payment_intent');
         }
 
-        $intent = $this->client->paymentIntents->retrieve($intentId);
+        try {
+            $intent = $this->client->paymentIntents->retrieve($intentId, ['expand' => ['latest_charge']]);
+        } catch (InvalidRequestException) {
+            // An id that does not exist (or is not this account's) is the caller's mistake, not an outage.
+            throw new PaymentCaptureException('payment_not_found');
+        }
 
         if ((bool) $intent->livemode !== $this->live) {
             throw new PaymentCaptureException('mode_mismatch');
@@ -88,8 +118,21 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('amount_mismatch');
         }
 
+        // Only an intent the checkout made for a booking can pay for one: not a saved-card charge, and
+        // not an intent of this account's that was made for something else.
+        if (($intent->metadata['kind'] ?? null) !== self::KIND_CHECKOUT) {
+            throw new PaymentCaptureException('not_a_checkout_intent');
+        }
+
         if ((string) ($intent->metadata['account_user_id'] ?? '') !== (string) $lesson->booked_by_user_id) {
             throw new PaymentCaptureException('payer_mismatch');
+        }
+
+        // A succeeded intent stays `succeeded` after a refund or a chargeback, so ask the charge.
+        $charge = $intent->latest_charge;
+
+        if (! $charge instanceof Charge || $charge->refunded || $charge->disputed || (int) $charge->amount_refunded !== 0) {
+            throw new PaymentCaptureException('payment_not_completed');
         }
 
         if (Payment::query()->where('gateway', $this->driver())->where('gateway_ref', $intent->id)->exists()) {
@@ -162,6 +205,7 @@ final class StripePaymentGateway implements PaymentGateway
                 'off_session' => true,
                 'confirm' => true,
                 'metadata' => [
+                    'kind' => self::KIND_RECURRING,
                     'lesson_id' => (string) $lesson->id,
                     'attempt' => (string) ($lesson->charge_attempts + 1),
                     'account_user_id' => (string) $method->account_user_id,

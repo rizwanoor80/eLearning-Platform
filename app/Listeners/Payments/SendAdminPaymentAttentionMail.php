@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Mail;
  */
 class SendAdminPaymentAttentionMail implements ShouldQueue
 {
+    /** Dispatched inside the webhook's transaction: the worker must not see the payment before it commits, and a rollback sends nothing. */
+    public bool $afterCommit = true;
+
     public function handle(PaymentNeedsAttention $event): void
     {
         if (($admins = AdminRecipients::resolve()) !== []) {
