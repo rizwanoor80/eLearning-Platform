@@ -35,13 +35,40 @@ function stripeIntent(array $overrides = []): array
     return array_replace([
         'id' => 'pi_test_1',
         'object' => 'payment_intent',
-        'status' => 'succeeded',
+        'status' => 'requires_capture',
+        'capture_method' => 'manual',
         'amount' => 10000,
-        'amount_received' => 10000,
+        'amount_capturable' => 10000,
+        'amount_received' => 0,
         'currency' => 'aed',
         'livemode' => false,
+        'latest_charge' => 'ch_test_1',
+        'metadata' => stripeBinding(),
+    ], $overrides);
+}
+
+/** The metadata the checkout writes for `$lesson`'s booking. */
+function stripeBinding(array $overrides = []): array
+{
+    $lesson = test()->lesson;
+
+    return array_replace([
+        'kind' => 'checkout',
+        'account_user_id' => (string) test()->payer->id,
+        'learner_id' => (string) $lesson->learner_id,
+        'tutor_profile_id' => (string) $lesson->tutor_profile_id,
+        'starts_at' => $lesson->starts_at->clone()->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT),
+    ], $overrides);
+}
+
+/** What Stripe returns once the held intent is captured. */
+function stripeCaptured(array $overrides = []): array
+{
+    return array_replace(stripeIntent(), [
+        'status' => 'succeeded',
+        'amount_capturable' => 0,
+        'amount_received' => 10000,
         'latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => false, 'amount_refunded' => 0],
-        'metadata' => ['kind' => 'checkout', 'account_user_id' => (string) test()->payer->id],
     ], $overrides);
 }
 
@@ -50,8 +77,10 @@ function stripeChooses(string $intentId): void
     app(CheckoutIntent::class)->set($intentId);
 }
 
-it('captures by verifying the intent the parent confirmed, and keeps only a whitelisted summary', function () {
-    $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeIntent(['customer' => 'cus_secret', 'payment_method' => 'pm_secret']));
+it('captures the held intent the parent confirmed, and keeps only a whitelisted summary', function () {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent(['customer' => 'cus_secret', 'payment_method' => 'pm_secret']))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', stripeCaptured(['customer' => 'cus_secret', 'payment_method' => 'pm_secret']));
     stripeChooses('pi_test_1');
 
     $result = $this->gateway->capture($this->lesson, Money::fils(10000), (string) $this->lesson->id);
@@ -59,7 +88,21 @@ it('captures by verifying the intent the parent confirmed, and keeps only a whit
     expect($result->gatewayRef)->toBe('pi_test_1')
         ->and($result->rawResponse)->toBe(['driver' => 'stripe', 'id' => 'pi_test_1', 'status' => 'succeeded', 'amount' => 10000, 'currency' => 'aed', 'latest_charge' => 'ch_test_1'])
         ->and(json_encode($result->rawResponse))->not->toContain('cus_secret')->not->toContain('pm_secret')
-        ->and($this->http->requests)->toHaveCount(1);
+        ->and($this->http->requests)->toHaveCount(2);
+});
+
+it('captures once per intent: the capture call carries an idempotency key derived from the intent', function () {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', stripeCaptured());
+    stripeChooses('pi_test_1');
+
+    $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+
+    $calls = $this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture');
+
+    expect($calls)->toHaveCount(1)
+        ->and($this->http->idempotencyKeyOf($calls[0]))->toBe('capture-pi_test_1');
 });
 
 it('captures nothing when the checkout named no intent', function () {
@@ -67,35 +110,74 @@ it('captures nothing when the checkout named no intent', function () {
         ->and($this->http->requests)->toHaveCount(0);
 });
 
-it('refuses an intent that is not what was booked', function (array $override, string $reason) {
+it('refuses an intent that is not the held authorisation for this booking, and never calls capture', function (array $override, string $reason) {
     $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeIntent($override));
     stripeChooses('pi_test_1');
 
-    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, $reason);
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, $reason)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
 })->with([
-    'not completed' => [['status' => 'requires_payment_method'], 'payment_not_completed'],
+    'not confirmed yet' => [['status' => 'requires_payment_method'], 'payment_not_completed'],
     'processing' => [['status' => 'processing'], 'payment_not_completed'],
-    'too little' => [['amount' => 9999, 'amount_received' => 9999], 'amount_mismatch'],
-    'too much' => [['amount' => 10001, 'amount_received' => 10001], 'amount_mismatch'],
-    'not all received' => [['amount_received' => 5000], 'amount_mismatch'],
+    'already captured' => [['status' => 'succeeded', 'amount_received' => 10000], 'payment_not_completed'],
+    'cancelled' => [['status' => 'canceled'], 'payment_not_completed'],
+    'automatic capture' => [['capture_method' => 'automatic'], 'payment_not_completed'],
+    'too little' => [['amount' => 9999, 'amount_capturable' => 9999], 'amount_mismatch'],
+    'too much' => [['amount' => 10001, 'amount_capturable' => 10001], 'amount_mismatch'],
+    'less held than asked' => [['amount_capturable' => 5000], 'amount_mismatch'],
     'wrong currency' => [['currency' => 'usd'], 'amount_mismatch'],
     'live intent on a test row' => [['livemode' => true], 'mode_mismatch'],
-    'someone else paid' => [['metadata' => ['kind' => 'checkout', 'account_user_id' => '999999']], 'payer_mismatch'],
-    'no payer recorded' => [['metadata' => ['kind' => 'checkout']], 'payer_mismatch'],
     'a saved-card charge, not a checkout' => [['metadata' => ['kind' => 'recurring', 'account_user_id' => '1']], 'not_a_checkout_intent'],
     'no purpose recorded' => [['metadata' => ['account_user_id' => '1']], 'not_a_checkout_intent'],
-    'refunded afterwards' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => true, 'disputed' => false, 'amount_refunded' => 10000]], 'payment_not_completed'],
-    'partly refunded' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => false, 'amount_refunded' => 100]], 'payment_not_completed'],
-    'disputed' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => true, 'amount_refunded' => 0]], 'payment_not_completed'],
-    'no charge to check' => [['latest_charge' => null], 'payment_not_completed'],
 ]);
+
+it('refuses an authorisation made by or for someone else', function (array $binding, string $reason) {
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeIntent(['metadata' => stripeBinding($binding)]));
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, $reason)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
+})->with([
+    'another parent paid' => [['account_user_id' => '999999'], 'payer_mismatch'],
+    'no payer recorded' => [['account_user_id' => ''], 'payer_mismatch'],
+    'another learner' => [['learner_id' => '999999'], 'booking_mismatch'],
+    'no learner recorded' => [['learner_id' => ''], 'booking_mismatch'],
+    'another tutor' => [['tutor_profile_id' => '999999'], 'booking_mismatch'],
+    'another time' => [['starts_at' => '2001-01-01T00:00:00Z'], 'booking_mismatch'],
+    'no time recorded' => [['starts_at' => ''], 'booking_mismatch'],
+]);
+
+it('refuses a capture that did not leave a clean, fully paid charge', function (array $override) {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', stripeCaptured($override));
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_not_completed');
+})->with([
+    'still not succeeded' => [['status' => 'processing']],
+    'not all received' => [['amount_received' => 5000]],
+    'refunded' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => true, 'disputed' => false, 'amount_refunded' => 10000]]],
+    'disputed' => [['latest_charge' => ['id' => 'ch_test_1', 'object' => 'charge', 'refunded' => false, 'disputed' => true, 'amount_refunded' => 0]]],
+    'no charge to check' => [['latest_charge' => null]],
+]);
+
+it('turns a capture Stripe will no longer take into a decline, not a crash', function () {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', ['error' => ['type' => 'invalid_request_error', 'code' => 'payment_intent_unexpected_state', 'message' => 'canceled']], 400);
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_not_completed');
+});
 
 it('refuses an intent that already pays for another lesson', function () {
     Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1']);
     $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeIntent());
     stripeChooses('pi_test_1');
 
-    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_already_used');
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_already_used')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
 });
 
 it('turns an unknown intent id into a decline, not a crash', function () {
@@ -159,7 +241,7 @@ it('refuses to save a card from a setup that is not complete or not this account
 
 it('charges a saved card off session with the caller\'s idempotency key', function () {
     $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1', 'gateway_token' => 'pm_test_1']);
-    $this->http->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_2']));
+    $this->http->reply('POST /v1/payment_intents', stripeCaptured(['id' => 'pi_test_2']));
 
     $result = $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'lesson:7:attempt:1');
     [$request] = $this->http->requestsTo('POST /v1/payment_intents');
@@ -181,8 +263,8 @@ it('treats a decline and a card that needs the cardholder as ordinary failed att
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k2'))->toThrow(PaymentCaptureException::class, 'authentication_required');
 
     $this->http
-        ->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_4', 'status' => 'requires_action']))
-        ->reply('POST /v1/payment_intents/pi_test_4/cancel', stripeIntent(['id' => 'pi_test_4', 'status' => 'canceled']));
+        ->reply('POST /v1/payment_intents', stripeCaptured(['id' => 'pi_test_4', 'status' => 'requires_action']))
+        ->reply('POST /v1/payment_intents/pi_test_4/cancel', stripeCaptured(['id' => 'pi_test_4', 'status' => 'canceled']));
 
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k3'))->toThrow(PaymentCaptureException::class, 'authentication_required')
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_4/cancel'))->toHaveCount(1);
@@ -213,7 +295,7 @@ it('turns a card Stripe no longer knows into a failed attempt, so the slot is no
 
 it('lets a still-processing saved-card charge propagate and does not cancel it', function () {
     $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
-    $this->http->reply('POST /v1/payment_intents', stripeIntent(['id' => 'pi_test_5', 'status' => 'processing']));
+    $this->http->reply('POST /v1/payment_intents', stripeCaptured(['id' => 'pi_test_5', 'status' => 'processing']));
 
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(RuntimeException::class)
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_5/cancel'))->toHaveCount(0);
