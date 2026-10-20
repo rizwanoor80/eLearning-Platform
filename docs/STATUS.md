@@ -1,11 +1,11 @@
-# STATUS — cycle 21 r1 — programme steady state IV, END (21a done); written 2026-10-19 11:55
-Tests: **2864 passed / 21441 assertions** on `main` code `2b3e0a4` (push CI green, run 39246066918) · Advisor: 1 consultation (21a, Opus 5.5; a Fable 5.1 attempt failed on a rate limit and does not count) · Review: 21a round 1, Opus 5.5, 0 High / 0 Medium / 4 Low (3 fixed, 1 deferred) · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: at least 2. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000, `CLAUDE_CODE_REMOTE`=true.
+# STATUS — cycle 22 r1 — programme steady state V, 22a in progress; written 2026-10-20 09:05
+Tests: **2864 passed / 21441 assertions** on `main` code `2b3e0a4` (cycle 21's last green; 22a not yet run) · Advisor: 0 so far this cycle (minimum 1 for 22a) · Review: n/a yet · Context size: not measured by the tool (cloud session, no `/context`); compactions this session: 0. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT`=1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`=200000, `CLAUDE_CODE_REMOTE`=true.
 
 ## §1 Git state
-- Code on `origin/main` = `2b3e0a4` (PR #66 squash); docs-only commits on top. `rehearsal` = `2b3e0a4`, verified. No open PR. Local branches `cp/19b-masker-prepass`, `cp/20b-suspension-settlement` (no commits), `cp/20c-lesson-page-clock`, `cp/21a-suspension-settlement` remain (no branch deleted). Harness branch `claude/confident-mendel-80sp0u` is scratch (R210). No production deploy.
+- `main` = `daaf80a` (PLAN cycle 22 r1, docs-only) over code `2b3e0a4`. `rehearsal` = `2b3e0a4`. No open PR. No production deploy.
 
 ## §2 Step map
-1. START, R222 check, board, close Owner action 15 — [done]. 2. 21a (R238) — [done: merged `2b3e0a4`, record, rehearsal deploy and R213 green]. 3. END — [done].
+1. START, R222 check, board — [done]. 2. 22a (R242–R244, ADR-029) — [in progress]. 3. END — [not started].
 
 ## §3 What changed this cycle
 - 21a (PR #66, `2b3e0a4`): new `app/Actions/Lessons/SettleSuspendedLesson.php`, called first by `SettleEndedLesson` for `in_progress` and `confirmed` lessons past end + `video.close_grace_minutes`. Keyed on a `lesson.room_closed_suspension` audit row naming the lesson's own tutor user or account owner. Parent only + `confirmed`: `Confirmed → CancelledByParent → CompletedReported`, `payTutor`, `cancel_reason` `account_suspended`. Parent only + `in_progress` and not both joined: `InProgress → NoShowStudent → CompletedReported`, `payTutor`. Tutor (alone or with the parent) + `in_progress` and not both joined: `InProgress → NoShowTutor → Refunded`, `refundParent`, no strike. Everything else unchanged. Every settled row writes `lesson.settled_suspension`. Atomic: both transitions and the audit row in one transaction; the join facts are re-read on the locked row (a late join throws `LessonTransitionException` and the next sweep completes the lesson). No frozen file, no migration.
@@ -19,7 +19,7 @@ Tests: **2864 passed / 21441 assertions** on `main` code `2b3e0a4` (push CI gree
 - R214: `mail.from_name` = `trusTutor Team` (read at the 21a deploy). Owner action 5 stays open.
 
 ## §5 Why stopping
-END of the queue (programme "steady state IV"). Nothing further is authorised. Handoff for a new session: done: 21a merged and verified on rehearsal; next: the planner's next PLAN; ruled out: editing `SettleEndedLessons`, the cancellation listeners, or the state machine (outside the boundary or frozen).
+Not stopping: 22a is in progress (programme mode, R224). Cycle 21's record below (§3, §4, §6) carries until 22a rewrites it.
 
 ## §6 Mismatches
 - **Planner text vs repo, "system user":** R238 says `cancelled_by_user_id` and the actor are "the system user"; none exists. The code uses the null actor, as `SettleEndedLesson::unattended()` already does.
@@ -38,7 +38,7 @@ Owner action 5 (`mail.from_name`, currently `trusTutor Team`) stays open and non
 ## §8 Programme board
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 21a | `cp/21a-suspension-settlement` | #66 | round 1: 0 High / 0 Medium / 4 Low (3 fixed, 1 deferred) | merged `2b3e0a4`, rehearsal verified |
+| 22a | `cp/22a-suspension-settlement-finish` | — | — | in progress |
 Resume cap 12, 0 used.
 
 
