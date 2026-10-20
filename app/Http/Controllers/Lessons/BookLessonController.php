@@ -3,8 +3,7 @@
 namespace App\Http\Controllers\Lessons;
 
 use App\Actions\Lessons\BookLesson;
-use App\Enums\LessonStatus;
-use App\Enums\LessonType;
+use App\Actions\Payments\CancelCheckoutIntent;
 use App\Exceptions\BookingException;
 use App\Exceptions\PaymentCaptureException;
 use App\Http\Controllers\Controller;
@@ -18,7 +17,9 @@ use App\Services\Payments\PaymentGatewayManager;
 use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
 use App\Support\Facades\Settings;
-use App\Support\Money;
+use App\Support\Lessons\LessonQuote;
+use App\Support\Payments\ActiveStripe;
+use App\Support\Payments\CheckoutIntent;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +37,7 @@ use Inertia\Response;
  */
 class BookLessonController extends Controller
 {
-    public function create(Request $request, SlotCalculator $calculator, PaymentGatewayManager $gateways): RedirectResponse|Response
+    public function create(Request $request, SlotCalculator $calculator, PaymentGatewayManager $gateways, LessonQuote $quotes, ActiveStripe $stripe): RedirectResponse|Response
     {
         /** @var User $user */
         $user = $request->user();
@@ -54,7 +55,7 @@ class BookLessonController extends Controller
 
         // No active gateway: say so before any form, so nothing here can lead to a `payments` row. The
         // parent sees a plain notice and the admin sees the matching one on the Payment gateways list.
-        if (! $gateways->available()) {
+        if (! $gateways->available() || ($stripe->isActive() && $stripe->publishableKey() === null)) {
             return Inertia::render('lessons/BookingUnavailable', ['tutor' => ['id' => $tutor->id, 'name' => $tutor->displayName()]]);
         }
 
@@ -80,7 +81,7 @@ class BookLessonController extends Controller
             'learners' => $learners->map(fn (Learner $learner): array => [
                 'id' => $learner->id,
                 'display_name' => $learner->display_name,
-                ...$this->quote($learner, $tutor),
+                ...$quotes->describe($learner, $tutor),
                 // The subject row to preselect: the learner's own curriculum, when this tutor teaches it.
                 'preselect' => collect($subjects)->first(fn (array $row): bool => $row['curriculum_id'] === $learner->curriculum_id),
             ])->all(),
@@ -95,14 +96,16 @@ class BookLessonController extends Controller
                 'label' => $slot->startsAt->format('D j M, H:i'),
             ], array_slice($slots, 0, 12)),
             'timezone' => $user->timezone,
+            // R248: null for the fake driver, whose booking form posts straight to `lessons.store`.
+            'stripe' => $stripe->isActive() ? ['publishable_key' => $stripe->publishableKey()] : null,
         ]);
     }
 
-    public function store(StoreLessonBookingRequest $request, PaymentGatewayManager $gateways): RedirectResponse
+    public function store(StoreLessonBookingRequest $request, PaymentGatewayManager $gateways, LessonQuote $quotes, ActiveStripe $stripe): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
-        /** @var array{learner_id: int, tutor_id: int, curriculum_id: int, subject_id: int, starts_at: string, quote_token: string} $data */
+        /** @var array{learner_id: int, tutor_id: int, curriculum_id: int, subject_id: int, starts_at: string, quote_token: string, payment_intent_id?: string|null} $data */
         $data = $request->validated();
 
         // A learner that is not the caller's, and a tutor that is not bookable (or does not exist), are
@@ -111,26 +114,52 @@ class BookLessonController extends Controller
         $learner = Learner::query()->withTrashed()->find($data['learner_id']);
         $tutor = TutorProfile::query()->bookable()->find($data['tutor_id']);
 
+        // R248: the browser has already held the card by the time it posts, so every refusal below
+        // releases that hold (a no-op when there is none, or when the intent is not this account's).
+        $heldIntent = $stripe->isActive() ? ($data['payment_intent_id'] ?? null) : null;
+
         if ($learner === null || $tutor === null || ! $user->can('bookFor', [Lesson::class, $learner])) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('That lesson cannot be booked.')]);
         }
 
         // No active gateway in the registry (R246): say so plainly instead of failing with a 500.
         if (! $gateways->available()) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         }
 
         $startsAt = $this->parseStartsAt($data['starts_at']);
 
         if ($startsAt === null) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['starts_at' => __('That time is not valid.')]);
         }
 
         // What the parent confirmed is what the server would charge right now: the token was made from
         // the type and price shown. Someone who booked the trial in another tab, or a rate or discount
         // change since the page was drawn, makes it stale; refuse and let the page show the new quote.
-        if (! hash_equals($this->quoteToken($learner, $tutor), $data['quote_token'])) {
+        if (! $quotes->isCurrent($learner, $tutor, $data['quote_token'])) {
+            $this->releaseHold($user, $heldIntent);
+
             throw ValidationException::withMessages(['slot' => __('The type or price of this lesson has changed. Please review it and confirm again.')]);
+        }
+
+        // R248: with Stripe the card was confirmed in the browser first and only held. Without the id of
+        // that hold there is nothing to take, so refuse before any lesson or payment row exists.
+        $intentId = null;
+
+        if ($stripe->isActive()) {
+            $intentId = $data['payment_intent_id'] ?? null;
+
+            if ($intentId === null) {
+                throw ValidationException::withMessages(['slot' => __('Please enter your card details to book this lesson.')]);
+            }
+
+            app(CheckoutIntent::class)->set($intentId);
         }
 
         try {
@@ -140,17 +169,35 @@ class BookLessonController extends Controller
                 'starts_at' => $startsAt,
             ]);
         } catch (BookingException $e) {
-            throw ValidationException::withMessages(['slot' => $e->getMessage()]);
+            $this->releaseHold($user, $intentId);
+
+            // `BookLesson` words this one for the admin who has to chase it, with the lesson's id. The parent
+            // is told the truth without it: the money was taken and will be returned.
+            throw ValidationException::withMessages(['slot' => str_starts_with($e->getMessage(), 'Payment was captured')
+                ? __('Your payment was taken but we could not confirm the lesson. We will refund you; please contact us if you do not see it within a few days.')
+                : $e->getMessage()]);
         } catch (NoActivePaymentGateway) {
             // An admin deactivated the gateway between the check above and the action: nothing was written.
+            $this->releaseHold($user, $intentId);
+
             throw ValidationException::withMessages(['slot' => __('Booking is not available yet.')]);
         } catch (PaymentCaptureException) {
+            $this->releaseHold($user, $intentId);
+
             throw ValidationException::withMessages(['slot' => __('Payment did not go through. Nothing was booked.')]);
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Lesson confirmed.')]);
 
         return to_route('learners.show', $learner);
+    }
+
+    /** R248: a booking that did not happen must not leave the parent's card held. Quiet and safe to call for any failure. */
+    private function releaseHold(User $user, ?string $intentId): void
+    {
+        if ($intentId !== null) {
+            app(CancelCheckoutIntent::class)($user, $intentId);
+        }
     }
 
     /**
@@ -169,58 +216,6 @@ class BookLessonController extends Controller
         }
 
         return trans_choice('This lesson starts within :count hour, so it cannot be cancelled for a refund.|This lesson starts within :count hours, so it cannot be cancelled for a refund.', $hours);
-    }
-
-    /**
-     * What `BookLesson` will decide for this learner and tutor, in the same terms and from the same
-     * data: the first lesson of the pair that is not in a slot-freeing status is the trial, at
-     * `trialPrice()`, otherwise a regular lesson at the hourly rate. Display only — the action
-     * decides again at booking time and freezes the price it computes.
-     *
-     * @return array{type: string, type_label: string, price: string|null, quote_token: string}
-     */
-    private function quote(Learner $learner, TutorProfile $tutor): array
-    {
-        [$isTrial, $price] = $this->decide($learner, $tutor);
-
-        return [
-            'type' => $isTrial ? LessonType::Trial->value : LessonType::Regular->value,
-            'type_label' => $isTrial ? __('Trial lesson') : __('Lesson'),
-            'price' => $price?->format((string) Settings::get('currency_code')),
-            'quote_token' => $this->quoteToken($learner, $tutor),
-        ];
-    }
-
-    /**
-     * @return array{0: bool, 1: Money|null} whether the next lesson would be the trial, and its price
-     */
-    private function decide(Learner $learner, TutorProfile $tutor): array
-    {
-        $isTrial = ! Lesson::query()
-            ->where('learner_id', $learner->id)
-            ->where('tutor_profile_id', $tutor->id)
-            ->whereNotIn('status', LessonStatus::freeingSlotValues())
-            ->exists();
-
-        return [$isTrial, $isTrial ? $tutor->trialPrice() : $tutor->hourly_rate];
-    }
-
-    /**
-     * An opaque, keyed fingerprint of the quote (learner, tutor, type, price in fils, currency). The page
-     * carries it and the form returns it; the browser can neither read a type or price out of it nor
-     * choose one — a wrong or stale token is only ever refused.
-     */
-    private function quoteToken(Learner $learner, TutorProfile $tutor): string
-    {
-        [$isTrial, $price] = $this->decide($learner, $tutor);
-
-        return hash_hmac('sha256', implode('|', [
-            $learner->id,
-            $tutor->id,
-            $isTrial ? LessonType::Trial->value : LessonType::Regular->value,
-            $price?->toFils() ?? 'none',
-            (string) Settings::get('currency_code'),
-        ]), (string) config('app.key'));
     }
 
     private function parseStartsAt(mixed $value): ?CarbonImmutable

@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -46,6 +47,9 @@ final class StripePaymentGateway implements PaymentGateway
 
     private const KIND_RECURRING = 'recurring';
 
+    /** The instant format the checkout writes into `metadata.starts_at` (the booking form's own). */
+    public const STARTS_AT_FORMAT = 'Y-m-d\TH:i:s\Z';
+
     /** Stripe's own default: a webhook timestamp older than this is a replay. */
     private const WEBHOOK_TOLERANCE_SECONDS = 300;
 
@@ -84,14 +88,20 @@ final class StripePaymentGateway implements PaymentGateway
     }
 
     /**
-     * Verifies, and moves no money: the parent's browser already confirmed the intent (R256). `capture`
-     * takes no PaymentIntent id (the interface is frozen, R255), so the checkout (23c) names it in the
-     * request-scoped `CheckoutIntent` before `BookLesson` runs; without one nothing is captured. The
-     * intent must have succeeded and been received in full, for exactly this amount in AED, in this
-     * row's mode, and have been created for this booking's account; and it must not already be the
-     * reference of another payment, so one intent cannot pay for two lessons (the unique index on
-     * `payments (gateway, gateway_ref)` closes the race this read cannot). The `$idempotencyKey` is
-     * not used: a retrieval has nothing to repeat.
+     * Captures the authorisation the parent's browser confirmed (R248, R256). The checkout creates the
+     * intent with `capture_method: manual`, so the browser's confirmation (3-D Secure included) only
+     * holds the money and a booking that then fails costs the parent nothing: the checkout cancels the
+     * hold (`CancelCheckoutIntent`) and Stripe releases it, with no refund and no ledger entry. Money
+     * moves only here, after every check below has passed.
+     *
+     * `capture` takes no PaymentIntent id (the interface is frozen, R255), so the checkout names it in
+     * the request-scoped `CheckoutIntent` before `BookLesson` runs; without one nothing is captured. The
+     * intent must be held (`requires_capture`) for exactly this amount in AED, in this row's mode, and
+     * made by the checkout for this very booking: this account, this learner, this tutor and this start
+     * time, so one parent's authorisation cannot pay for another lesson. It must not already be the
+     * reference of another payment (the unique index on `payments (gateway, gateway_ref)` closes the
+     * race this read cannot). The capture's idempotency key comes from the intent, so a retry after a
+     * lost response captures once.
      */
     public function capture(Lesson $lesson, Money $amount, string $idempotencyKey): PaymentCaptureResult
     {
@@ -102,7 +112,7 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         try {
-            $intent = $this->client->paymentIntents->retrieve($intentId, ['expand' => ['latest_charge']]);
+            $intent = $this->client->paymentIntents->retrieve($intentId);
         } catch (InvalidRequestException) {
             // An id that does not exist (or is not this account's) is the caller's mistake, not an outage.
             throw new PaymentCaptureException('payment_not_found');
@@ -112,11 +122,13 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('mode_mismatch');
         }
 
-        if ($intent->status !== PaymentIntent::STATUS_SUCCEEDED) {
+        // `succeeded` here means it was captured already (by another booking, or a manual-capture-less
+        // intent): either way it is not an authorisation this booking may take.
+        if ($intent->status !== PaymentIntent::STATUS_REQUIRES_CAPTURE || $intent->capture_method !== 'manual') {
             throw new PaymentCaptureException('payment_not_completed');
         }
 
-        if ($intent->amount !== $amount->toFils() || $intent->amount_received !== $amount->toFils() || strtolower((string) $intent->currency) !== self::CURRENCY) {
+        if ($intent->amount !== $amount->toFils() || $intent->amount_capturable !== $amount->toFils() || strtolower((string) $intent->currency) !== self::CURRENCY) {
             throw new PaymentCaptureException('amount_mismatch');
         }
 
@@ -130,18 +142,43 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('payer_mismatch');
         }
 
-        // A succeeded intent stays `succeeded` after a refund or a chargeback, so ask the charge.
-        $charge = $intent->latest_charge;
+        $bound = [
+            'learner_id' => (string) $lesson->learner_id,
+            'tutor_profile_id' => (string) $lesson->tutor_profile_id,
+            'starts_at' => $lesson->starts_at->clone()->utc()->format(self::STARTS_AT_FORMAT),
+        ];
 
-        if (! $charge instanceof Charge || $charge->refunded || $charge->disputed || (int) $charge->amount_refunded !== 0) {
-            throw new PaymentCaptureException('payment_not_completed');
+        foreach ($bound as $key => $expected) {
+            if ((string) ($intent->metadata[$key] ?? '') !== $expected) {
+                throw new PaymentCaptureException('booking_mismatch');
+            }
         }
 
         if (Payment::query()->where('gateway', $this->driver())->where('gateway_ref', $intent->id)->exists()) {
             throw new PaymentCaptureException('payment_already_used');
         }
 
-        return new PaymentCaptureResult(gatewayRef: $intent->id, rawResponse: $this->summary($intent));
+        try {
+            $captured = $this->client->paymentIntents->capture(
+                $intent->id,
+                ['amount_to_capture' => $amount->toFils(), 'expand' => ['latest_charge']],
+                ['idempotency_key' => 'capture-'.$intent->id],
+            );
+        } catch (CardException $e) {
+            throw new PaymentCaptureException($this->declineCode($e));
+        } catch (InvalidRequestException|IdempotencyException) {
+            // Cancelled, expired or captured by someone else between the read and now.
+            throw new PaymentCaptureException('payment_not_completed');
+        }
+
+        $charge = $captured->latest_charge;
+
+        // Stripe accepted the capture, so from here on this is not a decline: the money may have moved.
+        if ($captured->status !== PaymentIntent::STATUS_SUCCEEDED || $captured->amount_received !== $amount->toFils() || ! $charge instanceof Charge || $charge->refunded || $charge->disputed) {
+            throw new PaymentCapturedUnverified($captured->id, $this->summary($captured));
+        }
+
+        return new PaymentCaptureResult(gatewayRef: $captured->id, rawResponse: $this->summary($captured));
     }
 
     /**
