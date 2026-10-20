@@ -103,7 +103,7 @@ class LessonsTable
                     ->label('Open dispute')
                     ->color('warning')
                     ->visible(fn (Lesson $record): bool => $record->status === LessonStatus::CompletedReported && OpenSuspensionDispute::problemFor(auth()->user(), $record) === null)
-                    ->modalDescription('The tutor was paid because the account holder was suspended when this lesson ended. Opening a dispute lets you settle it with the two dials (refund to the parent, pay to the tutor) from the Disputes page, within 7 days of the lesson\'s end.')
+                    ->modalDescription('The tutor was paid because the account holder was suspended when this lesson ended. Opening a dispute lets you settle it with the two dials (refund to the parent, pay to the tutor) from the Disputes page, within '.OpenSuspensionDispute::WINDOW_DAYS.' days of the lesson\'s end.')
                     ->schema([
                         Select::make('reason')->label('Reason')->options(collect(DisputeReason::cases())->mapWithKeys(fn (DisputeReason $r): array => [$r->value => $r->label()])->all())->required(),
                         Textarea::make('description')->label('Description (kept with the dispute)')->required()->maxLength(2000),
@@ -111,8 +111,13 @@ class LessonsTable
                     ->action(function (Lesson $record, array $data): void {
                         try {
                             app(OpenSuspensionDispute::class)(auth()->user(), $record, DisputeReason::from((string) $data['reason']), (string) $data['description']);
-                        } catch (DisputeException|LessonTransitionException $e) {
+                        } catch (DisputeException $e) {
                             Notification::make()->danger()->title('Not opened')->body($e->getMessage())->send();
+
+                            return;
+                        } catch (LessonTransitionException) {
+                            // The lesson moved on while the modal was open: someone else disputed it first.
+                            Notification::make()->danger()->title('Not opened')->body('This lesson has already moved on; a dispute may already be open.')->send();
 
                             return;
                         }

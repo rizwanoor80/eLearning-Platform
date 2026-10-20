@@ -94,7 +94,7 @@ class OpenSuspensionDispute
         }
 
         if (now()->greaterThan($lesson->ends_at->copy()->addDays(self::WINDOW_DAYS))) {
-            return 'The 7-day window to dispute this lesson has passed.';
+            return 'The '.self::WINDOW_DAYS.'-day window to dispute this lesson has passed.';
         }
 
         // The two cheap checks above come first: the Filament action's `visible()` runs this for every table row.

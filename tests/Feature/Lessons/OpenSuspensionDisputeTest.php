@@ -318,7 +318,6 @@ it('keeps the free release of a reserved lesson on account_suspended exactly as 
 // ---- R244 the sweep's summary line ------------------------------------------------------------------------------
 
 it('pins the sweep summary: completed, refunded and settled after a suspension are counted apart', function () {
-    $tutor = TutorProfile::factory()->approved()->create();
     osdLesson('parent_confirmed', settle: false);
     osdLesson('parent_in_progress', settle: false);
     osdLesson('tutor_in_progress', settle: false);
@@ -326,7 +325,6 @@ it('pins the sweep summary: completed, refunded and settled after a suspension a
     $both = osdLesson('parent_confirmed', settle: false)['lesson'];
     app(RecordAttendance::class)($both->fresh(), VideoParticipant::Tutor, now()->subMinutes(70));
     app(RecordAttendance::class)($both->fresh(), VideoParticipant::Learner, now()->subMinutes(70));
-    AuditLog::query()->where('subject_id', $both->id)->delete();
 
     $this->artisan('lessons:settle-ended')
         ->expectsOutput('Completed 1, refunded 1, settled after a suspension 2.')
