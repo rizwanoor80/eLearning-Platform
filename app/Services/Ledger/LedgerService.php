@@ -221,8 +221,8 @@ final class LedgerService
      * tutor, neither with a lesson. The caller (`MarkPayoutLinePaid`) owns the line's own `paid` columns; this writes the
      * ledger side only, in its own transaction that:
      *
-     *  - locks the tutor's profile row, then the line row (the order every payout action uses, and `OpenDispute` takes the
-     *    profile first too), so two payers of the same line (or two lines of the same tutor) are taken one at a time;
+     *  - locks the tutor's profile row, then the line row (the order every payout action uses), so two payers of the
+     *    same line (or two lines of the same tutor) are taken one at a time;
      *  - refuses a line that is not `pending`, or that already has entries (a second call would pay it twice);
      *  - refuses an amount larger than the tutor's whole balance on the ledger's `tutor` account, the one limit that
      *    needs no status: money that was never released to the tutor cannot be paid to them;

@@ -4,6 +4,8 @@ namespace App\Filament\Resources\PayoutBatches\Tables;
 
 use App\Enums\PayoutLineStatus;
 use App\Models\PayoutBatch;
+use App\Models\PayoutBatchLine;
+use App\Services\Tutors\TutorEarnings;
 use App\Support\Money;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -31,6 +33,17 @@ class PayoutBatchesTable
                 TextColumn::make('progress')
                     ->label('Lines')
                     ->state(fn (PayoutBatch $record): string => "{$record->pending_lines_count} processing · {$record->paid_lines_count} paid · {$record->failed_lines_count} failed"),
+                TextColumn::make('negative_balances')
+                    ->label('Flags')
+                    ->state(function (PayoutBatch $record): string {
+                        $earnings = app(TutorEarnings::class);
+                        $count = $record->lines()->with('tutorProfile')->get()
+                            ->filter(fn (PayoutBatchLine $line): bool => $earnings->isOverpaid($line->tutorProfile))
+                            ->count();
+
+                        return $count === 0 ? '—' : "{$count} tutor(s) with a negative balance";
+                    })
+                    ->color(fn (string $state): string => $state === '—' ? 'gray' : 'danger'),
                 TextColumn::make('created_at')->label('Generated')->dateTime()->sortable(),
             ])
             ->defaultSort('id', 'desc')

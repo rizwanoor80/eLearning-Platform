@@ -17,14 +17,14 @@ use Illuminate\Support\Facades\DB;
  * reference (required: a line is never "paid" on trust). In one transaction this writes the `payout` ledger entries through
  * `LedgerService::payout()` and the line's `paid` columns; money moves from processing to paid to date.
  *
- * Before the ledger is touched, and under the tutor's profile row lock, it checks the tutor's `available` bucket (which
- * already has every unpaid line, this one included, taken out of it) has not gone negative. It would if a dispute opened
- * on a lesson whose money the line includes after the batch was made: that money is on hold and the settlement may reverse
- * it, so paying it out now could leave the tutor's account negative. `OpenDispute` takes the same profile lock first, so a
- * dispute cannot land between this check and the commit. When the check fails the admin gets the reason and can mark the
- * line failed (the money goes back to the tutor's buckets) and generate again once the dispute is settled.
+ * A real transfer is always recordable (R258): the admin has already sent the money, so nothing about the tutor's balance
+ * may refuse the record. Under the tutor's profile row lock it writes the entries and the line, then reads the tutor's
+ * `available` bucket; if that is negative (a dispute settlement clawed back money that had already been paid) the line is
+ * recorded all the same, the audit row says so, and admins see a flag on the tutor and the batch. The next batch nets the
+ * negative amount against what the tutor earns next. `GeneratePayoutBatch` only includes money past its dispute window,
+ * so a line made by it does not normally go negative.
  *
- * Lock order, as everywhere: the tutor's profile row, then the line.
+ * Lock order: the tutor's profile row, then the line.
  */
 class MarkPayoutLinePaid
 {
@@ -49,10 +49,6 @@ class MarkPayoutLinePaid
                 throw new PayoutException("This payout is already {$locked->status->value}.");
             }
 
-            if ($this->earnings->buckets($profile)->available->isNegative()) {
-                throw new PayoutException('The tutor no longer has this much available: a lesson in this payout is now in a dispute. Mark the line failed and generate a new batch once the dispute is settled.');
-            }
-
             $this->ledger->payout($locked, $admin);
 
             $locked->update([
@@ -66,6 +62,7 @@ class MarkPayoutLinePaid
                 'status' => PayoutLineStatus::Paid->value,
                 'reference' => $locked->reference,
                 'amount_fils' => $locked->amount->toFils(),
+                'tutor_available_after_fils' => $this->earnings->buckets($profile)->available->toFils(),
             ]);
         });
     }

@@ -33,6 +33,8 @@ class TutorEarningsController extends Controller
                 'processing' => $buckets->processing->format(),
                 'paid_to_date' => $buckets->paidToDate->format(),
                 'total' => $buckets->total()->format(),
+                // R258: released money inside its dispute window is in pending; this is when it moves to available.
+                'pending_available_on' => $buckets->pendingAvailableAt?->setTimezone($request->user()->timezone)->format('j M Y'),
             ],
             'payout_problem' => $profile?->payoutMethodProblem(),
             'payouts' => $profile === null ? [] : $this->paidLines($profile, $request->user()->timezone),

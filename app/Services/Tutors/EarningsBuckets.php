@@ -3,10 +3,12 @@
 namespace App\Services\Tutors;
 
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 
 /**
  * A tutor's money in the five buckets (CLAUDE.md: never a single stored number). Plain values from
- * `TutorEarnings`; the page and the tests read them, nothing writes them.
+ * `TutorEarnings`; the page and the tests read them, nothing writes them. `pendingAvailableAt` (R258) is when the
+ * earliest released-but-disputable money in `pending` moves to `available`, or null when there is none.
  */
 final readonly class EarningsBuckets
 {
@@ -16,6 +18,7 @@ final readonly class EarningsBuckets
         public Money $available,
         public Money $processing,
         public Money $paidToDate,
+        public ?CarbonImmutable $pendingAvailableAt = null,
     ) {}
 
     /**

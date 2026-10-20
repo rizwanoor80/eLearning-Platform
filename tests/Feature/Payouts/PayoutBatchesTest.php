@@ -1,11 +1,10 @@
 <?php
 
-use App\Actions\Lessons\OpenDispute;
+use App\Actions\Lessons\SettleSuspendedLesson;
 use App\Actions\Payouts\ExportPayoutBatchCsv;
 use App\Actions\Payouts\GeneratePayoutBatch;
 use App\Actions\Payouts\MarkPayoutLineFailed;
 use App\Actions\Payouts\MarkPayoutLinePaid;
-use App\Enums\DisputeReason;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\LessonStatus;
@@ -18,6 +17,7 @@ use App\Filament\Resources\PayoutBatches\Pages\ListPayoutBatches;
 use App\Filament\Resources\PayoutBatches\Pages\ViewPayoutBatch;
 use App\Filament\Resources\PayoutBatches\PayoutBatchResource;
 use App\Filament\Resources\PayoutBatches\RelationManagers\LinesRelationManager;
+use App\Filament\Resources\TutorProfiles\Schemas\TutorProfileInfolist;
 use App\Models\AuditLog;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
@@ -50,9 +50,10 @@ function pbTutor(int $lessons = 3, array $profile = [], ?LessonStatus $status = 
         'user_id' => User::factory()->tutor(),
     ]);
 
-    // AED 75.00 tutor share each: three lessons are AED 225.00, over the AED 200.00 minimum.
+    // AED 75.00 tutor share each: three lessons are AED 225.00, over the AED 200.00 minimum. They ended days ago, so their
+    // dispute window (R258) has closed and the money is available.
     for ($i = 0; $i < $lessons; $i++) {
-        $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->addDays(3)->startOfHour()->addHours($slot++))->create(['tutor_profile_id' => $tutor->id]);
+        $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(60)->startOfHour()->addHours($slot++))->create(['tutor_profile_id' => $tutor->id]);
         app(LedgerService::class)->hold($lesson);
         app(LedgerService::class)->release($lesson);
         Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => $status ?? LessonStatus::CompletedReported])->save());
@@ -238,7 +239,7 @@ it('includes a tutor at exactly the minimum and leaves one a fil under', functio
     Settings::set('payout_min', 7500);
 
     foreach ([$exact, $under] as $t) {
-        $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->addDays(4)->startOfHour()->addHours($t->id))->create(['tutor_profile_id' => $t->id]);
+        $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(60)->startOfHour()->addHours($t->id % 200))->create(['tutor_profile_id' => $t->id]);
         app(LedgerService::class)->hold($lesson);
         app(LedgerService::class)->release($lesson);
     }
@@ -283,9 +284,9 @@ it('reports a tutor who has the minimum but cannot be paid, and a tutor with an 
         ->and(collect($result->skipped)->pluck('tutor_profile_id')->sort()->values()->all())->toBe(collect([$noMethod->id, $closed->id])->sort()->values()->all());
 
     // Money paid later is not in the old line, but the tutor already has a line waiting.
-    $more = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->addDays(6)->startOfHour())->create(['tutor_profile_id' => $ready->id]);
+    $more = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(61)->startOfHour())->create(['tutor_profile_id' => $ready->id]);
     foreach ([1, 2, 3] as $i) {
-        $l = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->addDays(7)->startOfHour()->addHours($i))->create(['tutor_profile_id' => $ready->id]);
+        $l = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(62)->startOfHour()->addHours($i))->create(['tutor_profile_id' => $ready->id]);
         app(LedgerService::class)->hold($l);
         app(LedgerService::class)->release($l);
     }
@@ -417,21 +418,26 @@ it('refuses to mark a paid line failed', function () {
     expect(fn () => app(MarkPayoutLineFailed::class)(User::factory()->admin()->create(), $line, 'oops'))->toThrow(PayoutException::class, 'already paid');
 });
 
-it('refuses to mark a line paid when a lesson in it was disputed after the batch was made', function () {
+it('records a paid transfer even when a lesson in it is disputed afterwards, and flags the tutor', function () {
     $tutor = pbTutor(3);
     $line = pbLine($tutor);
     $lesson = Lesson::query()->where('tutor_profile_id', $tutor->id)->first();
-    $parent = $lesson->learner->account_user_id;
 
-    app(OpenDispute::class)(User::query()->findOrFail($parent), $lesson, DisputeReason::NoShow, 'Did not happen');
+    // The window had closed when the batch was made; a dispute opened by an admin's hand afterwards (the settlement path
+    // the reviewer described) puts the lesson's money on hold while the line is still unpaid.
+    Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::Disputed])->save());
+    expect(app(TutorEarnings::class)->buckets($tutor)->available->isNegative())->toBeTrue();
 
-    expect(fn () => pbPay($line))->toThrow(PayoutException::class, 'dispute');
-    expect(LedgerEntry::query()->where('payout_id', $line->id)->exists())->toBeFalse()
-        ->and($line->fresh()->status)->toBe(PayoutLineStatus::Pending);
+    pbPay($line);
 
-    // The admin marks it failed and, with the dispute open, only the undisputed lessons are available next time.
-    app(MarkPayoutLineFailed::class)(User::factory()->admin()->create(), $line, 'Lesson disputed');
-    expect(pbAvailable($tutor))->toBe(15000);
+    expect($line->fresh()->status)->toBe(PayoutLineStatus::Paid)
+        ->and(LedgerEntry::query()->where('payout_id', $line->id)->count())->toBe(2)
+        ->and(app(TutorEarnings::class)->isOverpaid($tutor))->toBeTrue()
+        ->and(AuditLog::query()->where('action', 'payout_line.paid')->latest('id')->first()->after['tutor_available_after_fils'])->toBeLessThan(0);
+
+    // The flag is on the tutor's page and on the batch's lines; the next batch skips them while it is negative.
+    expect(implode(' ', TutorProfileInfolist::payoutLines($tutor)))->toContain('Negative balance');
+    expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->exists() ?? false)->toBeFalse();
 });
 
 it('cannot change what a line says once it is written, or delete it', function () {
@@ -581,4 +587,62 @@ it('is for active admins only', function () {
 
     expect(PayoutBatchResource::canCreate())->toBeFalse();
     test()->actingAs(User::factory()->admin()->create())->get(PayoutBatchResource::getUrl('view', ['record' => $batch]))->assertOk();
+});
+
+// --- R258: only money past its dispute window goes in a batch --------------------------------------------------------
+
+/** A tutor with one released lesson of AED 250.00 tutor share that ended `$hoursAgo` hours ago (over the AED 200.00 minimum). */
+function pbWindowTutor(int $hoursAgo, bool $suspensionSettled = false): TutorProfile
+{
+    $tutor = TutorProfile::factory()->approved()->create([
+        'country' => 'AE',
+        'payout_method' => 'bank_transfer',
+        'user_id' => User::factory()->tutor(),
+    ]);
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subHours($hoursAgo + 1))
+        ->create(['tutor_profile_id' => $tutor->id, 'price' => Money::fils(33334), 'commission_pct' => 25, 'commission_amount' => Money::fils(8334), 'tutor_amount' => Money::fils(25000)]);
+    app(LedgerService::class)->hold($lesson);
+    app(LedgerService::class)->release($lesson);
+    Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::CompletedReported])->save());
+
+    if ($suspensionSettled) {
+        AuditLog::query()->create(['actor_user_id' => null, 'action' => SettleSuspendedLesson::AUDIT_SETTLED, 'subject_type' => Lesson::class, 'subject_id' => $lesson->id]);
+    }
+
+    return $tutor;
+}
+
+it('leaves a lesson released 47 hours after its end out of the batch, and takes it at 49', function () {
+    $this->freezeTime();
+    $tutor = pbWindowTutor(hoursAgo: 47);
+
+    expect(pbAvailable($tutor))->toBe(0)
+        ->and(app(TutorEarnings::class)->buckets($tutor)->pending->toFils())->toBe(25000);
+    expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->exists() ?? false)->toBeFalse();
+
+    $this->travel(2)->hours();
+
+    expect(pbAvailable($tutor))->toBe(25000);
+    expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->first()->amount->toFils())->toBe(25000);
+});
+
+it('makes a lesson that was settled after a suspension wait seven days', function () {
+    $this->freezeTime();
+    $tutor = pbWindowTutor(hoursAgo: 100, suspensionSettled: true);
+
+    expect(pbAvailable($tutor))->toBe(0);
+    expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->exists() ?? false)->toBeFalse();
+
+    $this->travel(69)->hours(); // 169 hours after the lesson ended
+
+    expect(pbAvailable($tutor))->toBe(25000);
+});
+
+it('never puts a disputed lesson in a batch, whatever its age', function () {
+    $tutor = pbWindowTutor(hoursAgo: 500);
+    $lesson = Lesson::query()->where('tutor_profile_id', $tutor->id)->firstOrFail();
+    Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::Disputed])->save());
+
+    expect(pbAvailable($tutor))->toBe(0);
+    expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->exists() ?? false)->toBeFalse();
 });

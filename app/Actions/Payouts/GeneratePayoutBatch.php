@@ -32,8 +32,8 @@ use Illuminate\Support\Facades\DB;
  * method, method no longer offered, details incomplete, or an anonymised account) and a tutor who already has an unpaid
  * line. A suspended tutor is still paid what they earned; the rule is `canBePaid()` and nothing else.
  *
- * Lock order: every candidate's `tutor_profiles` row, in id order, in one transaction. `MarkPayoutLinePaid`, `OpenDispute`
- * and `LedgerService::payout()` take one profile row first too, so none of them can wait on another in a circle, and a
+ * Lock order: every candidate's `tutor_profiles` row, in id order, in one transaction. `MarkPayoutLinePaid` and
+ * `LedgerService::payout()` take one profile row first too, so none of them can wait on another in a circle, and a
  * second generator waits for the first and then sees its lines. The database has the last word: one unpaid line per tutor
  * (a partial unique index) and one line per tutor per batch.
  */

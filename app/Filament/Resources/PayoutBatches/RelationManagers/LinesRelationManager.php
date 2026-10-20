@@ -8,6 +8,7 @@ use App\Enums\PayoutLineStatus;
 use App\Exceptions\LedgerException;
 use App\Exceptions\PayoutException;
 use App\Models\PayoutBatchLine;
+use App\Services\Tutors\TutorEarnings;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -46,6 +47,11 @@ class LinesRelationManager extends RelationManager
                         PayoutLineStatus::Paid => 'success',
                         PayoutLineStatus::Failed => 'danger',
                     }),
+                TextColumn::make('balance_flag')->label('Tutor balance')
+                    ->state(fn (PayoutBatchLine $record): string => app(TutorEarnings::class)->isOverpaid($record->tutorProfile) ? 'Negative' : '—')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'Negative' ? 'danger' : 'gray')
+                    ->tooltip('A dispute took back money that was already paid out. The next batch deducts it.'),
                 TextColumn::make('external_reference')->label('Payment reference')->placeholder('—'),
                 TextColumn::make('failure_reason')->label('Why it failed')->placeholder('—')->wrap(),
                 TextColumn::make('paid_at')->label('Paid')->dateTime()->placeholder('—'),
@@ -55,7 +61,7 @@ class LinesRelationManager extends RelationManager
                     ->label('Mark paid')
                     ->color('success')
                     ->visible(fn (PayoutBatchLine $record): bool => $record->status === PayoutLineStatus::Pending)
-                    ->modalDescription('Records that this payment has been made. It writes the payout to the ledger and cannot be undone.')
+                    ->modalDescription('Records that this payment has been made, whatever the tutor\'s balance now says. It writes the payout to the ledger and cannot be undone.')
                     ->schema([
                         TextInput::make('external_reference')
                             ->label('Payment reference from the bank or provider')
