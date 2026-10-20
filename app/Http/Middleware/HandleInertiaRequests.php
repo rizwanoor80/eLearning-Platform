@@ -59,6 +59,8 @@ class HandleInertiaRequests extends Middleware
                 // tutor. A tutor with no `tutor_profiles` row yet (registered, never opened
                 // onboarding) still needs it: `profileFor()` only creates the row on first visit,
                 // so "no row" must count as draft here, not as "nothing to do".
+                // R249: the Settings nav's "Payouts" item is for tutors only, so no `.vue` file branches on the role.
+                'is_tutor' => $request->user()?->role === Role::Tutor,
                 'needs_onboarding' => $request->user()?->role === Role::Tutor && ! TutorProfile::query()
                     ->where('user_id', $request->user()->id)
                     ->whereNotIn('status', [TutorProfileStatus::Draft, TutorProfileStatus::ChangesRequested])

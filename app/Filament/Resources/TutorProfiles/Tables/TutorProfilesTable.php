@@ -2,12 +2,16 @@
 
 namespace App\Filament\Resources\TutorProfiles\Tables;
 
+use App\Enums\PayoutMethodCode;
 use App\Enums\TutorProfileStatus;
+use App\Models\TutorProfile;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TutorProfilesTable
 {
@@ -33,6 +37,14 @@ class TutorProfilesTable
                     ->label('CV/LinkedIn')
                     ->boolean()
                     ->getStateUsing(fn ($record) => $record->hasCvOrLinkedin()),
+                // R249: built with ->state(), never on the raw columns (the bank and email columns are encrypted).
+                TextColumn::make('payout')
+                    ->label('Payout')
+                    ->state(fn (TutorProfile $record): string => $record->canBePaid()
+                        ? (PayoutMethodCode::tryFrom((string) $record->payout_method)?->label() ?? '')
+                        : 'Cannot be paid yet')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'Cannot be paid yet' ? 'warning' : 'success'),
                 TextColumn::make('submitted_at')
                     ->label('Submitted')
                     ->dateTime()
@@ -43,6 +55,13 @@ class TutorProfilesTable
                 SelectFilter::make('status')
                     ->options(TutorProfileStatus::class)
                     ->default(TutorProfileStatus::PendingReview->value),
+                TernaryFilter::make('cannot_be_paid')
+                    ->label('Cannot be paid yet')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->scopes(['cannotBePaid']),
+                        false: fn (Builder $query): Builder => $query->whereNot(fn (Builder $q) => $q->scopes(['cannotBePaid'])),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
             ])
             ->recordActions([
                 ViewAction::make()
