@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\PaymentMethodStatus;
 use Carbon\CarbonImmutable;
 use Database\Factories\PaymentMethodFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * The account holder's saved card (DATA_MODEL `payment_methods`): gateway token, brand, last
- * four and expiry — never a card number (invariant 15). One per account in v1.
+ * four and expiry — never a card number (invariant 15). One live card per account in v1; a removed card keeps
+ * its row (`removed_at`) because payments and lessons point at it.
  *
  * @property int $id
  * @property int $account_user_id
@@ -25,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property int $exp_year
  * @property PaymentMethodStatus $status
  * @property Carbon|null $last_failed_at
+ * @property Carbon|null $removed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -52,17 +55,30 @@ class PaymentMethod extends Model
             'exp_year' => 'integer',
             'status' => PaymentMethodStatus::class,
             'last_failed_at' => 'datetime',
+            'removed_at' => 'datetime',
         ];
     }
 
     /**
-     * Chargeable now: `active` and not past the last day of its expiry month.
+     * The account's live card: one at most (`payment_methods_one_live_per_account`).
+     *
+     * @param  Builder<PaymentMethod>  $query
+     * @return Builder<PaymentMethod>
      */
-    public function isUsable(): bool
+    public function scopeLive(Builder $query): Builder
+    {
+        return $query->whereNull('removed_at');
+    }
+
+    /**
+     * Chargeable now: not removed, `active` and not past the last day of its expiry month. `allowRemoved` is for
+     * resuming a charge that began before the card was removed.
+     */
+    public function isUsable(bool $allowRemoved = false): bool
     {
         $lastDay = CarbonImmutable::create($this->exp_year, $this->exp_month, 1)->endOfMonth()->startOfDay();
 
-        return $this->status === PaymentMethodStatus::Active && ! $lastDay->lessThan(now()->startOfDay());
+        return ($allowRemoved || $this->removed_at === null) && $this->status === PaymentMethodStatus::Active && ! $lastDay->lessThan(now()->startOfDay());
     }
 
     /**

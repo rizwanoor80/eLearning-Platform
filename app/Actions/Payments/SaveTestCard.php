@@ -15,7 +15,7 @@ use RuntimeException;
 
 /**
  * The fake driver's "Add a card" (R100): stores a chosen test card as the account's saved card.
- * One card per account in v1 — `payment_methods.account_user_id` is unique — so a second call
+ * One live card per account in v1 — `payment_methods_one_live_per_account` — so a second call
  * replaces the first. Holds a fake token, brand, last four and expiry only (invariant 15); the
  * page picks from two cards and never takes typed digits. CP5 replaces this with the real
  * driver's capture, and it refuses to run anywhere but the fake-gateway environments so a fake card is never stored on production.
@@ -48,7 +48,7 @@ class SaveTestCard
         $saved = (new FakePaymentGateway)->saveCard($account, $card->value);
 
         $method = PaymentMethod::query()->updateOrCreate(
-            ['account_user_id' => $account->id],
+            ['account_user_id' => $account->id, 'removed_at' => null],
             [
                 'gateway' => 'fake',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,

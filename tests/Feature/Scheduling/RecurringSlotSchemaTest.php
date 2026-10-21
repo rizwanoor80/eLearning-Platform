@@ -182,7 +182,7 @@ it('stores a saved card as a token, brand, last four and expiry only, one per ac
 
     expect($columns)->toEqualCanonicalizing([
         'id', 'account_user_id', 'gateway', 'gateway_customer_ref', 'gateway_token', 'brand', 'last4', 'exp_month', 'exp_year',
-        'status', 'last_failed_at', 'created_at', 'updated_at',
+        'status', 'last_failed_at', 'removed_at', 'created_at', 'updated_at',
     ]);
 
     $card = PaymentMethod::factory()->create();
@@ -191,7 +191,7 @@ it('stores a saved card as a token, brand, last four and expiry only, one per ac
         ->and($card->account->paymentMethod->is($card))->toBeTrue()
         ->and($card->toArray())->not->toHaveKey('gateway_token')
         ->and(fn () => DB::transaction(fn () => PaymentMethod::factory()->create(['account_user_id' => $card->account_user_id])))
-        ->toThrow(QueryException::class, 'payment_methods_account_user_id_unique');
+        ->toThrow(QueryException::class, 'payment_methods_one_live_per_account');
 });
 
 it('keys lessons.payment_method_id to payment_methods', function () {

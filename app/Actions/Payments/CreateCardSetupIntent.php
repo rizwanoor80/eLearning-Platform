@@ -27,6 +27,7 @@ class CreateCardSetupIntent
         $customer = PaymentMethod::query()
             ->where('account_user_id', $account->id)
             ->where('gateway', 'stripe')
+            ->latest('id') // a removed card's customer is still the account's customer: reuse it
             ->value('gateway_customer_ref');
 
         if (! is_string($customer) || $customer === '') {

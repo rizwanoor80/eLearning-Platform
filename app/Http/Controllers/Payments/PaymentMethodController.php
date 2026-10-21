@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Payments;
 
 use App\Actions\Payments\CreateCardSetupIntent;
+use App\Actions\Payments\RemoveSavedCard;
 use App\Actions\Payments\SaveStripeCard;
 use App\Actions\Payments\SaveTestCard;
 use App\Enums\TestCard;
+use App\Exceptions\CardRemovalException;
 use App\Exceptions\PaymentCaptureException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Payments\RemoveCardRequest;
 use App\Http\Requests\Payments\StoreStripeCardRequest;
 use App\Http\Requests\Payments\StoreTestCardRequest;
 use App\Models\Learner;
@@ -38,7 +41,7 @@ class PaymentMethodController extends Controller
 
         /** @var User $user */
         $user = $request->user();
-        $current = PaymentMethod::query()->where('account_user_id', $user->id)->first();
+        $current = PaymentMethod::query()->live()->where('account_user_id', $user->id)->first();
 
         return Inertia::render('payment-methods/Create', [
             'driver' => $fake ? 'fake' : 'stripe',
@@ -53,6 +56,7 @@ class PaymentMethodController extends Controller
                 'expires' => sprintf('%02d/%d', $current->exp_month, $current->exp_year),
                 'notice' => $current->expiryNotice(),
             ],
+            'active_slot' => $current !== null && RemoveSavedCard::hasActiveSlot($user),
             'learner' => $request->integer('learner') ?: null,
             'tutor' => $request->integer('tutor') ?: null,
         ]);
@@ -69,6 +73,23 @@ class PaymentMethodController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Test card saved.')]);
 
         return $this->afterSaving($request, $user);
+    }
+
+    /** R261: removes the saved card; the card page stays open so a new one can be added straight away. */
+    public function destroy(RemoveCardRequest $request, RemoveSavedCard $remove): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $remove($user, $request->boolean('confirm'));
+        } catch (CardRemovalException $e) {
+            return back()->withErrors(['card' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Card removed.')]);
+
+        return back();
     }
 
     /** The SetupIntent the page's Payment Element confirms; 404 unless Stripe is the active gateway. */

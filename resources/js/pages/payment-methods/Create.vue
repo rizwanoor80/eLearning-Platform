@@ -5,7 +5,7 @@ import type {
     StripeElements,
     StripePaymentElement,
 } from '@stripe/stripe-js';
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import TestModeBanner from '@/components/TestModeBanner.vue';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,8 @@ const props = defineProps<{
         expires: string;
         notice: string | null;
     } | null;
+    // True when removing the saved card would leave an active weekly slot without one.
+    active_slot: boolean;
     learner: number | null;
     tutor: number | null;
 }>();
@@ -47,6 +49,29 @@ const stripeForm = useForm({
     learner: props.learner,
     tutor: props.tutor,
 });
+
+// R261: removing the saved card. With an active weekly slot the parent must confirm first, and the
+// server asks again if the confirmation is missing.
+const removeForm = useForm({ confirm: false });
+const removeError = computed(() => (removeForm.errors as Record<string, string | undefined>).card);
+
+function removeCard() {
+    if (props.active_slot) {
+        if (
+            !window.confirm(
+                'You have an active weekly slot. If you remove this card, the next automatic charge will fail until you add a new card. Remove it anyway?',
+            )
+        ) {
+            return;
+        }
+
+        removeForm.confirm = true;
+    } else if (!window.confirm('Remove this saved card?')) {
+        return;
+    }
+
+    removeForm.delete('/payment-methods', { preserveScroll: true });
+}
 
 const cardHost = ref<HTMLElement | null>(null);
 const cardReady = ref(false);
@@ -171,6 +196,22 @@ async function saveStripeCard() {
             {{ current.notice }}
         </p>
 
+        <div v-if="current" class="grid gap-2">
+            <div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="removeForm.processing"
+                    data-testid="remove-card"
+                    @click="removeCard"
+                >
+                    <Spinner v-if="removeForm.processing" />
+                    Remove saved card
+                </Button>
+            </div>
+            <InputError :message="removeError" />
+        </div>
+
         <div class="grid gap-2" data-testid="card-form">
             <Label>Card</Label>
             <div ref="cardHost" />
@@ -218,6 +259,22 @@ async function saveStripeCard() {
         >
             {{ current.notice }}
         </p>
+
+        <div v-if="current" class="grid gap-2">
+            <div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    :disabled="removeForm.processing"
+                    data-testid="remove-card"
+                    @click="removeCard"
+                >
+                    <Spinner v-if="removeForm.processing" />
+                    Remove saved card
+                </Button>
+            </div>
+            <InputError :message="removeError" />
+        </div>
 
         <fieldset class="grid gap-3">
             <legend class="mb-1 text-sm font-medium">Test card</legend>

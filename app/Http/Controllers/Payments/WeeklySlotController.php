@@ -53,7 +53,7 @@ class WeeklySlotController extends Controller
         $requested = $request->integer('learner');
         $selected = $learners->contains('id', $requested) ? $requested : ($learners->count() === 1 ? $learners->first()->id : null);
 
-        $card = PaymentMethod::query()->where('account_user_id', $user->id)->first();
+        $card = PaymentMethod::query()->live()->where('account_user_id', $user->id)->first();
         $usableCard = $card !== null && $card->isUsable();
 
         $slotOptions = $options->forTutor($tutor, $user->timezone);

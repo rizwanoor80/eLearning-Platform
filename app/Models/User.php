@@ -94,13 +94,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail, Pas
     }
 
     /**
-     * The account's saved card — one in v1.
+     * The account's live saved card — one in v1 (a removed card keeps its row, `removed_at`).
      *
      * @return HasOne<PaymentMethod, $this>
      */
     public function paymentMethod(): HasOne
     {
-        return $this->hasOne(PaymentMethod::class, 'account_user_id');
+        return $this->hasOne(PaymentMethod::class, 'account_user_id')->whereNull('removed_at');
     }
 
     /**

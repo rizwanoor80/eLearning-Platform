@@ -37,11 +37,11 @@ class SaveStripeCard
         $row = $this->stripe->row() ?? throw new NoActivePaymentGateway('Stripe is not the active payment gateway.');
         $saved = $this->gateways->forRow($row)->saveCard($account, $setupIntentId);
 
-        $previous = PaymentMethod::query()->where('account_user_id', $account->id)->first();
+        $previous = PaymentMethod::query()->live()->where('account_user_id', $account->id)->first();
         $previousToken = $previous?->gateway === 'stripe' ? $previous->gateway_token : null;
 
         $method = PaymentMethod::query()->updateOrCreate(
-            ['account_user_id' => $account->id],
+            ['account_user_id' => $account->id, 'removed_at' => null],
             [
                 'gateway' => 'stripe',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,
