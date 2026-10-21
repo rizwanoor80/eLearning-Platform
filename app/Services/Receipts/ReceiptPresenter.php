@@ -3,17 +3,20 @@
 namespace App\Services\Receipts;
 
 use App\Enums\LedgerAccount;
+use App\Enums\PaymentRefundStatus;
 use App\Models\LedgerEntry;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Support\Money;
+use Illuminate\Support\Collection;
 
 /**
  * R257: shapes one payment as a parent's receipt. Reads only; nothing here writes money or lesson state.
  * The amount is what the gateway charged; refund lines come from the ledger's Refund-account entries
- * (the ledger decides what is owed back). Each is "returned" once the gateway confirmed it
- * (`raw_response.refunds.<entry id>`), "refused" if the gateway permanently refused it
- * (`raw_response.refund_failures.<entry id>`), otherwise "pending"; both written by 23d. Only returned
+ * (the ledger decides what is owed back). Each is "returned" once the gateway confirmed it (a `succeeded`
+ * `payment_refunds` row), "refused" if its latest attempt was permanently refused (a `failed` row, 24b),
+ * otherwise "pending". Only returned
  * refunds reduce the total, so the receipt never claims money came back that has not. No VAT line: D-04 has not decided whether or how
  * VAT applies.
  */
@@ -92,8 +95,12 @@ class ReceiptPresenter
      */
     private function refundLines(Payment $payment): array
     {
-        $confirmed = is_array($payment->raw_response['refunds'] ?? null) ? $payment->raw_response['refunds'] : [];
-        $refused = is_array($payment->raw_response['refund_failures'] ?? null) ? $payment->raw_response['refund_failures'] : [];
+        $attempts = PaymentRefund::query()
+            ->where('payment_id', $payment->id)
+            ->whereNotNull('ledger_entry_id')
+            ->orderBy('attempt')
+            ->get()
+            ->groupBy('ledger_entry_id');
 
         $lines = [];
 
@@ -108,14 +115,26 @@ class ReceiptPresenter
             $lines[] = [
                 'entry' => $entry,
                 'amount' => Money::fils($entry->amount),
-                'state' => match (true) {
-                    array_key_exists((string) $entry->id, $confirmed) => self::RETURNED,
-                    array_key_exists((string) $entry->id, $refused) => self::REFUSED,
-                    default => self::PENDING,
-                },
+                'state' => $this->stateOf($attempts->get($entry->id)),
             ];
         }
 
         return $lines;
+    }
+
+    /**
+     * @param  Collection<int, PaymentRefund>|null  $attempts  the entry's attempts, oldest first
+     */
+    private function stateOf(?Collection $attempts): string
+    {
+        if ($attempts === null) {
+            return self::PENDING;
+        }
+
+        if ($attempts->contains(fn (PaymentRefund $a): bool => $a->status === PaymentRefundStatus::Succeeded)) {
+            return self::RETURNED;
+        }
+
+        return $attempts->last()->status === PaymentRefundStatus::Failed ? self::REFUSED : self::PENDING;
     }
 }

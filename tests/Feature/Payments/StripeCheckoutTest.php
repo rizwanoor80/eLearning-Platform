@@ -4,6 +4,7 @@ use App\Actions\Payments\CancelCheckoutIntent;
 use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
 use App\Enums\LevelTier;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\AvailabilityRule;
@@ -12,6 +13,7 @@ use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
+use App\Models\PaymentRefund;
 use App\Models\PriceBand;
 use App\Models\Subject;
 use App\Models\TutorProfile;
@@ -346,7 +348,7 @@ it('refunds a captured-but-unclean payment to the card by itself, and lets ledge
     expect(session('errors')->first('slot'))->toContain('payment was taken')
         ->and($payment->status)->toBe(PaymentStatus::Refunded)
         ->and($payment->refunded_amount?->toFils())->toBe($b['amount'])
-        ->and($payment->raw_response['unverified_refund']['status'])->toBe('succeeded')
+        ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
         ->and($refunds)->toHaveCount(1)
         ->and($this->http->idempotencyKeyOf($refunds[0]))->toBe('unverified-pi_test_1')
         ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired);
@@ -372,7 +374,7 @@ it('keeps the payment visible to ledger:verify, and tells admins, when the gatew
     $payment = Payment::query()->sole();
 
     expect($payment->status)->toBe(PaymentStatus::Captured)
-        ->and($payment->raw_response['unverified_refund']['status'])->toBe('refused');
+        ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Failed);
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
 
     $this->travel(2)->hours();

@@ -9,6 +9,7 @@ use App\Enums\PaymentStatus;
 use App\Enums\RecurringSlotPauseReason;
 use App\Enums\RecurringSlotStatus;
 use App\Events\Lessons\LessonChargeFailed;
+use App\Events\Payments\UnverifiedCaptureNeedsRefund;
 use App\Exceptions\LedgerException;
 use App\Exceptions\LessonTransitionException;
 use App\Exceptions\PaymentCaptureException;
@@ -272,10 +273,15 @@ class ChargeReservedLesson
             });
         } catch (LessonTransitionException|LedgerException $e) {
             // The gateway already took the money but the lesson can no longer be confirmed (a parent
-            // skipped it, or the slot was ended, between the two steps). There is no refund path until
-            // CP5, so record what happened and leave `ledger:verify` (captured, no hold) to flag it.
-            Payment::query()->whereKey($paymentId)->where('status', PaymentStatus::Pending)->first()
-                ?->update(['gateway_ref' => $gatewayRef, 'status' => PaymentStatus::Captured, 'raw_response' => $rawResponse]);
+            // skipped it, or the slot was ended, between the two steps). Record what happened; the platform
+            // never held this money, so (R260) it is refunded to the card by the unverified-capture refund
+            // (the hourly sweep is the net, and `ledger:verify` flags it until then).
+            $stranded = Payment::query()->whereKey($paymentId)->where('status', PaymentStatus::Pending)->first();
+            $stranded?->update(['gateway_ref' => $gatewayRef, 'status' => PaymentStatus::Captured, 'raw_response' => $rawResponse]);
+
+            if ($stranded !== null) {
+                UnverifiedCaptureNeedsRefund::dispatch($stranded);
+            }
 
             report(new RuntimeException("Weekly lesson {$lessonId} was charged (payment {$paymentId}) but could not be confirmed; this needs manual review.", previous: $e));
 

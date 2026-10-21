@@ -6,11 +6,14 @@ use App\Actions\Payments\ReconcileUnrecordedPayments;
 use App\Actions\Payments\RefundParentAtGateway;
 use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\LedgerAccount;
+use App\Enums\PaymentRefundKind;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\LazyCollection;
@@ -92,16 +95,23 @@ class RetryGatewayRefunds extends Command
                 return;
             }
 
-            foreach ($refund->owed($lesson, $payment) as $entry) {
+            foreach ($refund->owed($lesson) as $entry) {
                 $rows[] = [$lesson->id, $payment->id, $entry->id, $entry->amount, 'not yet confirmed'];
             }
         });
 
-        Payment::query()->whereNotNull('raw_response')->whereRaw("jsonb_exists(raw_response::jsonb, 'refund_failures')")->orderBy('id')->each(function (Payment $payment) use (&$rows): void {
-            foreach ($payment->raw_response['refund_failures'] ?? [] as $entryId => $failure) {
-                $rows[] = [$payment->lesson_id, $payment->id, $entryId, LedgerEntry::query()->whereKey($entryId)->value('amount'), 'refused: '.($failure['code'] ?? 'unknown')];
-            }
-        });
+        PaymentRefund::query()
+            ->where('status', PaymentRefundStatus::Failed->value)
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('payment_refunds as later')
+                ->whereColumn('later.payment_id', 'payment_refunds.payment_id')
+                ->whereRaw('later.kind = payment_refunds.kind')
+                ->whereRaw('later.ledger_entry_id is not distinct from payment_refunds.ledger_entry_id')
+                ->whereColumn('later.attempt', '>', 'payment_refunds.attempt'))
+            ->with('payment')
+            ->orderBy('id')
+            ->each(function (PaymentRefund $failed) use (&$rows): void {
+                $rows[] = [$failed->payment->lesson_id, $failed->payment_id, $failed->ledger_entry_id ?? '-', $failed->amount->toFils(), 'refused: '.($failed->failure_reason ?? 'unknown')];
+            });
 
         $this->table(['Lesson', 'Payment', 'Ledger entry', 'Amount (fils)', 'State'], $rows);
 
@@ -121,7 +131,16 @@ class RetryGatewayRefunds extends Command
             ->whereNotNull('gateway_ref')
             ->where('updated_at', '<=', now()->subMinutes(self::GRACE_MINUTES))
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('ledger_entries as e')->whereColumn('e.lesson_id', 'payments.lesson_id'))
-            ->whereRaw("coalesce(raw_response::jsonb->'unverified_refund'->>'status', '') not in ('succeeded', 'refused')")
+            // Settled (succeeded, or refused with no newer attempt) or in flight (a `requested` row the queue is
+            // still working on) payments are not the sweep's.
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('payment_refunds as r')
+                ->whereColumn('r.payment_id', 'payments.id')
+                ->where('r.kind', PaymentRefundKind::Unverified->value)
+                ->where(fn ($q) => $q->where('r.status', PaymentRefundStatus::Succeeded->value)
+                    ->orWhere(fn ($failed) => $failed->where('r.status', PaymentRefundStatus::Failed->value)
+                        ->whereRaw("r.attempt = (select max(m.attempt) from payment_refunds m where m.payment_id = r.payment_id and m.kind = 'unverified')"))
+                    ->orWhere(fn ($open) => $open->where('r.status', PaymentRefundStatus::Requested->value)
+                        ->where('r.requested_at', '>', now()->subMinutes(self::GRACE_MINUTES)))))
             ->orderBy('id')
             ->lazyById();
     }
@@ -143,9 +162,19 @@ class RetryGatewayRefunds extends Command
                 $query->selectRaw('1')
                     ->from('payments as p')
                     ->whereColumn('p.lesson_id', 'e.lesson_id')
-                    ->whereNotNull('p.gateway_ref')
-                    ->whereRaw("not jsonb_exists(coalesce(p.raw_response::jsonb->'refunds', '{}'::jsonb), e.id::text)")
-                    ->whereRaw("not jsonb_exists(coalesce(p.raw_response::jsonb->'refund_failures', '{}'::jsonb), e.id::text)");
+                    ->whereNotNull('p.gateway_ref');
+            })
+            // Settled (succeeded, or refused with no newer attempt) or in flight (a `requested` row the queue is
+            // still working on) entries are not the sweep's.
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('payment_refunds as r')
+                    ->whereColumn('r.ledger_entry_id', 'e.id')
+                    ->where(fn ($q) => $q->where('r.status', PaymentRefundStatus::Succeeded->value)
+                        ->orWhere(fn ($failed) => $failed->where('r.status', PaymentRefundStatus::Failed->value)
+                            ->whereRaw('r.attempt = (select max(m.attempt) from payment_refunds m where m.ledger_entry_id = r.ledger_entry_id)'))
+                        ->orWhere(fn ($open) => $open->where('r.status', PaymentRefundStatus::Requested->value)
+                            ->where('r.requested_at', '>', now()->subMinutes(self::GRACE_MINUTES))));
             })
             ->distinct()
             ->pluck('e.lesson_id');

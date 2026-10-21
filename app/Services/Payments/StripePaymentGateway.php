@@ -22,6 +22,7 @@ use Stripe\Exception\IdempotencyException;
 use Stripe\Exception\InvalidRequestException;
 use Stripe\Exception\RateLimitException;
 use Stripe\Exception\SignatureVerificationException;
+use Stripe\HttpClient\CurlClient;
 use Stripe\PaymentIntent;
 use Stripe\PaymentMethod as StripePaymentMethod;
 use Stripe\Refund;
@@ -33,8 +34,7 @@ use Stripe\WebhookSignature;
  * Cashier. It is built by `PaymentGatewayManager::forRow()` from the registry row's encrypted
  * credentials and holds them only in memory; nothing here logs, stores or returns a key, a card
  * number or a raw gateway body (invariants 15 and 16). Only the fields of `summary()` ever reach
- * `payments.raw_response` from this driver; `RefundParentAtGateway` (23d) later adds the refund ids it
- * made (`refunds`) and the refusals it recorded (`refund_failures`), keyed by ledger entry.
+ * `payments.raw_response` from this driver; what the refund actions ask and learn is in `payment_refunds` (24b).
  *
  * Money is integer fils on our side and Stripe's minor units for AED are fils, so amounts pass
  * through unchanged. Every amount sent and every amount checked is in `AED`.
@@ -53,6 +53,11 @@ final class StripePaymentGateway implements PaymentGateway
 
     private const KIND_RECURRING = 'recurring';
 
+    /** R260: per request, so two calls (a refund's list and create) finish inside the 60-second queue timeout. */
+    public const TIMEOUT_SECONDS = 20;
+
+    public const CONNECT_TIMEOUT_SECONDS = 5;
+
     /** The instant format the checkout writes into `metadata.starts_at` (the booking form's own). */
     public const STARTS_AT_FORMAT = 'Y-m-d\TH:i:s\Z';
 
@@ -67,6 +72,11 @@ final class StripePaymentGateway implements PaymentGateway
         private readonly bool $live = false,
         ?StripeClient $client = null,
     ) {
+        // R260: Stripe's SDK waits 80 seconds by default. A refund is a list plus a create, so two calls at this
+        // limit stay inside the 60-second queue timeout (`config/horizon.php`) that would otherwise kill a job
+        // mid-call. The SDK keeps one shared HTTP client, so this applies to every Stripe call in the process.
+        CurlClient::instance()->setTimeout(self::TIMEOUT_SECONDS)->setConnectTimeout(self::CONNECT_TIMEOUT_SECONDS);
+
         $this->client = $client ?? new StripeClient($secretKey);
     }
 
@@ -459,6 +469,36 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         return $this->refundResult($refund);
+    }
+
+    /**
+     * 24b (R260): the refunds Stripe holds for the payment, for `ReconcileGatewayRefunds` to tell the platform's
+     * own from ones made in the Stripe dashboard. Read-only; a gateway-level failure propagates so the queue
+     * retries.
+     *
+     * @return list<array{id: string, amount: int, status: string, idempotency_key: ?string, created: int}>
+     */
+    public function listRefunds(Payment $payment): array
+    {
+        if ($payment->gateway !== $this->driver() || $payment->gateway_ref === null) {
+            return [];
+        }
+
+        $found = [];
+
+        foreach ($this->client->refunds->all(['payment_intent' => $payment->gateway_ref, 'limit' => 100])->data as $refund) {
+            $key = $refund->metadata['idempotency_key'] ?? null;
+
+            $found[] = [
+                'id' => $refund->id,
+                'amount' => (int) $refund->amount,
+                'status' => (string) $refund->status,
+                'idempotency_key' => is_string($key) ? $key : null,
+                'created' => (int) $refund->created,
+            ];
+        }
+
+        return $found;
     }
 
     private function refundResult(Refund $refund): PaymentCaptureResult

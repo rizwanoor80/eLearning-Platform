@@ -3,6 +3,7 @@
 use App\Actions\Payments\ReconcileUnrecordedPayments;
 use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\LessonStatus;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Events\Payments\UnverifiedCaptureNeedsRefund;
@@ -10,6 +11,7 @@ use App\Exceptions\PaymentGatewayUnavailable;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
+use App\Models\PaymentRefund;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Support\Facades\Event;
 use Tests\Support\Payments\FakeStripeHttp;
@@ -149,7 +151,7 @@ it('refunds a captured payment the platform never held in the hourly sweep, once
 
     $payment = $payment->fresh();
     expect($payment->status)->toBe(PaymentStatus::Refunded)
-        ->and($payment->raw_response[RefundUnverifiedCapture::MARKER]['status'])->toBe('succeeded')
+        ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
         ->and($this->http->idempotencyKeyOf($this->http->requestsTo('POST /v1/refunds')[0]))->toBe('unverified-pi_test_1');
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED);
 
@@ -162,7 +164,8 @@ it('leaves a captured payment the ledger holds, a young one and a refused one ou
     $held = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_held', 'updated_at' => now()->subHour()]);
     app(LedgerService::class)->hold($held->lesson);
     urPending(['status' => PaymentStatus::Captured, 'gateway_ref' => 'pi_young'], 2);
-    urPending(['status' => PaymentStatus::Captured, 'gateway_ref' => 'pi_refused', 'raw_response' => [RefundUnverifiedCapture::MARKER => ['status' => 'refused']]], 90);
+    $refused = urPending(['status' => PaymentStatus::Captured, 'gateway_ref' => 'pi_refused'], 90);
+    PaymentRefund::factory()->failed()->create(['payment_id' => $refused->id, 'idempotency_key' => 'unverified-pi_refused', 'requested_at' => now()->subMinutes(90)]);
 
     $this->artisan('payments:retry-refunds')->expectsOutputToContain('Made 0 gateway refund(s).')->assertSuccessful();
 

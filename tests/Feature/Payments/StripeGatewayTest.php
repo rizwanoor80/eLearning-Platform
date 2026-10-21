@@ -18,6 +18,7 @@ use App\Support\Payments\CheckoutIntent;
 use Stripe\Exception\ApiConnectionException;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\InvalidRequestException;
+use Stripe\HttpClient\CurlClient;
 use Tests\Support\Payments\FakeStripeHttp;
 
 /**
@@ -81,6 +82,16 @@ function stripeChooses(string $intentId): void
 {
     app(CheckoutIntent::class)->set($intentId);
 }
+
+it('bounds every Stripe call, so two calls in one queued job stay under the worker timeout (R260)', function () {
+    new StripePaymentGateway('sk_test_example', 'whsec_example');
+
+    $client = CurlClient::instance();
+
+    expect($client->getTimeout())->toBe(StripePaymentGateway::TIMEOUT_SECONDS)
+        ->and($client->getConnectTimeout())->toBe(StripePaymentGateway::CONNECT_TIMEOUT_SECONDS)
+        ->and(StripePaymentGateway::TIMEOUT_SECONDS * 2)->toBeLessThan(60);
+});
 
 it('captures the held intent the parent confirmed, and keeps only a whitelisted summary', function () {
     $this->http

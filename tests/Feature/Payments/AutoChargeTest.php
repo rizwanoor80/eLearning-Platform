@@ -15,6 +15,7 @@ use App\Enums\RecurringSlotPauseReason;
 use App\Enums\RecurringSlotStatus;
 use App\Enums\TutorProfileStatus;
 use App\Events\Lessons\LessonStatusChanged;
+use App\Events\Payments\UnverifiedCaptureNeedsRefund;
 use App\Exceptions\PaymentCaptureException;
 use App\Exceptions\RecurringSlotException;
 use App\Listeners\Lessons\SendLessonConfirmedMail;
@@ -489,6 +490,7 @@ it('picks up a pending attempt a crashed run left behind, on the same attempt nu
 
 it('flags money taken for a lesson that could not be confirmed, instead of hiding it', function () {
     Exceptions::fake();
+    Event::fake([UnverifiedCaptureNeedsRefund::class]);
     ['slot' => $slot] = acSetup();
     $lesson = acLesson($slot);
 
@@ -540,6 +542,8 @@ it('flags money taken for a lesson that could not be confirmed, instead of hidin
         ->and($payment->gateway_ref)->toBe("raced_lesson:{$lesson->id}:attempt:1")
         ->and($lesson->fresh()->status)->toBe(LessonStatus::CancelledByParent);
     Exceptions::assertReported(RuntimeException::class);
+    // 24b (R260): the platform never held this money, so the refund to the card is asked for at once.
+    Event::assertDispatched(UnverifiedCaptureNeedsRefund::class, fn ($e) => $e->payment->is($payment));
 
     // `ledger:verify` shows it once the in-flight grace window has passed.
     test()->travel(10)->minutes();

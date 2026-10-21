@@ -4,10 +4,14 @@ namespace App\Actions\Payments;
 
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
+use App\Enums\PaymentRefundKind;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Jobs\Payments\CheckOrphanCapture;
+use App\Jobs\Payments\ReconcileGatewayRefunds;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Support\Money;
 use Illuminate\Support\Facades\DB;
 
@@ -23,7 +27,8 @@ use Illuminate\Support\Facades\DB;
  *   event cannot undo a newer one), and admins are told that the gateway moved money the platform did
  *   not. A refund the platform made itself (23d) is already recorded and so changes nothing here; one
  *   that only the ledger has recorded so far (the gateway call is queued) is recorded on the payment
- *   but not reported.
+ *   but not reported. A total larger than the ledger explains queues `ReconcileGatewayRefunds` (24b), which
+ *   lists the gateway's refunds, records the ones the platform did not make and tells admins.
  * - `charge.dispute.created`: admins are told. No state changes.
  * - Anything else is ignored by the controller before it is stored.
  */
@@ -101,10 +106,12 @@ class ApplyPaymentWebhook
             ->sum('amount');
 
         // R259 (2): a refund the platform made itself for an unverified capture is already reported.
-        $ownRefund = isset($payment->raw_response[RefundUnverifiedCapture::MARKER]);
+        $ownRefund = PaymentRefund::query()->where('payment_id', $payment->id)->where('kind', PaymentRefundKind::Unverified->value)->where('status', '<>', PaymentRefundStatus::Failed->value)->exists();
 
         if ($new->toFils() > $ledgerRefunded && ! $ownRefund) {
-            PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+            // 24b (R260): which refund is not the platform's is for the gateway to say, and this action holds the
+            // payment's lock, so the lookup is a queued job that runs once this has committed.
+            dispatch(new ReconcileGatewayRefunds($payment->id))->afterCommit();
         }
     }
 
