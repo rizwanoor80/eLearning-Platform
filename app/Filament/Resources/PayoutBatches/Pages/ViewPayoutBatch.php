@@ -5,9 +5,11 @@ namespace App\Filament\Resources\PayoutBatches\Pages;
 use App\Actions\Payouts\ExportPayoutBatchCsv;
 use App\Enums\PayoutLineStatus;
 use App\Enums\PayoutMethodCode;
+use App\Exceptions\PayoutException;
 use App\Filament\Resources\PayoutBatches\PayoutBatchResource;
 use App\Models\PayoutBatch;
 use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewPayoutBatch extends ViewRecord
@@ -35,7 +37,15 @@ class ViewPayoutBatch extends ViewRecord
             ->map(fn (PayoutMethodCode $m): Action => Action::make('csv_'.$m->value)
                 ->label('Download '.$m->label().' CSV')
                 ->icon('heroicon-o-arrow-down-tray')
-                ->action(fn () => app(ExportPayoutBatchCsv::class)(auth()->user(), $batch, $m)))
+                ->action(function () use ($batch, $m) {
+                    try {
+                        return app(ExportPayoutBatchCsv::class)(auth()->user(), $batch, $m);
+                    } catch (PayoutException $e) {
+                        Notification::make()->danger()->title('File not made')->body($e->getMessage())->persistent()->send();
+
+                        return null;
+                    }
+                }))
             ->values()
             ->all();
     }

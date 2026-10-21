@@ -5,6 +5,7 @@ namespace App\Http\Requests\Settings;
 use App\Enums\PayoutMethodCode;
 use App\Models\PayoutMethod;
 use App\Models\TutorProfile;
+use App\Rules\NotSpreadsheetFormula;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -33,11 +34,11 @@ class SavePayoutPreferenceRequest extends FormRequest
 
         return [
             'method' => ['required', 'string', Rule::in($offered), Rule::enum(PayoutMethodCode::class)],
-            'bank_name' => ['nullable', 'string', 'max:255'],
-            'bank_account_name' => ['nullable', 'string', 'max:255'],
-            'bank_iban' => ['nullable', 'string', 'max:34'],
-            'bank_swift' => ['nullable', 'string', 'max:11'],
-            'payout_email' => ['nullable', 'string', 'email:rfc', 'max:255'],
+            'bank_name' => ['nullable', 'string', 'max:255', new NotSpreadsheetFormula],
+            'bank_account_name' => ['nullable', 'string', 'max:255', new NotSpreadsheetFormula],
+            'bank_iban' => ['nullable', 'string', 'max:34', new NotSpreadsheetFormula],
+            'bank_swift' => ['nullable', 'string', 'max:11', new NotSpreadsheetFormula],
+            'payout_email' => ['nullable', 'string', 'email:rfc', 'max:255', new NotSpreadsheetFormula],
         ];
     }
 

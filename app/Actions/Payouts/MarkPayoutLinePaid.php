@@ -35,6 +35,8 @@ class MarkPayoutLinePaid
      */
     public function __invoke(User $admin, PayoutBatchLine $line, string $externalReference): void
     {
+        AssertPayoutAdmin::for($admin, 'record a payout');
+
         $reference = trim(preg_replace('/\s+/u', ' ', $externalReference) ?? '');
 
         if ($reference === '' || mb_strlen($reference) > 191) {

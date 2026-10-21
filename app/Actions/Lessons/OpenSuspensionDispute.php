@@ -25,6 +25,9 @@ use Illuminate\Database\QueryException;
  * full, and tutors do not open disputes (PRD §2.10). The dispute row is created as `OpenDispute` creates it, with the
  * admin as `opened_by_user_id`; eligibility is decided on the locked row inside `LessonStateMachine::transition()`,
  * which also serialises two concurrent opens.
+ *
+ * Lock order (R263, 18d): the lesson row only, exactly as `OpenDispute`. It takes no `users` or `tutor_profiles` lock, so it
+ * cannot wait on `GeneratePayoutBatch`, `AnonymizeUser` or `MarkPayoutLinePaid` in a circle.
  */
 class OpenSuspensionDispute
 {

@@ -1,16 +1,19 @@
 <?php
 
+use App\Actions\Lessons\ResolveDispute;
 use App\Actions\Lessons\SettleSuspendedLesson;
 use App\Actions\Payouts\ExportPayoutBatchCsv;
 use App\Actions\Payouts\GeneratePayoutBatch;
 use App\Actions\Payouts\MarkPayoutLineFailed;
 use App\Actions\Payouts\MarkPayoutLinePaid;
+use App\Actions\Payouts\SavePayoutPreference;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\LessonStatus;
 use App\Enums\PayoutLineStatus;
 use App\Enums\PayoutMethodCode;
 use App\Enums\TutorProfileStatus;
+use App\Enums\UserStatus;
 use App\Exceptions\LedgerException;
 use App\Exceptions\PayoutException;
 use App\Filament\Resources\PayoutBatches\Pages\ListPayoutBatches;
@@ -18,7 +21,10 @@ use App\Filament\Resources\PayoutBatches\Pages\ViewPayoutBatch;
 use App\Filament\Resources\PayoutBatches\PayoutBatchResource;
 use App\Filament\Resources\PayoutBatches\RelationManagers\LinesRelationManager;
 use App\Filament\Resources\TutorProfiles\Schemas\TutorProfileInfolist;
+use App\Http\Requests\Settings\SavePayoutPreferenceRequest;
+use App\Http\Requests\Tutor\Onboarding\BankStepRequest;
 use App\Models\AuditLog;
+use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\PayoutBatch;
@@ -26,13 +32,18 @@ use App\Models\PayoutBatchLine;
 use App\Models\PayoutMethod;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Rules\NotSpreadsheetFormula;
 use App\Services\Ledger\LedgerService;
 use App\Services\Tutors\TutorEarnings;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Livewire\Livewire;
 
@@ -280,8 +291,10 @@ it('reports a tutor who has the minimum but cannot be paid, and a tutor with an 
 
     $result = pbGenerate();
 
+    // A closed account is not "skipped": it is flagged as owed money (R263) and kept out of the batch.
     expect($result->batch->lines->pluck('tutor_profile_id')->all())->toBe([$ready->id])
-        ->and(collect($result->skipped)->pluck('tutor_profile_id')->sort()->values()->all())->toBe(collect([$noMethod->id, $closed->id])->sort()->values()->all());
+        ->and(collect($result->skipped)->pluck('tutor_profile_id')->all())->toBe([$noMethod->id])
+        ->and($result->anonymisedOwed)->toBe([['tutor_profile_id' => $closed->id, 'amount_fils' => 22500]]);
 
     // Money paid later is not in the old line, but the tutor already has a line waiting.
     $more = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(61)->startOfHour())->create(['tutor_profile_id' => $ready->id]);
@@ -461,8 +474,8 @@ it('keeps the account details out of serialisation', function () {
 
 // --- CSV --------------------------------------------------------------------------------------------------------
 
-it('lists only the lines still to pay, and makes formula-like cells plain text', function () {
-    $tutor = pbTutor(3, ['bank_account_name' => '=HYPERLINK("http://x")', 'bank_iban' => '+GB00INJECT0000000000001']);
+it('lists only the lines still to pay, and writes values exactly as stored', function () {
+    pbTutor(3, ['bank_account_name' => "O'Brien - Khan", 'bank_iban' => 'GB00PLAIN00000000000001']);
     $paidTutor = pbTutor(3);
     $batch = pbGenerate()->batch;
     pbPay($batch->lines->firstWhere('tutor_profile_id', $paidTutor->id));
@@ -470,9 +483,24 @@ it('lists only the lines still to pay, and makes formula-like cells plain text',
     $export = app(ExportPayoutBatchCsv::class);
     $csv = $export->csv(PayoutMethodCode::BankTransfer, $export->lines($batch, PayoutMethodCode::BankTransfer));
 
-    expect($csv)->toContain("\"'=HYPERLINK(\"\"http://x\"\")\"")
-        ->and($csv)->toContain("'+GB00INJECT0000000000001")
+    // No added quote: a bank would read it as part of the name.
+    expect($csv)->toContain("\"O'Brien - Khan\",GB00PLAIN00000000000001")
         ->and(substr_count($csv, 'TT-'))->toBe(1);
+});
+
+it('refuses to write a file for a pending line that carries a formula-leading value, naming the line', function () {
+    $tutor = pbTutor();
+    $line = pbLine($tutor);
+    // A line made before the input rule existed: forced in below the model's guard.
+    DB::table('payout_batch_lines')->where('id', $line->id)->update(['details' => Crypt::encryptString(json_encode(['account_name' => '=HYPERLINK("http://x")', 'iban' => 'GB00X', 'swift' => null, 'bank_name' => null]))]);
+    $line = $line->fresh();
+    $export = app(ExportPayoutBatchCsv::class);
+
+    expect(fn () => $export->csv(PayoutMethodCode::BankTransfer, [$line]))->toThrow(PayoutException::class, $line->reference);
+
+    $admin = User::factory()->admin()->create();
+    expect(fn () => $export($admin, $line->batch, PayoutMethodCode::BankTransfer))->toThrow(PayoutException::class)
+        ->and(AuditLog::query()->where('action', 'payout_batch.exported')->exists())->toBeFalse();
 });
 
 it('streams the CSV to an admin and audits the download without its contents', function () {
@@ -645,4 +673,311 @@ it('never puts a disputed lesson in a batch, whatever its age', function () {
 
     expect(pbAvailable($tutor))->toBe(0);
     expect(pbGenerate()->batch?->lines()->where('tutor_profile_id', $tutor->id)->exists() ?? false)->toBeFalse();
+});
+
+// --- 24e (R263): payout hardening -------------------------------------------------------------------------------
+
+function pbNonAdmins(): array
+{
+    return ['tutor' => User::factory()->tutor()->create(), 'parent' => User::factory()->create(), 'suspended admin' => User::factory()->admin()->create(['status' => UserStatus::Suspended])];
+}
+
+it('makes every payout action check the admin role itself', function () {
+    $tutor = pbTutor();
+    $line = pbLine($tutor);
+    $batch = $line->batch;
+    $auditBefore = AuditLog::query()->count();
+    $ledgerBefore = LedgerEntry::query()->count();
+
+    foreach (pbNonAdmins() as $who => $user) {
+        expect(fn () => app(GeneratePayoutBatch::class)($user))->toThrow(PayoutException::class, 'Only an active admin', $who)
+            ->and(fn () => app(MarkPayoutLinePaid::class)($user, $line, 'REF'))->toThrow(PayoutException::class, 'Only an active admin')
+            ->and(fn () => app(MarkPayoutLineFailed::class)($user, $line, 'Reason'))->toThrow(PayoutException::class, 'Only an active admin')
+            ->and(fn () => app(ExportPayoutBatchCsv::class)($user, $batch, PayoutMethodCode::BankTransfer))->toThrow(PayoutException::class, 'Only an active admin');
+    }
+
+    expect($line->fresh()->status)->toBe(PayoutLineStatus::Pending)
+        ->and(AuditLog::query()->count())->toBe($auditBefore)
+        ->and(LedgerEntry::query()->count())->toBe($ledgerBefore)
+        ->and(PayoutBatch::query()->count())->toBe(1);
+});
+
+it('refuses a formula-leading bank value or payout email when it is typed', function (string $field, string $value) {
+    PayoutMethod::query()->where('code', 'wise')->update(['is_active' => true, 'countries' => json_encode([])]);
+    $tutor = pbTutor(0, ['bank_account_name' => 'Safe Name']);
+    $bank = ['bank_account_name' => 'Safe Name', 'bank_iban' => 'GB00SAFE0000000000001', 'bank_swift' => 'SAFEGB2L', 'bank_name' => 'Safe Bank'];
+    $method = $field === 'payout_email' ? 'wise' : 'bank_transfer';
+
+    try {
+        app(SavePayoutPreference::class)($tutor->user, $tutor, $method, [$field => $value] + $bank + ['payout_email' => 'safe@example.test']);
+        $thrown = null;
+    } catch (ValidationException $e) {
+        $thrown = $e;
+    }
+
+    // Refused for this field, not for some other reason (a method not offered, say).
+    expect($thrown)->not->toBeNull()
+        ->and(array_keys($thrown->errors()))->toBe([$field]);
+
+    expect($tutor->fresh()->bank_account_name)->toBe('Safe Name')
+        ->and($tutor->fresh()->payout_email)->toBeNull();
+})->with([
+    'equals' => ['bank_account_name', '=HYPERLINK("http://x")'],
+    'plus' => ['bank_iban', '+GB00INJECT0000000000001'],
+    'minus' => ['bank_swift', '-cmd'],
+    'at' => ['bank_name', '@SUM(1)'],
+    'space then equals' => ['bank_account_name', '  =1+1'],
+    'nbsp then plus' => ['bank_iban', "\u{00A0}+GB00"],
+    'bidi mark then at' => ['bank_name', "\u{200F}@SUM(1)"],
+    'full-width equals' => ['bank_account_name', "\u{FF1D}1+1"],
+    'email' => ['payout_email', '+wise@example.test'],
+    'invalid utf-8 after a formula' => ['bank_account_name', "=HYPERLINK(\"http://x\")\xFF"],
+    'invalid utf-8 alone' => ['bank_account_name', "Ali\xFF"],
+    'line break inside a name' => ['bank_account_name', "Ali\nEvil Name,AE070331234567890123456"],
+    'carriage return inside an iban' => ['bank_iban', "GB00\rINJECT"],
+    'tab inside a bank name' => ['bank_name', "Bank\tName"],
+    'null byte' => ['bank_swift', "SAFE\0GB2L"],
+    'newline in an email' => ['payout_email', "safe@example.test\nbcc@example.test"],
+]);
+
+it('lets ordinary names through the formula rule, including Arabic and Persian ones', function (string $value) {
+    expect(NotSpreadsheetFormula::startsLikeFormula($value))->toBeFalse()
+        ->and(NotSpreadsheetFormula::isUnsafe($value))->toBeFalse();
+})->with(['plain' => 'Ayesha Khan', 'arabic' => 'محمد العلي', 'persian' => 'نیما احمدی', 'inner symbols' => "O'Brien - Khan", 'digits' => '12345']);
+
+it('treats bytes that are not valid UTF-8 as unsafe, never as clean', function () {
+    expect(NotSpreadsheetFormula::startsLikeFormula("=\xFF"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::startsLikeFormula("\xFF=1"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::isUnsafe("Ali\xFF"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::isUnsafe(null))->toBeFalse();
+});
+
+it('puts the formula rule on the settings and onboarding bank form requests', function () {
+    $fields = ['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift'];
+    $safe = ['bank_name' => 'Safe Bank', 'bank_account_name' => 'Safe Name', 'bank_iban' => 'GB00SAFE0000000000001', 'bank_swift' => 'SAFEGB2L'];
+
+    foreach ([BankStepRequest::class, SavePayoutPreferenceRequest::class] as $class) {
+        $rules = (new $class)->rules();
+
+        foreach ($fields as $field) {
+            expect(Validator::make($safe, $rules)->errors()->has($field))->toBeFalse("$class $field safe")
+                ->and(Validator::make([$field => '=1+1'] + $safe, $rules)->errors()->has($field))->toBeTrue("$class $field");
+        }
+    }
+
+    expect(Validator::make(['payout_email' => '+wise@example.test'], (new SavePayoutPreferenceRequest)->rules())->errors()->has('payout_email'))->toBeTrue();
+
+    foreach ([BankStepRequest::class, SavePayoutPreferenceRequest::class] as $class) {
+        expect(Validator::make(['bank_account_name' => "Ali\xFF"] + $safe, (new $class)->rules())->errors()->has('bank_account_name'))->toBeTrue("$class bytes")
+            ->and(Validator::make(['bank_account_name' => "Ali\nEvil"] + $safe, (new $class)->rules())->errors()->has('bank_account_name'))->toBeTrue("$class newline");
+    }
+});
+
+it('reports a stored formula-leading value as a payout problem and leaves that tutor out of the batch with the reason', function () {
+    PayoutMethod::query()->where('code', 'wise')->update(['is_active' => true, 'countries' => json_encode([])]);
+    $bad = pbTutor(3, ['bank_account_name' => '=HYPERLINK("http://x")']);
+    $badEmail = pbTutor(3, ['payout_method' => 'wise', 'payout_email' => '+wise@example.test']);
+    $ok = pbTutor(3);
+
+    $result = pbGenerate();
+
+    expect($bad->payoutMethodProblem())->toContain('bank file cannot carry')
+        ->and($badEmail->payoutMethodProblem())->toContain('bank file cannot carry')
+        ->and($result->batch->lines->pluck('tutor_profile_id')->all())->toBe([$ok->id])
+        ->and(collect($result->skipped)->pluck('reason')->implode(' '))->toContain('bank file cannot carry');
+});
+
+// --- anonymised account that is still owed money -----------------------------------------------------------------
+
+it('flags an anonymised tutor who is owed money, below or above the minimum, and keeps them out of the batch', function (int $lessons, int $expectedFils) {
+    $closed = pbTutor($lessons);
+    $closed->user->delete();
+    $ready = pbTutor(3);
+
+    $result = pbGenerate();
+
+    expect($result->anonymisedOwed)->toBe([['tutor_profile_id' => $closed->id, 'amount_fils' => $expectedFils]])
+        ->and($result->batch->lines->pluck('tutor_profile_id')->all())->toBe([$ready->id])
+        ->and(PayoutBatchLine::query()->where('tutor_profile_id', $closed->id)->exists())->toBeFalse();
+
+    $audit = AuditLog::query()->where('action', 'payout_batch.owed_to_anonymised')->sole();
+
+    expect($audit->subject_id)->toBe($closed->id)
+        ->and($audit->after)->toBe(['amount_fils' => $expectedFils]);
+})->with([
+    'above the minimum' => [3, 22500],
+    'below the minimum' => [1, 7500],
+]);
+
+it('flags nothing for an anonymised tutor owed nothing or in debt', function () {
+    $paidUp = pbTutor(3);
+    pbPay(pbLine($paidUp));
+    $paidUp->user->delete();
+
+    $inDebt = pbTutor(3);
+    pbPay(pbLine($inDebt));
+    Lesson::allowingStatusWrites(fn () => Lesson::query()->where('tutor_profile_id', $inDebt->id)->first()->forceFill(['status' => LessonStatus::Disputed])->save());
+    expect(pbAvailable($inDebt))->toBeLessThan(0);
+    $inDebt->user->delete();
+
+    $ready = pbTutor(3);
+    $result = pbGenerate();
+
+    expect($result->anonymisedOwed)->toBe([])
+        ->and($result->batch->lines->pluck('tutor_profile_id')->all())->toBe([$ready->id])
+        ->and(AuditLog::query()->where('action', 'payout_batch.owed_to_anonymised')->exists())->toBeFalse();
+});
+
+it('returns the owed flag even when no batch is made, and writes no batch or line', function () {
+    $closed = pbTutor(3);
+    $closed->user->delete();
+
+    $result = pbGenerate();
+
+    expect($result->batch)->toBeNull()
+        ->and($result->anonymisedOwed)->toHaveCount(1)
+        ->and(PayoutBatch::query()->count())->toBe(0)
+        ->and(PayoutBatchLine::query()->count())->toBe(0);
+});
+
+it('shows the admin a persistent warning for an anonymised tutor who is owed money', function () {
+    $admin = User::factory()->admin()->create();
+    $closed = pbTutor(3);
+    $closed->user->delete();
+
+    Livewire::actingAs($admin)
+        ->test(ListPayoutBatches::class)
+        ->callAction('generate', ['period_end' => now()->toDateString()])
+        ->assertNotified('Money owed to an anonymised account');
+
+    expect(PayoutBatch::query()->count())->toBe(0);
+});
+
+// --- lock order ---------------------------------------------------------------------------------------------------
+
+it('locks each tutor’s users row before their profile row when generating a batch', function () {
+    $first = pbTutor(3);
+    $second = pbTutor(3);
+
+    $locks = [];
+    DB::listen(function ($query) use (&$locks): void {
+        if (preg_match('/\bfor (update|share)\b/i', $query->sql) === 1) {
+            $table = str_contains($query->sql, '"users"') ? 'users' : (str_contains($query->sql, '"tutor_profiles"') ? 'profile' : null);
+
+            if ($table !== null) {
+                $locks[] = [$table, $query->bindings];
+            }
+        }
+    });
+
+    pbGenerate();
+
+    // Each tutor: the users row, then the profile row, before the next tutor's pair; and the users row is the owner's.
+    $tables = array_column($locks, 0);
+    $owners = [$first->user_id, $second->user_id];
+
+    expect(array_slice($tables, 0, 4))->toBe(['users', 'profile', 'users', 'profile'])
+        ->and(collect($locks)->where(0, 'users')->take(2)->map(fn ($l) => (int) $l[1][0])->values()->all())->toEqualCanonicalizing($owners);
+});
+
+// --- the line is a snapshot ---------------------------------------------------------------------------------------
+
+it('keeps the method and details a line was made with when the tutor changes them afterwards', function () {
+    PayoutMethod::query()->where('code', 'wise')->update(['is_active' => true, 'countries' => json_encode([])]);
+    $tutor = pbTutor(3, ['bank_account_name' => 'Snapshot Name', 'bank_iban' => 'GB00SNAP00000000000001']);
+    $batch = pbGenerate()->batch;
+    $line = $batch->lines->firstWhere('tutor_profile_id', $tutor->id);
+
+    $tutor->forceFill(['payout_method' => 'wise', 'payout_email' => 'new.wallet@example.test', 'bank_iban' => 'GB00CHANGED0000000009'])->save();
+
+    $export = app(ExportPayoutBatchCsv::class);
+    $csv = $export->csv(PayoutMethodCode::BankTransfer, $export->lines($batch, PayoutMethodCode::BankTransfer));
+
+    expect($line->fresh()->payout_method)->toBe('bank_transfer')
+        ->and($line->fresh()->details['iban'])->toBe('GB00SNAP00000000000001')
+        ->and($csv)->toContain('GB00SNAP00000000000001')
+        ->and($csv)->not->toContain('CHANGED')
+        ->and($export->lines($batch, PayoutMethodCode::Wise))->toBe([]);
+});
+
+// --- negative balance, netting and the whole path ---------------------------------------------------------------
+
+function pbResolveAtZero(Lesson $lesson): void
+{
+    Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::Disputed])->save());
+    $dispute = Dispute::factory()->for($lesson)->create();
+    app(ResolveDispute::class)(User::factory()->admin()->create(), $dispute, 100, 0, 'Nothing was taught.');
+}
+
+function pbReleaseMore(TutorProfile $tutor, int $count): void
+{
+    static $offset = 0;
+
+    for ($i = 0; $i < $count; $i++) {
+        $lesson = Lesson::factory()->withStatus(LessonStatus::Completed)->startingAt(now()->subDays(30)->startOfHour()->addHours($offset++))->create(['tutor_profile_id' => $tutor->id]);
+        app(LedgerService::class)->hold($lesson);
+        app(LedgerService::class)->release($lesson);
+        Lesson::allowingStatusWrites(fn () => $lesson->forceFill(['status' => LessonStatus::CompletedReported])->save());
+    }
+}
+
+it('nets a negative balance against the next batch, and flags it while it is negative', function () {
+    $this->freezeTime();
+    $tutor = pbTutor(3);
+    pbPay(pbLine($tutor)); // AED 225.00 paid out
+
+    pbResolveAtZero(Lesson::query()->where('tutor_profile_id', $tutor->id)->first()); // AED 75.00 clawed back after the transfer
+
+    expect(pbAvailable($tutor))->toBe(-7500)
+        ->and(implode(' ', TutorProfileInfolist::payoutLines($tutor)))->toContain('Negative balance');
+
+    pbReleaseMore($tutor, 4); // AED 300.00 more, past its window
+    $this->travel(49)->hours();
+
+    $line = pbLine($tutor);
+
+    // 300.00 earned less the 75.00 already overpaid.
+    expect($line->amount->toFils())->toBe(22500);
+    pbPay($line, 'NET-REF');
+
+    expect(pbAvailable($tutor))->toBe(0)
+        ->and(implode(' ', TutorProfileInfolist::payoutLines($tutor)))->not->toContain('Negative balance')
+        ->and(app(LedgerService::class)->unbalancedLessons())->toBeEmpty();
+});
+
+it('shows no negative flag at a zero or positive balance', function () {
+    $tutor = pbTutor(3);
+
+    expect(implode(' ', TutorProfileInfolist::payoutLines($tutor)))->not->toContain('Negative balance');
+
+    pbPay(pbLine($tutor));
+
+    expect(pbAvailable($tutor))->toBe(0)
+        ->and(implode(' ', TutorProfileInfolist::payoutLines($tutor)))->not->toContain('Negative balance');
+});
+
+it('takes a lesson from settlement to a paid transfer through the real actions, with the ledger and buckets agreeing', function () {
+    $tutor = pbTutor(2);
+    $lesson = Lesson::factory()->withStatus(LessonStatus::Disputed)->startingAt(now()->subDays(60)->startOfHour()->addHours(900))->create(['tutor_profile_id' => $tutor->id]);
+    app(LedgerService::class)->hold($lesson);
+    $dispute = Dispute::factory()->for($lesson)->create();
+
+    // On hold while disputed: not available.
+    expect(pbAvailable($tutor))->toBe(15000);
+
+    app(ResolveDispute::class)(User::factory()->admin()->create(), $dispute, 0, 100, 'Lesson went ahead.');
+    $lesson->refresh();
+
+    $line = pbLine($tutor);
+    pbPay($line, 'E2E-REF');
+
+    $buckets = app(TutorEarnings::class)->buckets($tutor);
+
+    expect($line->amount->toFils())->toBe(22500)
+        ->and($buckets->paidToDate->toFils())->toBe(22500)
+        ->and($buckets->available->toFils())->toBe(0)
+        ->and($buckets->pending->toFils() + $buckets->onHold->toFils() + $buckets->processing->toFils())->toBe(0)
+        ->and(app(LedgerService::class)->unbalancedLessons())->toBeEmpty()
+        ->and(app(LedgerService::class)->unbalancedPayouts())->toBeEmpty()
+        ->and(Artisan::call('ledger:verify', ['-n' => true]))->toBe(0);
 });
