@@ -1,5 +1,5 @@
 # STATUS — cycle 24 r1 — programme "payments ready for live" — 24a built and verified, PR next; written 2026-10-21
-Tests: **3205 / 23301** on the 24a branch tree (baseline 3179 / 23162 on `a198cd2`) · `ledger:verify` OK · Pint, PHPStan (0 errors), vue-tsc, `npm run build`, RTL grep green · Advisor: 1 time this cycle (24a, Opus 5.5) · Review: none yet · Context size: not measured by the tool (cloud session); 1 compaction since START · Resume cap 14, 0 used
+Tests: **3212 / 23315** after fix round 1 (3205 / 23301 before it) on the 24a branch tree (baseline 3179 / 23162 on `a198cd2`) · `ledger:verify` OK · Pint, PHPStan (0 errors), vue-tsc, `npm run build`, RTL grep green · Advisor: 1 time this cycle (24a, Opus 5.5) · Review: 24a round 1 Opus 5.5 — 0 High, 3 Medium, 5 Low; fix round 1 applied · Context size: not measured by the tool (cloud session); 1 compaction since START · Resume cap 14, 0 used
 
 ## §1 Git state
 - **Cycle 24 r1 (current):** `main` = `a198cd2` (PLAN.md only on top of `878913d`), `rehearsal` = `01f5f34`, no cycle 24 branch yet, no production deploy. The cycle 23 text below (§1–§6a) is kept until each sub-cycle replaces what it supersedes.
@@ -40,6 +40,7 @@ Cycle 24: not stopping; the programme runs under R224 and halts only at END or a
 END. Cycle 23 r3 is complete: step 10 (23h fix round, PR #75 merged as `01f5f34`, rehearsal deployed, R213 green with 0 pending migrations) and step 11 (this write). The queue is empty: PLAN.md authorises nothing further. Done: 23a–23h merged and on rehearsal. Next: the owner's reply after `/clear` (Owner actions below) and the next plan. Ruled out: any production deploy; any further frozen-file change; building the `YearGroupFactory` fix or the other Deferred items without a plan line.
 
 ## §6 Mismatches
+- **24a vs R260 (disclosure):** the 24a unverified-capture sweep also refunds a recurring `NeedsReview` payment (a `Captured` payment with no ledger entry), which R260 plans for 24b; 24b keeps the explicit auto-refund and the refund-state table.
 - **R240 name check:** every name the plan cites exists on `main`; the things it builds do not yet exist (expected).
 - **23a vs R255 / R246, 23b vs R255, 23c vs R247, 23c vs R252:** as disclosed in earlier STATUS files (`git show fac7a24:docs/STATUS.md` §6); unchanged.
 - **23d vs R256 (disclosure):** the plan says the gateway refund updates `payments.status` / `refunded_amount`. Existing callers (`LessonSettlement::refundParent`, `CancelLesson`) already set `payments.status` eagerly, meaning "the ledger decided", before the gateway runs; 23d only confirms and advances it. Until the gateway confirms, `Refunded` on a payment can mean "owed, not yet returned"; the truth for that is `payments:retry-refunds --list` and `raw_response.refunds`. A table with a real state needs a migration (not authorised for 23d; Deferred).
@@ -66,7 +67,7 @@ Parked or default-taken this cycle: nothing parked. Defaults taken: the R258 des
 **Cycle 24 r1 — "payments ready for live"** (resume cap 14, 0 used)
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 24a capture robustness (R259) | `cp/24a-capture-robustness` | — | — | built, gates green (3205 / 23301); PR next |
+| 24a capture robustness (R259) | `cp/24a-capture-robustness` | #76 | Opus 5.5 round 1: 0 High, 3 Medium, 5 Low; fix round 1 applied | gates green (3212 / 23315); CI then merge |
 | 24b refund state (R260, R265) | `cp/24b-refund-state` | — | — | queued |
 | 24c card removal (R261, R265) | `cp/24c-card-removal` | — | — | queued |
 | 24d booking page (R262) | `cp/24d-book-page` | — | — | queued (needs 24a) |

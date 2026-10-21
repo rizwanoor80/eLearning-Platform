@@ -16,6 +16,7 @@ use App\Services\Payments\StripePaymentGateway;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
 use Stripe\Exception\ApiConnectionException;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\InvalidRequestException;
 use Tests\Support\Payments\FakeStripeHttp;
 
@@ -372,8 +373,45 @@ it('turns a card Stripe no longer knows into a failed attempt, so the slot is no
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(PaymentCaptureException::class, 'card_unusable');
 })->with([
     'unknown payment method' => [400, ['type' => 'invalid_request_error', 'code' => 'resource_missing', 'message' => 'No such PaymentMethod']],
-    'key reused with other parameters' => [400, ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']],
 ]);
+
+it('does not call a rate limit or a lock timeout on a saved-card charge a dead card', function (array $error, int $status) {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
+    $this->http->reply('POST /v1/payment_intents', ['error' => $error], $status);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(ApiErrorException::class);
+})->with([
+    'rate limit' => [['type' => 'invalid_request_error', 'code' => 'rate_limit', 'message' => 'slow down'], 429],
+    'lock timeout' => [['type' => 'invalid_request_error', 'code' => 'lock_timeout', 'message' => 'busy'], 409],
+]);
+
+it('answers a key reused with other parameters by finding the attempt\'s intent, including one made before the metadata key', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    Payment::factory()->create(['lesson_id' => $this->lesson->id, 'attempt_no' => 1, 'gateway_ref' => null, 'status' => PaymentStatus::Pending]);
+    $this->http
+        ->reply('POST /v1/payment_intents', ['error' => ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']], 400)
+        ->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => [
+            stripeCaptured(['id' => 'pi_legacy', 'metadata' => ['kind' => 'recurring', 'lesson_id' => (string) $this->lesson->id, 'attempt' => '1']]),
+        ]]);
+
+    expect($this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-legacy')->gatewayRef)->toBe('pi_legacy');
+});
+
+it('leaves the attempt pending, never a failed one, when a reused key finds no intent', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    $this->http
+        ->reply('POST /v1/payment_intents', ['error' => ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']], 400)
+        ->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => []]);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-gone'))->toThrow(RuntimeException::class);
+});
+
+it('leaves another account\'s intent alone when settling a stranded one', function () {
+    $this->http->reply('GET /v1/payment_intents/pi_theirs', stripeIntent(['id' => 'pi_theirs', 'metadata' => ['kind' => 'checkout', 'account_user_id' => '999999']]));
+
+    expect($this->gateway->settleStrandedIntent('pi_theirs', (string) $this->payer->id)['status'])->toBe('missing')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_theirs/cancel'))->toHaveCount(0);
+});
 
 it('lets a still-processing saved-card charge propagate and does not cancel it', function () {
     $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);

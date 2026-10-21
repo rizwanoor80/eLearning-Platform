@@ -120,11 +120,17 @@ class ApplyPaymentWebhook
             return;
         }
 
-        if (Payment::query()->where('gateway', $gatewayCode)->where('gateway_ref', $intentId)->exists()) {
+        $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+        $lessonId = ctype_digit((string) ($metadata['lesson_id'] ?? '')) ? (int) $metadata['lesson_id'] : null;
+        $attempt = ctype_digit((string) ($metadata['attempt'] ?? '')) ? (int) $metadata['attempt'] : null;
+
+        $job = new CheckOrphanCapture($gatewayCode, $intentId, $amount, strtoupper((string) ($object['currency'] ?? 'aed')), $lessonId, $attempt);
+
+        if ($job->known()) {
             return;
         }
 
-        CheckOrphanCapture::dispatch($gatewayCode, $intentId, $amount, strtoupper((string) ($object['currency'] ?? 'aed')))
+        dispatch($job)
             ->delay(now()->addMinutes(CheckOrphanCapture::WAIT_MINUTES))
             ->afterCommit();
     }

@@ -54,6 +54,10 @@ class ReconcileUnrecordedPayments
                 $settled += $this->settle($payment) ? 1 : 0;
             } catch (PaymentGatewayUnavailable) {
                 // Still unreachable: the next sweep asks again.
+            } catch (Throwable $e) {
+                // One bad row (a lost race on the reference, no active gateway) must not stop the batch or
+                // the refund sweep that follows it; it is reported and the next sweep tries again.
+                report($e);
             }
         });
 
@@ -90,7 +94,7 @@ class ReconcileUnrecordedPayments
             return false;
         }
 
-        $state = $gateway->settleStrandedIntent($intentId);
+        $state = $gateway->settleStrandedIntent($intentId, (string) $payment->payer_user_id);
 
         $refund = DB::transaction(function () use ($payment, $intentId, $state): bool {
             $locked = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();

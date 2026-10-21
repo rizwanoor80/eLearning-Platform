@@ -57,6 +57,11 @@ class RefundUnverifiedCapture
             $fils = (is_int($received) ? $received : $locked->amount->toFils()) - ($locked->refunded_amount?->toFils() ?? 0);
 
             if ($fils <= 0) {
+                // Already refunded in full (the dashboard, or a run that died after Stripe answered): the
+                // payment is closed so it is not swept again and `strandedPayments()` drops it.
+                $raw[self::MARKER] = [...$raw[self::MARKER] ?? [], 'status' => 'succeeded', 'at' => now()->toIso8601String()];
+                $locked->update(['raw_response' => $raw, 'status' => PaymentStatus::Refunded]);
+
                 return null;
             }
 

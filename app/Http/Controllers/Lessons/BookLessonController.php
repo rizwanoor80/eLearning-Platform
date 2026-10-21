@@ -167,7 +167,7 @@ class BookLessonController extends Controller
         // R259 (3): one hold is one booking at a time. A second submit of the same hold while the first is
         // still running (a double click, a repeated request) waits for nothing and releases nothing: the
         // first request owns the hold.
-        $lock = $intentId === null ? null : Cache::lock('book-intent:'.$intentId, 120);
+        $lock = $intentId === null ? null : Cache::lock('book-intent:'.$intentId, 300);
 
         if ($lock !== null && ! $lock->get()) {
             throw ValidationException::withMessages(['retry' => __('Your booking is already being processed. Please wait a moment.')]);

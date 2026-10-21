@@ -309,7 +309,7 @@ final class StripePaymentGateway implements PaymentGateway
         // Stripe forgets an idempotency key after 24 hours. An attempt that has been pending for long
         // enough that its key may be gone first looks for the intent it made, so the retry never creates
         // a second charge (R259 (6)).
-        $intent = $this->staleAttempt($lesson) ? $this->findAttemptIntent($method, $idempotencyKey, $lesson) : null;
+        $intent = $this->staleAttempt($lesson) ? $this->findAttemptIntent($method, $idempotencyKey, $lesson, $lesson->charge_attempts + 1) : null;
 
         if ($intent === null) {
             try {
@@ -330,10 +330,21 @@ final class StripePaymentGateway implements PaymentGateway
                 ], ['idempotency_key' => $idempotencyKey]);
             } catch (CardException $e) {
                 throw new PaymentCaptureException($this->declineCode($e));
-            } catch (InvalidRequestException|IdempotencyException) {
-                // Permanent: a missing or detached card, a deleted customer, a key reused with other
-                // parameters. Retrying with the same key would replay the same refusal, so it is a failed
-                // attempt (the next attempt has a new key). Outages and rate limits still rethrow.
+            } catch (IdempotencyException $e) {
+                // The key was used before with other parameters (an attempt started before the metadata key
+                // existed, or a changed card token). The first call may have charged the card: take the
+                // intent it made, and if it cannot be found leave the attempt pending, never a failed
+                // attempt that the next key would charge again.
+                $intent = $this->findAttemptIntent($method, $idempotencyKey, $lesson, $lesson->charge_attempts + 1)
+                    ?? throw new RuntimeException('The attempt\'s idempotency key is in use and its intent was not found.', previous: $e);
+            } catch (ApiErrorException $e) {
+                if (! $this->isPermanentRefusal($e)) {
+                    // An outage, a rate limit or a lock timeout: the attempt stays pending and is retried.
+                    throw $e;
+                }
+
+                // Permanent: a missing or detached card, a deleted customer. Retrying with the same key would
+                // replay the same refusal, so it is a failed attempt (the next attempt has a new key).
                 throw new PaymentCaptureException('card_unusable');
             }
         }
@@ -369,21 +380,37 @@ final class StripePaymentGateway implements PaymentGateway
      * The intent an earlier try of this attempt made, found by the key written onto its metadata. The
      * list is by customer and creation time (read-your-writes consistent, unlike the search API).
      */
-    private function findAttemptIntent(PaymentMethod $method, string $idempotencyKey, Lesson $lesson): ?PaymentIntent
+    private function findAttemptIntent(PaymentMethod $method, string $idempotencyKey, Lesson $lesson, int $attempt): ?PaymentIntent
     {
         $since = Payment::query()
             ->where('lesson_id', $lesson->id)
-            ->where('attempt_no', $lesson->charge_attempts + 1)
+            ->where('attempt_no', $attempt)
             ->min('created_at');
 
-        $found = $this->client->paymentIntents->all([
-            'customer' => $method->gateway_customer_ref,
-            'created' => ['gte' => max(0, Carbon::parse($since)->subHour()->getTimestamp())],
-            'limit' => 100,
-        ]);
+        try {
+            $found = $this->client->paymentIntents->all([
+                'customer' => $method->gateway_customer_ref,
+                'created' => ['gte' => max(0, ($since === null ? now()->subDay() : Carbon::parse($since))->subHour()->getTimestamp())],
+                'limit' => 100,
+            ]);
+        } catch (InvalidRequestException $e) {
+            if ($this->isPermanentRefusal($e)) {
+                // A deleted customer: nothing to find, and the charge itself then ends as card_unusable.
+                return null;
+            }
+
+            throw $e;
+        }
 
         foreach ($found->data as $candidate) {
-            if (($candidate->metadata['idempotency_key'] ?? null) === $idempotencyKey) {
+            $meta = $candidate->metadata;
+
+            // The key itself, or (an intent made before the key was written onto the metadata) the lesson
+            // and attempt number it carries.
+            if (($meta['idempotency_key'] ?? null) === $idempotencyKey
+                || (($meta['kind'] ?? null) === self::KIND_RECURRING
+                    && (string) ($meta['lesson_id'] ?? '') === (string) $lesson->id
+                    && (string) ($meta['attempt'] ?? '') === (string) $attempt)) {
                 return $candidate;
             }
         }
@@ -478,10 +505,15 @@ final class StripePaymentGateway implements PaymentGateway
      *
      * @throws PaymentGatewayUnavailable when the gateway cannot be reached
      */
-    public function settleStrandedIntent(string $intentId): array
+    public function settleStrandedIntent(string $intentId, string $accountUserId): array
     {
         try {
             $intent = $this->client->paymentIntents->retrieve($intentId);
+
+            // The id came from the client: an intent that is not this account's checkout hold is left alone.
+            if (($intent->metadata['kind'] ?? null) !== self::KIND_CHECKOUT || (string) ($intent->metadata['account_user_id'] ?? '') !== $accountUserId) {
+                return ['status' => 'missing', 'amount' => 0, 'amount_received' => 0];
+            }
 
             if ($intent->status === 'requires_capture') {
                 $intent = $this->client->paymentIntents->cancel($intentId);

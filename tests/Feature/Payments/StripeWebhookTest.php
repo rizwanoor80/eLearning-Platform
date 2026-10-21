@@ -335,3 +335,14 @@ it('does not alert admins that a refund the platform made for an unverified capt
     expect($unheld->fresh()->refunded_amount->toFils())->toBe(10000);
     Event::assertNotDispatched(PaymentNeedsAttention::class);
 });
+
+it('does not call an intent an orphan while a checkout payment still holds it in its raw response, or a recurring attempt carries it', function () {
+    $kept = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'raw_response' => ['checkout_intent' => 'pi_kept']]);
+    $recurring = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'attempt_no' => 2]);
+
+    expect((new CheckOrphanCapture('stripe', 'pi_kept', 9000, 'AED'))->known())->toBeTrue()
+        ->and((new CheckOrphanCapture('stripe', 'pi_recurring', 9000, 'AED', $recurring->lesson_id, 2))->known())->toBeTrue()
+        ->and((new CheckOrphanCapture('stripe', 'pi_recurring', 9000, 'AED', $recurring->lesson_id, 3))->known())->toBeFalse()
+        ->and((new CheckOrphanCapture('stripe', 'pi_nobody', 9000, 'AED'))->known())->toBeFalse()
+        ->and($kept->gateway_ref)->toBeNull();
+});

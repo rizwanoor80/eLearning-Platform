@@ -54,6 +54,7 @@ function urIntent(string $status, array $overrides = []): array
         'amount' => 10000,
         'amount_received' => $status === 'succeeded' ? 10000 : 0,
         'currency' => 'aed',
+        'metadata' => ['kind' => 'checkout', 'account_user_id' => (string) Payment::query()->latest('id')->value('payer_user_id')],
     ], $overrides);
 }
 
@@ -80,7 +81,7 @@ it('fails a pending payment whose intent never became a charge, and cancels an o
 it('marks a payment superseded when a retry already carries the captured intent', function () {
     $stranded = urPending(['status' => PaymentStatus::Failed, 'failure_reason' => PaymentGatewayUnavailable::REASON]);
     Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1', 'attempt_no' => 2, 'lesson_id' => $stranded->lesson_id]);
-    $this->http->reply('GET /v1/payment_intents/pi_test_1', urIntent('succeeded'));
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', urIntent('succeeded', ['metadata' => ['kind' => 'checkout', 'account_user_id' => (string) $stranded->payer_user_id]]));
 
     app(ReconcileUnrecordedPayments::class)();
 
@@ -176,4 +177,30 @@ it('alerts admins once, not every hour, when the sweep cannot reach the gateway 
     $this->artisan('payments:retry-refunds')->assertSuccessful();
 
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+});
+
+it('leaves an intent that is not the payer\'s checkout hold alone', function () {
+    $payment = urPending();
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', urIntent('requires_capture', ['metadata' => ['kind' => 'checkout', 'account_user_id' => '999999']]));
+
+    app(ReconcileUnrecordedPayments::class)();
+
+    expect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount(0)
+        ->and($payment->fresh()->failure_reason)->toBe(ReconcileUnrecordedPayments::REASON_RECONCILED);
+});
+
+it('closes a captured payment already refunded in full without another refund', function () {
+    $payment = Payment::factory()->create([
+        'lesson_id' => Lesson::factory()->withStatus(LessonStatus::Expired)->create()->id,
+        'gateway' => 'stripe',
+        'gateway_ref' => 'pi_test_1',
+        'status' => PaymentStatus::Captured,
+        'amount' => 10000,
+        'refunded_amount' => 10000,
+        'raw_response' => ['amount_received' => 10000],
+    ]);
+
+    expect(app(RefundUnverifiedCapture::class)($payment))->toBeFalse()
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Refunded)
+        ->and($this->http->requestsTo('POST /v1/refunds'))->toHaveCount(0);
 });
