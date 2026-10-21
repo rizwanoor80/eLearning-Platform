@@ -25,8 +25,12 @@ use Carbon\CarbonImmutable;
  *
  * The metadata binds the hold to this booking (account, learner, tutor, start time) and carries no
  * name, email or other personal data. The same checks as the booking form run first, so a parent who is
- * not allowed to book, or whose quote or slot has gone stale, is never asked for a card. No idempotency
- * key is sent: each click makes a new hold and an abandoned one lapses by itself or is cancelled.
+ * not allowed to book, or whose quote or slot has gone stale, is never asked for a card.
+ *
+ * R259 (3): the browser names each payment attempt (`attempt_id`, a uuid it keeps until the attempt ends
+ * in a booking or a failure). The idempotency key is made from that id and everything the hold is for, so
+ * a double click or a repeated submit gets the same hold back from Stripe and never a second one; a
+ * changed price or slot is a new key. An abandoned hold lapses by itself or is cancelled.
  */
 class CreateCheckoutIntent
 {
@@ -38,7 +42,7 @@ class CreateCheckoutIntent
     ) {}
 
     /**
-     * @param  array{learner_id: int, tutor_id: int, starts_at: CarbonImmutable, quote_token: string}  $data
+     * @param  array{learner_id: int, tutor_id: int, starts_at: CarbonImmutable, quote_token: string, attempt_id?: string|null}  $data
      * @return array{id: string, client_secret: string}
      *
      * @throws BookingException the booking cannot be paid for right now; the message is safe to show
@@ -76,6 +80,10 @@ class CreateCheckoutIntent
             throw new BookingException(__('That lesson cannot be booked.'));
         }
 
+        $options = isset($data['attempt_id']) && $data['attempt_id'] !== ''
+            ? ['idempotency_key' => 'checkout-'.hash('sha256', implode('|', [$user->id, $data['attempt_id'], $learner->id, $tutor->id, $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT), $price->toFils()]))]
+            : [];
+
         $intent = $this->stripe->client()->paymentIntents->create([
             'amount' => $price->toFils(),
             'currency' => StripePaymentGateway::CURRENCY,
@@ -88,7 +96,7 @@ class CreateCheckoutIntent
                 'tutor_profile_id' => (string) $tutor->id,
                 'starts_at' => $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT),
             ],
-        ]);
+        ], $options);
 
         return ['id' => $intent->id, 'client_secret' => (string) $intent->client_secret];
     }

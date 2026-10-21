@@ -6,6 +6,7 @@ use App\Actions\Lessons\BookLesson;
 use App\Actions\Payments\CancelCheckoutIntent;
 use App\Exceptions\BookingException;
 use App\Exceptions\PaymentCaptureException;
+use App\Exceptions\PaymentGatewayUnavailable;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Lessons\StoreLessonBookingRequest;
 use App\Models\Learner;
@@ -24,6 +25,7 @@ use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -162,12 +164,25 @@ class BookLessonController extends Controller
             app(CheckoutIntent::class)->set($intentId);
         }
 
+        // R259 (3): one hold is one booking at a time. A second submit of the same hold while the first is
+        // still running (a double click, a repeated request) waits for nothing and releases nothing: the
+        // first request owns the hold.
+        $lock = $intentId === null ? null : Cache::lock('book-intent:'.$intentId, 120);
+
+        if ($lock !== null && ! $lock->get()) {
+            throw ValidationException::withMessages(['retry' => __('Your booking is already being processed. Please wait a moment.')]);
+        }
+
         try {
             app(BookLesson::class)($user, $learner, $tutor, [
                 'curriculum_id' => $data['curriculum_id'],
                 'subject_id' => $data['subject_id'],
                 'starts_at' => $startsAt,
             ]);
+        } catch (PaymentGatewayUnavailable) {
+            // Not a decline, and the outcome of the capture is not known: the hold stays (not released) so
+            // the same booking can be submitted again, and nobody is told they were not charged.
+            throw ValidationException::withMessages(['retry' => __('We could not confirm your payment. Please try again; you will not be charged twice.')]);
         } catch (BookingException $e) {
             $this->releaseHold($user, $intentId);
 
@@ -185,6 +200,8 @@ class BookLessonController extends Controller
             $this->releaseHold($user, $intentId);
 
             throw ValidationException::withMessages(['slot' => __('Payment did not go through. Nothing was booked.')]);
+        } finally {
+            $lock?->release();
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Lesson confirmed.')]);

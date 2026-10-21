@@ -6,6 +6,7 @@ use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
+use App\Jobs\Payments\CheckOrphanCapture;
 use App\Models\Payment;
 use App\Support\Money;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,8 @@ use Illuminate\Support\Facades\DB;
  * state machine and the ledger are never touched from a webhook (invariants 1 and 2).
  *
  * - `payment_intent.succeeded` / `payment_intent.payment_failed`: recorded only. Booking and the weekly
- *   charge already decided from the API response; a webhook that disagrees changes nothing.
+ *   charge already decided from the API response; a webhook that disagrees changes nothing. A success for
+ *   an intent no payment carries is checked again later and, if still unknown, reported (R259 (4)).
  * - `charge.refunded`: the charge's total refunded amount is absolute, so the payment's
  *   `refunded_amount` is set to it only when it is larger (never lowered, so a late or out-of-order
  *   event cannot undo a newer one), and admins are told that the gateway moved money the platform did
@@ -39,6 +41,12 @@ class ApplyPaymentWebhook
      */
     public function __invoke(string $gatewayCode, string $type, array $object): void
     {
+        if ($type === 'payment_intent.succeeded') {
+            $this->checkForOrphan($gatewayCode, $object);
+
+            return;
+        }
+
         if ($type !== 'charge.refunded' && $type !== 'charge.dispute.created') {
             return;
         }
@@ -92,8 +100,32 @@ class ApplyPaymentWebhook
             ->where('amount', '>', 0)
             ->sum('amount');
 
-        if ($new->toFils() > $ledgerRefunded) {
+        // R259 (2): a refund the platform made itself for an unverified capture is already reported.
+        $ownRefund = isset($payment->raw_response[RefundUnverifiedCapture::MARKER]);
+
+        if ($new->toFils() > $ledgerRefunded && ! $ownRefund) {
             PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $object
+     */
+    private function checkForOrphan(string $gatewayCode, array $object): void
+    {
+        $intentId = $object['id'] ?? null;
+        $amount = $object['amount_received'] ?? $object['amount'] ?? null;
+
+        if (! is_string($intentId) || $intentId === '' || ! is_int($amount)) {
+            return;
+        }
+
+        if (Payment::query()->where('gateway', $gatewayCode)->where('gateway_ref', $intentId)->exists()) {
+            return;
+        }
+
+        CheckOrphanCapture::dispatch($gatewayCode, $intentId, $amount, strtoupper((string) ($object['currency'] ?? 'aed')))
+            ->delay(now()->addMinutes(CheckOrphanCapture::WAIT_MINUTES))
+            ->afterCommit();
     }
 }

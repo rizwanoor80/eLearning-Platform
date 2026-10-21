@@ -12,6 +12,12 @@
             refunded it to the card (payment {{ $payment->id }}). Failed refunds are retried automatically, except a
             refusal by the gateway, which needs you. The ledger has not been changed.
         </p>
+    @elseif ($reason === \App\Events\Payments\PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED)
+        <p>
+            Payment {{ $payment->id }} for lesson {{ $payment->lesson_id }} was taken but the booking could not be confirmed.
+            It has been refunded to the parent's card automatically ({{ ($payment->refunded_amount ?? \App\Support\Money::zero())->format($payment->currency) }}).
+            The ledger was never involved and has not been changed.
+        </p>
     @else
         <p>
             The payment gateway has refunded {{ ($payment->refunded_amount ?? \App\Support\Money::zero())->format($payment->currency) }}

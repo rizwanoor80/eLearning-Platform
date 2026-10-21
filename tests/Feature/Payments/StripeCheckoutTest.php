@@ -5,6 +5,7 @@ use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
 use App\Enums\LevelTier;
 use App\Enums\PaymentStatus;
+use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\AvailabilityRule;
 use App\Models\Curriculum;
 use App\Models\Learner;
@@ -18,6 +19,8 @@ use App\Models\TutorSubject;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\Payments\FakeStripeHttp;
 
@@ -152,6 +155,7 @@ function scIntentForm(array $b, array $extra = []): array
         'tutor_id' => $b['tutor']->id,
         'starts_at' => SC_SLOT,
         'quote_token' => $b['token'],
+        'attempt_id' => '6f1b1c6e-3d0b-4a53-9c1e-0f6a0a1b2c3d',
     ];
 }
 
@@ -324,25 +328,123 @@ it('tells the parent the truth, without an internal id, when the money was taken
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toBeEmpty();
 });
 
-it('keeps a captured-but-unclean payment visible instead of calling it a decline', function () {
+it('refunds a captured-but-unclean payment to the card by itself, and lets ledger:verify and the payment agree (R259 (2))', function () {
+    Mail::fake();
     $b = scBooking();
     $this->http
         ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
         ->reply('POST /v1/payment_intents/pi_test_1/capture', array_replace(scCaptured($b), ['status' => 'processing']))
-        ->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b));
+        ->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b))
+        ->reply('GET /v1/refunds', ['object' => 'list', 'data' => [], 'has_more' => false])
+        ->reply('POST /v1/refunds', ['id' => 're_test_1', 'object' => 'refund', 'status' => 'succeeded', 'amount' => $b['amount'], 'currency' => 'aed', 'payment_intent' => 'pi_test_1']);
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionHasErrors('slot');
+
+    $payment = Payment::query()->sole();
+    $refunds = $this->http->requestsTo('POST /v1/refunds');
+
+    expect(session('errors')->first('slot'))->toContain('payment was taken')
+        ->and($payment->status)->toBe(PaymentStatus::Refunded)
+        ->and($payment->refunded_amount?->toFils())->toBe($b['amount'])
+        ->and($payment->raw_response['unverified_refund']['status'])->toBe('succeeded')
+        ->and($refunds)->toHaveCount(1)
+        ->and($this->http->idempotencyKeyOf($refunds[0]))->toBe('unverified-pi_test_1')
+        ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired);
+
+    $this->travel(2)->hours();
+
+    expect(app(LedgerService::class)->strandedPayments())->toBeEmpty();
+    $this->artisan('ledger:verify')->assertSuccessful();
+});
+
+it('keeps the payment visible to ledger:verify, and tells admins, when the gateway refuses the automatic refund (R259 (2))', function () {
+    Event::fake([PaymentNeedsAttention::class]);
+    $b = scBooking();
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', array_replace(scCaptured($b), ['status' => 'processing']))
+        ->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b))
+        ->reply('GET /v1/refunds', ['object' => 'list', 'data' => [], 'has_more' => false])
+        ->reply('POST /v1/refunds', ['error' => ['type' => 'invalid_request_error', 'code' => 'charge_already_refunded', 'message' => 'no']], 400);
 
     $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionHasErrors('slot');
 
     $payment = Payment::query()->sole();
 
-    expect(session('errors')->first('slot'))->toContain('payment was taken')
-        ->and($payment->status)->toBe(PaymentStatus::Captured)
-        ->and($payment->gateway_ref)->toBe('pi_test_1')
-        ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired);
+    expect($payment->status)->toBe(PaymentStatus::Captured)
+        ->and($payment->raw_response['unverified_refund']['status'])->toBe('refused');
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
 
     $this->travel(2)->hours();
 
     expect(app(LedgerService::class)->strandedPayments()->pluck('payment_id')->all())->toBe([$payment->id]);
+});
+
+it('asks the parent to retry, without calling it a decline, when the gateway is unreachable during the capture (R259 (1))', function () {
+    $b = scBooking();
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', ['error' => ['type' => 'api_error', 'message' => 'x']], 500);
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionHasErrors('retry');
+
+    $payment = Payment::query()->sole();
+
+    expect($payment->status)->toBe(PaymentStatus::Failed)
+        ->and($payment->failure_reason)->toBe('gateway_unavailable')
+        ->and($payment->gateway_ref)->toBeNull()
+        ->and($payment->raw_response['checkout_intent'])->toBe('pi_test_1')
+        ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toBeEmpty();
+
+    // The retry on the same hold succeeds: one hold, one capture call that lands, one confirmed lesson.
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', scCaptured($b));
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionDoesntHaveErrors();
+
+    expect(Lesson::query()->where('status', LessonStatus::Confirmed)->count())->toBe(1)
+        ->and(Payment::query()->where('status', PaymentStatus::Captured)->count())->toBe(1)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(2);
+});
+
+it('lets one browser attempt hold the booking lock at a time, so a double click cannot book twice (R259 (3))', function () {
+    $b = scBooking();
+    $lock = Cache::lock('book-intent:pi_test_1', 120);
+    expect($lock->get())->toBeTrue();
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))->assertSessionHasErrors('retry');
+
+    expect(Lesson::query()->count())->toBe(0)
+        ->and($this->http->requests)->toBeEmpty();
+
+    $lock->release();
+});
+
+it('derives the PaymentIntent idempotency key from the browser attempt, so a double click creates one intent (R259 (3))', function () {
+    $b = scBooking();
+    $this->http
+        ->reply('POST /v1/payment_intents', ['id' => 'pi_test_9', 'object' => 'payment_intent', 'client_secret' => 'pi_test_9_secret_x', 'status' => 'requires_payment_method'])
+        ->reply('POST /v1/payment_intents', ['id' => 'pi_test_9', 'object' => 'payment_intent', 'client_secret' => 'pi_test_9_secret_x', 'status' => 'requires_payment_method'])
+        ->reply('POST /v1/payment_intents', ['id' => 'pi_test_10', 'object' => 'payment_intent', 'client_secret' => 'pi_test_10_secret_x', 'status' => 'requires_payment_method']);
+
+    $url = route('payments.checkout-intent.store');
+    $this->actingAs($b['parent'])->postJson($url, scIntentForm($b))->assertOk();
+    $this->actingAs($b['parent'])->postJson($url, scIntentForm($b))->assertOk();
+    $this->actingAs($b['parent'])->postJson($url, scIntentForm($b, ['attempt_id' => 'b3a1d0f2-0000-4000-8000-000000000001']))->assertOk();
+
+    $keys = collect($this->http->requestsTo('POST /v1/payment_intents'))->map(fn ($r) => $this->http->idempotencyKeyOf($r));
+
+    expect($keys[0])->toStartWith('checkout-')->toBe($keys[1])->not->toBe($keys[2]);
+});
+
+it('refuses an intent request that carries no attempt id', function () {
+    $b = scBooking();
+    $form = scIntentForm($b);
+    unset($form['attempt_id']);
+
+    $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.store'), $form)->assertUnprocessable()->assertJsonValidationErrors('attempt_id');
 });
 
 it('releases the hold when the quote went stale or the tutor stopped being bookable after the card was confirmed', function (string $case) {

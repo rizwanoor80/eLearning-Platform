@@ -26,6 +26,8 @@ class CreateCheckoutIntentRequest extends FormRequest
             'tutor_id' => ['required', 'integer'],
             'starts_at' => ['required', 'string', 'date_format:'.StoreLessonBookingRequest::STARTS_AT_FORMAT],
             'quote_token' => ['required', 'string', 'max:64'],
+            // R259 (3): the browser's own id for this payment attempt; it makes a repeated submit one hold.
+            'attempt_id' => ['required', 'uuid'],
         ];
     }
 }

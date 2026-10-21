@@ -1,8 +1,13 @@
 <?php
 
+use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\PaymentStatus;
+use App\Events\Payments\OrphanCaptureDetected;
 use App\Events\Payments\PaymentNeedsAttention;
+use App\Jobs\Payments\CheckOrphanCapture;
+use App\Listeners\Payments\SendAdminOrphanCaptureMail;
 use App\Listeners\Payments\SendAdminPaymentAttentionMail;
+use App\Mail\Admin\AdminOrphanCaptureMail;
 use App\Mail\Admin\AdminPaymentAttentionMail;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
@@ -10,6 +15,7 @@ use App\Models\PaymentWebhookEvent;
 use App\Models\User;
 use App\Support\Money;
 use Illuminate\Cache\RateLimiter;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
@@ -275,4 +281,57 @@ it('has its own throttle counter, separate from the video webhooks', function ()
 
     expect(Route::getRoutes()->getByName('webhooks.payments')->gatherMiddleware())->toContain('throttle:payment-webhooks')
         ->and($limiter->limiter('payment-webhooks'))->not->toBeNull();
+});
+
+it('queues one delayed orphan check for a succeeded intent no payment carries, and none for a known one', function () {
+    Bus::fake([CheckOrphanCapture::class]);
+
+    postStripe(stripeEvent('payment_intent.succeeded', ['id' => 'pi_test_1', 'object' => 'payment_intent', 'amount' => 10000, 'currency' => 'aed']))->assertJson(['status' => 'received']);
+    Bus::assertNotDispatched(CheckOrphanCapture::class);
+
+    postStripe(stripeEvent('payment_intent.succeeded', ['id' => 'pi_orphan', 'object' => 'payment_intent', 'amount' => 10000, 'amount_received' => 9000, 'currency' => 'aed'], 'evt_orphan'))->assertJson(['status' => 'received']);
+
+    Bus::assertDispatched(CheckOrphanCapture::class, fn (CheckOrphanCapture $job) => $job->intentId === 'pi_orphan'
+        && $job->gateway === 'stripe'
+        && $job->amount === 9000
+        && $job->currency === 'AED'
+        && $job->delay !== null);
+});
+
+it('alerts admins of an orphan only if no payment appeared in the wait, and only once per intent', function () {
+    Event::fake([OrphanCaptureDetected::class]);
+
+    $job = new CheckOrphanCapture('stripe', 'pi_orphan', 9000, 'AED');
+    $job->handle();
+    Event::assertDispatched(OrphanCaptureDetected::class, fn ($e) => $e->intentId === 'pi_orphan' && $e->amount === 9000);
+
+    expect($job->uniqueId())->toBe('stripe:pi_orphan')
+        ->and($job->uniqueFor)->toBe(86400);
+
+    Event::fake([OrphanCaptureDetected::class]);
+    Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_orphan', 'amount' => 9000]);
+    (new CheckOrphanCapture('stripe', 'pi_orphan', 9000, 'AED'))->handle();
+
+    Event::assertNotDispatched(OrphanCaptureDetected::class);
+});
+
+it('mails the admins an orphan alert that names the reference and amount and no person', function () {
+    Mail::fake();
+    User::factory()->admin()->create(['email' => 'admin@example.test']);
+
+    (new SendAdminOrphanCaptureMail)->handle(new OrphanCaptureDetected('stripe', 'pi_orphan', 9000, 'AED'));
+
+    Mail::assertQueued(AdminOrphanCaptureMail::class, fn (AdminOrphanCaptureMail $mail) => $mail->hasTo('admin@example.test')
+        && str_contains($mail->render(), 'pi_orphan')
+        && str_contains($mail->render(), '90.00'));
+});
+
+it('does not alert admins that a refund the platform made for an unverified capture happened at the gateway', function () {
+    Event::fake([PaymentNeedsAttention::class]);
+    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured, 'raw_response' => [RefundUnverifiedCapture::MARKER => ['status' => 'requested']]]);
+
+    postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
+
+    expect($unheld->fresh()->refunded_amount->toFils())->toBe(10000);
+    Event::assertNotDispatched(PaymentNeedsAttention::class);
 });

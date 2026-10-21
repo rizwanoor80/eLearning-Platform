@@ -5,10 +5,12 @@ namespace App\Actions\Lessons;
 use App\Enums\LessonStatus;
 use App\Enums\LessonType;
 use App\Enums\PaymentStatus;
+use App\Events\Payments\UnverifiedCaptureNeedsRefund;
 use App\Exceptions\BookingException;
 use App\Exceptions\LessonTransitionException;
 use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
+use App\Exceptions\PaymentGatewayUnavailable;
 use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -22,6 +24,7 @@ use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
 use App\Services\Tutors\TutorRateBands;
 use App\Support\Facades\Settings;
+use App\Support\Payments\CheckoutIntent;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Throwable;
@@ -45,6 +48,7 @@ class BookLesson
      *
      * @throws BookingException
      * @throws PaymentCaptureException
+     * @throws PaymentGatewayUnavailable the gateway could not be reached; the parent retries on the same hold (R259)
      */
     public function __invoke(User $bookedBy, Learner $learner, TutorProfile $tutor, array $data): Lesson
     {
@@ -132,6 +136,12 @@ class BookLesson
         // Written `pending` before the gateway is ever called (R77 item 3): if the capture
         // succeeds but this row's own update to `captured` never lands, the row still
         // exists and `ledger:verify` flags it as stale-pending — it is never simply absent.
+        //
+        // R259: the hold the browser confirmed is kept on the row from the start. Until the capture's
+        // answer is written, `gateway_ref` is null, and the intent id is what lets the hourly sweep find
+        // out what happened to a capture whose answer never arrived (`ReconcileCheckoutPayments`).
+        $checkoutIntent = app(CheckoutIntent::class)->get();
+
         $payment = Payment::query()->create([
             'lesson_id' => $lesson->id,
             'payer_user_id' => $bookedBy->id,
@@ -139,10 +149,23 @@ class BookLesson
             'gateway_ref' => null,
             'amount' => $price,
             'status' => PaymentStatus::Pending,
+            'raw_response' => $checkoutIntent === null ? null : ['checkout_intent' => $checkoutIntent],
         ]);
 
         try {
             $result = $this->gateway->capture($lesson, $price, (string) $lesson->id);
+        } catch (PaymentGatewayUnavailable $e) {
+            // Not a decline, and a capture that was in flight may have gone through: the slot is freed
+            // and the payment is closed, but the hold is kept (not released) so the parent's retry
+            // captures the same PaymentIntent, and the sweep settles it if there is no retry.
+            $payment->update([
+                'status' => PaymentStatus::Failed,
+                'failure_reason' => PaymentGatewayUnavailable::REASON,
+            ]);
+
+            $this->expire($lesson);
+
+            throw $e;
         } catch (PaymentCaptureException $e) {
             $payment->update([
                 'status' => PaymentStatus::Failed,
@@ -167,11 +190,10 @@ class BookLesson
                 'raw_response' => $e->rawResponse,
             ]);
 
-            try {
-                LessonStateMachine::transition($lesson, LessonStatus::Expired);
-            } catch (LessonTransitionException) {
-                // Already swept to `expired` — nothing left to undo.
-            }
+            $this->expire($lesson);
+
+            // R259 (2): the platform never held this money, so the parent's card is refunded at the gateway.
+            UnverifiedCaptureNeedsRefund::dispatch($payment);
 
             throw new BookingException(
                 "Payment was captured but lesson {$lesson->id} could no longer be confirmed; this needs manual review.",
@@ -192,15 +214,23 @@ class BookLesson
                 fn (Lesson $locked) => app(LedgerService::class)->hold($locked, $bookedBy),
             );
         } catch (Throwable $e) {
-            // The gateway already captured the money; there is no refund path yet
-            // (R77 item 3 — the fake gateway can't), so this is best-effort only: try
-            // to free the slot, and leave detection to `ledger:verify` (invariant #1),
-            // which flags any captured/pending payment with no matching ledger hold.
-            try {
-                LessonStateMachine::transition($lesson, LessonStatus::Expired);
-            } catch (Throwable) {
-                // Already moved on, or this edge is not currently allowed — either way
-                // there is nothing left to undo from here.
+            // The gateway already captured the money. Free the slot best-effort; the money goes back to
+            // the parent's card (R259 (2)), and `ledger:verify` lists the payment until it has.
+            if ($this->isDuplicateReference($e)) {
+                // Another request holds this PaymentIntent (the unique index on gateway + reference): that
+                // request owns the money and the booking, so this attempt only closes its own row.
+                $payment->update(['status' => PaymentStatus::Failed, 'failure_reason' => 'payment_already_used']);
+                $this->expire($lesson);
+
+                throw new BookingException('This payment is already being used for another booking.', previous: $e);
+            }
+
+            $this->expire($lesson);
+
+            $payment->refresh();
+
+            if ($payment->gateway_ref !== null) {
+                UnverifiedCaptureNeedsRefund::dispatch($payment);
             }
 
             throw new BookingException(
@@ -210,6 +240,20 @@ class BookLesson
         }
 
         return $lesson;
+    }
+
+    private function expire(Lesson $lesson): void
+    {
+        try {
+            LessonStateMachine::transition($lesson, LessonStatus::Expired);
+        } catch (Throwable) {
+            // Already swept to `expired`, or moved on, or this edge is not allowed now: nothing left to undo.
+        }
+    }
+
+    private function isDuplicateReference(Throwable $e): bool
+    {
+        return $e instanceof QueryException && str_contains($e->getMessage(), 'payments_gateway_ref');
     }
 
     private function translateConstraintViolation(QueryException $e): BookingException

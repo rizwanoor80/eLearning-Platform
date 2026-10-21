@@ -4,12 +4,14 @@ namespace App\Services\Payments;
 
 use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
+use App\Exceptions\PaymentGatewayUnavailable;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
+use Illuminate\Support\Carbon;
 use LogicException;
 use RuntimeException;
 use SensitiveParameter;
@@ -37,9 +39,10 @@ use Stripe\WebhookSignature;
  * Money is integer fils on our side and Stripe's minor units for AED are fils, so amounts pass
  * through unchanged. Every amount sent and every amount checked is in `AED`.
  *
- * A decline is a `PaymentCaptureException`; any other failure (the network, Stripe down, a rate
- * limit) is rethrown as Stripe's own exception so the caller leaves the attempt `pending` and the
- * same idempotency key makes the retry safe (R101, `ChargeReservedLesson`).
+ * A decline is a `PaymentCaptureException`. For a saved-card charge any other failure (the network,
+ * Stripe down, a rate limit) is rethrown as Stripe's own exception so the caller leaves the attempt
+ * `pending` and the same idempotency key makes the retry safe (R101, `ChargeReservedLesson`). For the
+ * checkout's `capture()` it is a `PaymentGatewayUnavailable` (R259): retryable, never a decline.
  */
 final class StripePaymentGateway implements PaymentGateway
 {
@@ -115,23 +118,32 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         try {
-            $intent = $this->client->paymentIntents->retrieve($intentId);
-        } catch (InvalidRequestException) {
+            $intent = $this->client->paymentIntents->retrieve($intentId, ['expand' => ['latest_charge']]);
+        } catch (ApiErrorException $e) {
             // An id that does not exist (or is not this account's) is the caller's mistake, not an outage.
-            throw new PaymentCaptureException('payment_not_found');
+            if ($this->isPermanentRefusal($e)) {
+                throw new PaymentCaptureException('payment_not_found');
+            }
+
+            throw new PaymentGatewayUnavailable($intentId, $e);
         }
 
         if ((bool) $intent->livemode !== $this->live) {
             throw new PaymentCaptureException('mode_mismatch');
         }
 
-        // `succeeded` here means it was captured already (by another booking, or a manual-capture-less
-        // intent): either way it is not an authorisation this booking may take.
-        if ($intent->status !== PaymentIntent::STATUS_REQUIRES_CAPTURE || $intent->capture_method !== 'manual') {
+        // `succeeded` is an authorisation that was already taken. It is this booking's only when every
+        // check below passes and no other payment owns it: that is a retry whose first capture went
+        // through but whose answer was lost (R259), and it is then not captured a second time.
+        $alreadyCaptured = $intent->status === PaymentIntent::STATUS_SUCCEEDED
+            && $intent->capture_method === 'manual'
+            && $intent->amount_received === $amount->toFils();
+
+        if (! $alreadyCaptured && ($intent->status !== PaymentIntent::STATUS_REQUIRES_CAPTURE || $intent->capture_method !== 'manual')) {
             throw new PaymentCaptureException('payment_not_completed');
         }
 
-        if ($intent->amount !== $amount->toFils() || $intent->amount_capturable !== $amount->toFils() || strtolower((string) $intent->currency) !== self::CURRENCY) {
+        if ($intent->amount !== $amount->toFils() || (! $alreadyCaptured && $intent->amount_capturable !== $amount->toFils()) || strtolower((string) $intent->currency) !== self::CURRENCY) {
             throw new PaymentCaptureException('amount_mismatch');
         }
 
@@ -161,17 +173,25 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('payment_already_used');
         }
 
-        try {
-            $captured = $this->client->paymentIntents->capture(
-                $intent->id,
-                ['amount_to_capture' => $amount->toFils(), 'expand' => ['latest_charge']],
-                ['idempotency_key' => 'capture-'.$intent->id],
-            );
-        } catch (CardException $e) {
-            throw new PaymentCaptureException($this->declineCode($e));
-        } catch (InvalidRequestException|IdempotencyException) {
-            // Cancelled, expired or captured by someone else between the read and now.
-            throw new PaymentCaptureException('payment_not_completed');
+        $captured = $intent;
+
+        if (! $alreadyCaptured) {
+            try {
+                $captured = $this->client->paymentIntents->capture(
+                    $intent->id,
+                    ['amount_to_capture' => $amount->toFils(), 'expand' => ['latest_charge']],
+                    ['idempotency_key' => 'capture-'.$intent->id],
+                );
+            } catch (CardException $e) {
+                throw new PaymentCaptureException($this->declineCode($e));
+            } catch (ApiErrorException $e) {
+                if ($this->isPermanentRefusal($e) && ! $e instanceof IdempotencyException) {
+                    // Cancelled, expired or captured by someone else between the read and now.
+                    throw new PaymentCaptureException('payment_not_completed');
+                }
+
+                $captured = $this->recoverCapture($intent->id, $e);
+            }
         }
 
         $charge = $captured->latest_charge;
@@ -182,6 +202,44 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         return new PaymentCaptureResult(gatewayRef: $captured->id, rawResponse: $this->summary($captured));
+    }
+
+    /**
+     * A refusal that says something about the request rather than about Stripe's health: a malformed or
+     * unknown id, an intent in the wrong state. A rate limit (a subclass of InvalidRequestException) and a
+     * lock timeout are Stripe asking to try again, as in `refund()`, and a connection or API error is an
+     * outage; none of those is permanent.
+     */
+    private function isPermanentRefusal(ApiErrorException $e): bool
+    {
+        return $e instanceof InvalidRequestException
+            && ! $e instanceof RateLimitException
+            && $e->getStripeCode() !== 'lock_timeout';
+    }
+
+    /**
+     * The capture call ended without a usable answer, so whether the money moved is not known. One
+     * look at the intent decides: `succeeded` means the capture went through and the booking carries
+     * on; still `requires_capture` means it did not, and the parent retries on the same hold; any other
+     * state is not one this booking may take.
+     */
+    private function recoverCapture(string $intentId, ApiErrorException $cause): PaymentIntent
+    {
+        try {
+            $now = $this->client->paymentIntents->retrieve($intentId, ['expand' => ['latest_charge']]);
+        } catch (ApiErrorException) {
+            throw new PaymentGatewayUnavailable($intentId, $cause);
+        }
+
+        if ($now->status === PaymentIntent::STATUS_SUCCEEDED) {
+            return $now;
+        }
+
+        if ($now->status === PaymentIntent::STATUS_REQUIRES_CAPTURE) {
+            throw new PaymentGatewayUnavailable($intentId, $cause);
+        }
+
+        throw new PaymentCaptureException('payment_not_completed');
     }
 
     /**
@@ -248,28 +306,36 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('payment_method_not_stripe');
         }
 
-        try {
-            $intent = $this->client->paymentIntents->create([
-                'amount' => $amount->toFils(),
-                'currency' => self::CURRENCY,
-                'customer' => $method->gateway_customer_ref,
-                'payment_method' => $method->gateway_token,
-                'off_session' => true,
-                'confirm' => true,
-                'metadata' => [
-                    'kind' => self::KIND_RECURRING,
-                    'lesson_id' => (string) $lesson->id,
-                    'attempt' => (string) ($lesson->charge_attempts + 1),
-                    'account_user_id' => (string) $method->account_user_id,
-                ],
-            ], ['idempotency_key' => $idempotencyKey]);
-        } catch (CardException $e) {
-            throw new PaymentCaptureException($this->declineCode($e));
-        } catch (InvalidRequestException|IdempotencyException) {
-            // Permanent: a missing or detached card, a deleted customer, a key reused with other
-            // parameters. Retrying with the same key would replay the same refusal, so it is a failed
-            // attempt (the next attempt has a new key). Outages and rate limits still rethrow.
-            throw new PaymentCaptureException('card_unusable');
+        // Stripe forgets an idempotency key after 24 hours. An attempt that has been pending for long
+        // enough that its key may be gone first looks for the intent it made, so the retry never creates
+        // a second charge (R259 (6)).
+        $intent = $this->staleAttempt($lesson) ? $this->findAttemptIntent($method, $idempotencyKey, $lesson) : null;
+
+        if ($intent === null) {
+            try {
+                $intent = $this->client->paymentIntents->create([
+                    'amount' => $amount->toFils(),
+                    'currency' => self::CURRENCY,
+                    'customer' => $method->gateway_customer_ref,
+                    'payment_method' => $method->gateway_token,
+                    'off_session' => true,
+                    'confirm' => true,
+                    'metadata' => [
+                        'kind' => self::KIND_RECURRING,
+                        'lesson_id' => (string) $lesson->id,
+                        'attempt' => (string) ($lesson->charge_attempts + 1),
+                        'account_user_id' => (string) $method->account_user_id,
+                        'idempotency_key' => $idempotencyKey,
+                    ],
+                ], ['idempotency_key' => $idempotencyKey]);
+            } catch (CardException $e) {
+                throw new PaymentCaptureException($this->declineCode($e));
+            } catch (InvalidRequestException|IdempotencyException) {
+                // Permanent: a missing or detached card, a deleted customer, a key reused with other
+                // parameters. Retrying with the same key would replay the same refusal, so it is a failed
+                // attempt (the next attempt has a new key). Outages and rate limits still rethrow.
+                throw new PaymentCaptureException('card_unusable');
+            }
         }
 
         if ($intent->status === PaymentIntent::STATUS_PROCESSING) {
@@ -285,6 +351,44 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         return new PaymentCaptureResult(gatewayRef: $intent->id, rawResponse: $this->summary($intent));
+    }
+
+    /** How old a payment attempt must be before Stripe may have forgotten the idempotency key it used. */
+    private const STALE_ATTEMPT_HOURS = 12;
+
+    private function staleAttempt(Lesson $lesson): bool
+    {
+        return Payment::query()
+            ->where('lesson_id', $lesson->id)
+            ->where('attempt_no', $lesson->charge_attempts + 1)
+            ->where('created_at', '<=', now()->subHours(self::STALE_ATTEMPT_HOURS))
+            ->exists();
+    }
+
+    /**
+     * The intent an earlier try of this attempt made, found by the key written onto its metadata. The
+     * list is by customer and creation time (read-your-writes consistent, unlike the search API).
+     */
+    private function findAttemptIntent(PaymentMethod $method, string $idempotencyKey, Lesson $lesson): ?PaymentIntent
+    {
+        $since = Payment::query()
+            ->where('lesson_id', $lesson->id)
+            ->where('attempt_no', $lesson->charge_attempts + 1)
+            ->min('created_at');
+
+        $found = $this->client->paymentIntents->all([
+            'customer' => $method->gateway_customer_ref,
+            'created' => ['gte' => max(0, Carbon::parse($since)->subHour()->getTimestamp())],
+            'limit' => 100,
+        ]);
+
+        foreach ($found->data as $candidate) {
+            if (($candidate->metadata['idempotency_key'] ?? null) === $idempotencyKey) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -365,6 +469,35 @@ final class StripePaymentGateway implements PaymentGateway
     }
 
     /**
+     * R259 (5): what became of an intent a booking request recorded but never finished with (it died, or
+     * the gateway was unreachable). An open hold (`requires_capture`) is released so the parent's card is
+     * not left blocked; nothing else is changed. Not part of `PaymentGateway` (frozen, R255): the
+     * reconciliation sweep asks for it by class.
+     *
+     * @return array{status: string, amount: int, amount_received: int}
+     *
+     * @throws PaymentGatewayUnavailable when the gateway cannot be reached
+     */
+    public function settleStrandedIntent(string $intentId): array
+    {
+        try {
+            $intent = $this->client->paymentIntents->retrieve($intentId);
+
+            if ($intent->status === 'requires_capture') {
+                $intent = $this->client->paymentIntents->cancel($intentId);
+            }
+        } catch (ApiErrorException $e) {
+            if ($this->isPermanentRefusal($e)) {
+                return ['status' => 'missing', 'amount' => 0, 'amount_received' => 0];
+            }
+
+            throw new PaymentGatewayUnavailable($intentId, $e);
+        }
+
+        return ['status' => $intent->status, 'amount' => $intent->amount, 'amount_received' => $intent->amount_received];
+    }
+
+    /**
      * The only fields of an intent that are kept: no customer, no payment method id, no card data.
      *
      * @return array<string, mixed>
@@ -376,6 +509,7 @@ final class StripePaymentGateway implements PaymentGateway
             'id' => $intent->id,
             'status' => $intent->status,
             'amount' => $intent->amount,
+            'amount_received' => $intent->amount_received,
             'currency' => $intent->currency,
             'latest_charge' => is_string($intent->latest_charge) ? $intent->latest_charge : $intent->latest_charge?->id,
         ];
