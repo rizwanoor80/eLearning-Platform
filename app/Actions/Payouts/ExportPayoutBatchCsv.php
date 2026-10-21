@@ -5,9 +5,11 @@ namespace App\Actions\Payouts;
 use App\Actions\RecordAuditLog;
 use App\Enums\PayoutLineStatus;
 use App\Enums\PayoutMethodCode;
+use App\Exceptions\PayoutException;
 use App\Models\PayoutBatch;
 use App\Models\PayoutBatchLine;
 use App\Models\User;
+use App\Rules\NotSpreadsheetFormula;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -20,15 +22,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * the batch was generated), never the tutor's current profile.
  *
  * This is the one place account details leave the encrypted columns in clear (invariant: masked everywhere else), so
- * every download is audited, with the method and the number of lines and never a value. Cells that a spreadsheet would
- * run as a formula are made plain text (a leading `'`): a tutor chooses their own account name.
+ * every download is audited, with the method and the number of lines and never a value. Values are written exactly as
+ * stored: a bank would read an added `'` as part of the name, so a value that a spreadsheet would run as a formula
+ * (`=`, `+`, `-`, `@`) is refused when it is typed (R263). A pending line that still carries one (made before that rule)
+ * stops the file with a `PayoutException` naming the line references; the admin marks those lines failed and generates again.
+ * The caller must be an active admin, checked here first.
  */
 class ExportPayoutBatchCsv
 {
     public function __construct(private RecordAuditLog $recordAuditLog) {}
 
+    /**
+     * @throws PayoutException
+     */
     public function __invoke(User $admin, PayoutBatch $batch, PayoutMethodCode $method): StreamedResponse
     {
+        AssertPayoutAdmin::for($admin, 'download a payout file');
+
         $lines = $this->lines($batch, $method);
         $csv = $this->csv($method, $lines);
 
@@ -62,6 +72,22 @@ class ExportPayoutBatchCsv
      */
     public function csv(PayoutMethodCode $method, array $lines): string
     {
+        $unsafe = [];
+
+        foreach ($lines as $line) {
+            foreach ((array) $line->details as $value) {
+                if (NotSpreadsheetFormula::startsLikeFormula($value)) {
+                    $unsafe[] = $line->reference;
+
+                    break;
+                }
+            }
+        }
+
+        if ($unsafe !== []) {
+            throw new PayoutException('These lines carry a value that starts with =, +, - or @ and cannot go in a bank file: '.implode(', ', $unsafe).'. Mark them failed and generate again once the tutor has corrected the details.');
+        }
+
         $out = fopen('php://memory', 'w+') ?: throw new \RuntimeException('Could not open a memory stream for the payout CSV.');
 
         fputcsv($out, $method->needsBankDetails()
@@ -71,9 +97,9 @@ class ExportPayoutBatchCsv
         foreach ($lines as $line) {
             $details = $line->details;
 
-            fputcsv($out, array_map(self::plain(...), $method->needsBankDetails()
+            fputcsv($out, $method->needsBankDetails()
                 ? [$details['account_name'] ?? '', $details['iban'] ?? '', $details['swift'] ?? '', $line->amount->toDecimalString(), $line->currency, $line->reference]
-                : [$details['email'] ?? '', $line->amount->toDecimalString(), $line->currency, $line->reference]), escape: '');
+                : [$details['email'] ?? '', $line->amount->toDecimalString(), $line->currency, $line->reference], escape: '');
         }
 
         rewind($out);
@@ -81,10 +107,5 @@ class ExportPayoutBatchCsv
         fclose($out);
 
         return $csv;
-    }
-
-    private static function plain(string $cell): string
-    {
-        return $cell !== '' && str_contains("=+-@\t\r", $cell[0]) ? "'".$cell : $cell;
     }
 }

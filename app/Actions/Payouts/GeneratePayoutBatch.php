@@ -7,6 +7,7 @@ use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PayoutLineStatus;
 use App\Enums\PayoutMethodCode;
+use App\Exceptions\PayoutException;
 use App\Models\LedgerEntry;
 use App\Models\PayoutBatch;
 use App\Models\PayoutBatchLine;
@@ -14,6 +15,7 @@ use App\Models\TutorProfile;
 use App\Models\User;
 use App\Services\Payouts\GeneratedPayoutBatch;
 use App\Services\Tutors\TutorEarnings;
+use App\Services\Tutors\TutorStatusTransitions;
 use App\Support\Facades\Settings;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -33,17 +35,28 @@ use Illuminate\Support\Facades\DB;
  * method, method no longer offered, details incomplete, or an anonymised account) and a tutor who already has an unpaid
  * line. A suspended tutor is still paid what they earned; the rule is `canBePaid()` and nothing else.
  *
- * Lock order: every candidate's `tutor_profiles` row, in id order, in one transaction. `MarkPayoutLinePaid` and
- * `LedgerService::payout()` take one profile row first too, so none of them can wait on another in a circle, and a
- * second generator waits for the first and then sees its lines. The database has the last word: one unpaid line per tutor
- * (a partial unique index) and one line per tutor per batch.
+ * An anonymised (closed) account that is still owed money is never dropped silently (R263): with any positive available
+ * amount, below the minimum or not, it is reported in `GeneratedPayoutBatch::$anonymisedOwed` and audited, and its money
+ * stays out of every batch. What happens to it is an admin's decision, outside this action.
+ *
+ * Lock order (18d): for each candidate, in profile-id order, in one transaction, the tutor's `users` row first (`FOR SHARE`,
+ * as `AnonymizeUser` and `SavePayoutPreference` take it), then the `tutor_profiles` row `FOR UPDATE`. Each step locks at most
+ * one tutor's pair, always in that order, so nothing can wait on another in a circle. `MarkPayoutLinePaid` and
+ * `LedgerService::payout()` take the profile row only. A second generator waits for the first and then sees its lines. The
+ * database has the last word: one unpaid line per tutor (a partial unique index) and one line per tutor per batch.
+ * The admin check comes first: this action does not rely on the page that calls it.
  */
 class GeneratePayoutBatch
 {
     public function __construct(private TutorEarnings $earnings, private RecordAuditLog $recordAuditLog) {}
 
+    /**
+     * @throws PayoutException
+     */
     public function __invoke(User $admin, ?CarbonImmutable $periodEnd = null): GeneratedPayoutBatch
     {
+        AssertPayoutAdmin::for($admin, 'generate a payout batch');
+
         $periodEnd = ($periodEnd ?? self::defaultPeriodEnd())->startOfDay();
         $minimum = Money::fils((int) Settings::get('payout_min'));
 
@@ -60,15 +73,34 @@ class GeneratePayoutBatch
             $count = 0;
             $total = Money::zero();
             $skipped = [];
+            $anonymisedOwed = [];
 
             foreach ($candidateIds as $id) {
-                $profile = TutorProfile::query()->with('user')->whereKey($id)->lockForUpdate()->first();
+                // `user_id` never changes, so it is read without a lock; the users row is then locked before the profile.
+                $userId = TutorProfile::query()->whereKey($id)->value('user_id');
+
+                if ($userId === null) {
+                    continue;
+                }
+
+                $owner = TutorStatusTransitions::lockOwner(new TutorProfile(['user_id' => $userId]));
+                $profile = TutorProfile::query()->whereKey($id)->lockForUpdate()->first();
 
                 if ($profile === null) {
                     continue;
                 }
 
+                $profile->setRelation('user', $owner);
+
                 $available = $this->earnings->buckets($profile)->available;
+
+                if ($owner->trashed() && $available->compare(Money::zero()) > 0) {
+                    $anonymisedOwed[] = ['tutor_profile_id' => $profile->id, 'amount_fils' => $available->toFils()];
+
+                    ($this->recordAuditLog)($admin, 'payout_batch.owed_to_anonymised', $profile, null, ['amount_fils' => $available->toFils()]);
+
+                    continue;
+                }
 
                 if ($available->compare($minimum) < 0) {
                     continue;
@@ -115,7 +147,7 @@ class GeneratePayoutBatch
                 ]);
             }
 
-            return new GeneratedPayoutBatch($batch, $skipped);
+            return new GeneratedPayoutBatch($batch, $skipped, $anonymisedOwed);
         });
     }
 

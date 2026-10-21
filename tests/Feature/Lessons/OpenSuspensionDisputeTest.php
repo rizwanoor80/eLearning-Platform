@@ -38,6 +38,7 @@ use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
@@ -333,4 +334,23 @@ it('pins the sweep summary: completed, refunded and settled after a suspension a
     $this->artisan('lessons:settle-ended')
         ->expectsOutput('Completed 0, refunded 0, settled after a suspension 0.')
         ->assertSuccessful();
+});
+
+// ---- 24e (R263): the lock order is the one OpenDispute has -------------------------------------------------------
+
+it('locks the lesson row only, taking no users or tutor profile lock (the order OpenDispute has)', function () {
+    ['lesson' => $lesson] = osdLesson('parent_confirmed');
+
+    $locks = [];
+    DB::listen(function ($query) use (&$locks): void {
+        if (preg_match('/\bfor (update|share)\b/i', $query->sql) === 1) {
+            $locks[] = $query->sql;
+        }
+    });
+
+    osdOpen($lesson);
+
+    expect($locks)->not->toBeEmpty()
+        ->and(collect($locks)->filter(fn (string $sql) => str_contains($sql, '"users"') || str_contains($sql, '"tutor_profiles"')))->toBeEmpty()
+        ->and(collect($locks)->filter(fn (string $sql) => str_contains($sql, '"lessons"')))->not->toBeEmpty();
 });

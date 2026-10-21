@@ -8,6 +8,7 @@ use App\Events\Payouts\PayoutDetailsChanged;
 use App\Models\PayoutMethod;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Rules\NotSpreadsheetFormula;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -75,7 +76,7 @@ class SavePayoutPreference
                 $bank = [];
 
                 foreach (['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift'] as $field) {
-                    $given = $this->clean($details[$field] ?? null);
+                    $given = $this->clean($details[$field] ?? null, $field);
 
                     // Only the IBAN is write-only (the page never shows it back), so only a blank IBAN keeps the
                     // stored value; the other fields are shown pre-filled, so a blank is a deliberate clear.
@@ -99,7 +100,7 @@ class SavePayoutPreference
 
                 $attributes += $bank;
             } else {
-                $email = $this->clean($details['payout_email'] ?? null) ?? $locked->payout_email;
+                $email = $this->clean($details['payout_email'] ?? null, 'payout_email') ?? $locked->payout_email;
 
                 if ($email === null || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                     throw ValidationException::withMessages(['payout_email' => 'Enter the email address of your '.$method->name.' account.']);
@@ -136,9 +137,17 @@ class SavePayoutPreference
         return true;
     }
 
-    private function clean(?string $value): ?string
+    /**
+     * Trimmed, blank as null. A value a spreadsheet would run as a formula is refused here too (R263): the Form Request
+     * says so first, but this action is the authority, whoever calls it.
+     */
+    private function clean(?string $value, string $field): ?string
     {
         $value = trim((string) $value);
+
+        if (NotSpreadsheetFormula::startsLikeFormula($value)) {
+            throw ValidationException::withMessages([$field => 'This cannot start with =, +, - or @.']);
+        }
 
         return $value === '' ? null : $value;
     }

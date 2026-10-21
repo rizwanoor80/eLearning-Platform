@@ -28,6 +28,8 @@ class MarkPayoutLineFailed
      */
     public function __invoke(User $admin, PayoutBatchLine $line, string $reason): void
     {
+        AssertPayoutAdmin::for($admin, 'mark a payout failed');
+
         $reason = trim(preg_replace('/\s+/u', ' ', $reason) ?? '');
 
         if ($reason === '' || mb_strlen($reason) > 500) {
