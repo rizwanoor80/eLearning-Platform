@@ -76,7 +76,7 @@ class ExportPayoutBatchCsv
 
         foreach ($lines as $line) {
             foreach ((array) $line->details as $value) {
-                if (NotSpreadsheetFormula::startsLikeFormula($value)) {
+                if (NotSpreadsheetFormula::isUnsafe($value)) {
                     $unsafe[] = $line->reference;
 
                     break;
@@ -85,7 +85,7 @@ class ExportPayoutBatchCsv
         }
 
         if ($unsafe !== []) {
-            throw new PayoutException('These lines carry a value that starts with =, +, - or @ and cannot go in a bank file: '.implode(', ', $unsafe).'. Mark them failed and generate again once the tutor has corrected the details.');
+            throw new PayoutException('These lines carry a value that cannot go in a bank file (it starts with =, +, - or @, or holds a line break or control character): '.implode(', ', $unsafe).'. Mark them failed and generate again once the tutor has corrected the details.');
         }
 
         $out = fopen('php://memory', 'w+') ?: throw new \RuntimeException('Could not open a memory stream for the payout CSV.');

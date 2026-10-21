@@ -259,8 +259,8 @@ class TutorProfile extends Model
             // 24e (R263): a value saved before the input rule existed. The export carries values as they are, so a
             // formula-looking one must be corrected by the tutor, not paid from.
             foreach (['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift'] as $field) {
-                if (NotSpreadsheetFormula::startsLikeFormula($this->{$field})) {
-                    return 'The bank details start with a character a bank file cannot carry (=, +, - or @).';
+                if (NotSpreadsheetFormula::isUnsafe($this->{$field})) {
+                    return 'The bank details carry a character a bank file cannot carry (a leading =, +, - or @, a line break or a control character).';
                 }
             }
 
@@ -271,8 +271,8 @@ class TutorProfile extends Model
             return 'The payout account email is missing.';
         }
 
-        if (NotSpreadsheetFormula::startsLikeFormula($this->payout_email)) {
-            return 'The payout account email starts with a character a bank file cannot carry (=, +, - or @).';
+        if (NotSpreadsheetFormula::isUnsafe($this->payout_email)) {
+            return 'The payout account email carries a character a bank file cannot carry (a leading =, +, - or @, a line break or a control character).';
         }
 
         return null;
@@ -286,7 +286,9 @@ class TutorProfile extends Model
     /**
      * Tutors (any status) who cannot be paid yet, for the admin list's filter. SQL can null-check but not
      * read encrypted columns, so this is the same rule as `payoutMethodProblem()` at the level SQL can
-     * state it: no method, or a method not offered for the tutor's country, or its detail columns null.
+     * state it: no method, or a method not offered for the tutor's country, or its detail columns null. It cannot see
+     * a stored value that `payoutMethodProblem()` refuses for its content (a formula start, a control character): those
+     * columns are encrypted, so such a tutor is skipped at generation with the reason but is not in this filter.
      * A value that is set but blank/invalid cannot exist: `SavePayoutPreference` saves blanks as null.
      *
      * @param  Builder<TutorProfile>  $query

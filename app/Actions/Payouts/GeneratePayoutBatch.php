@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\DB;
  * The period defaults to the last `payout_weekday` on or before today.
  *
  * Left out, and reported (only when the tutor had at least the minimum available): a tutor who cannot be paid yet (no
- * method, method no longer offered, details incomplete, or an anonymised account) and a tutor who already has an unpaid
+ * method, method no longer offered, or details incomplete or unsafe for a bank file) and a tutor who already has an unpaid
  * line. A suspended tutor is still paid what they earned; the rule is `canBePaid()` and nothing else.
  *
  * An anonymised (closed) account that is still owed money is never dropped silently (R263): with any positive available

@@ -708,8 +708,16 @@ it('refuses a formula-leading bank value or payout email when it is typed', func
     $bank = ['bank_account_name' => 'Safe Name', 'bank_iban' => 'GB00SAFE0000000000001', 'bank_swift' => 'SAFEGB2L', 'bank_name' => 'Safe Bank'];
     $method = $field === 'payout_email' ? 'wise' : 'bank_transfer';
 
-    expect(fn () => app(SavePayoutPreference::class)($tutor->user, $tutor, $method, [$field => $value] + $bank + ['payout_email' => 'safe@example.test']))
-        ->toThrow(ValidationException::class);
+    try {
+        app(SavePayoutPreference::class)($tutor->user, $tutor, $method, [$field => $value] + $bank + ['payout_email' => 'safe@example.test']);
+        $thrown = null;
+    } catch (ValidationException $e) {
+        $thrown = $e;
+    }
+
+    // Refused for this field, not for some other reason (a method not offered, say).
+    expect($thrown)->not->toBeNull()
+        ->and(array_keys($thrown->errors()))->toBe([$field]);
 
     expect($tutor->fresh()->bank_account_name)->toBe('Safe Name')
         ->and($tutor->fresh()->payout_email)->toBeNull();
@@ -723,11 +731,26 @@ it('refuses a formula-leading bank value or payout email when it is typed', func
     'bidi mark then at' => ['bank_name', "\u{200F}@SUM(1)"],
     'full-width equals' => ['bank_account_name', "\u{FF1D}1+1"],
     'email' => ['payout_email', '+wise@example.test'],
+    'invalid utf-8 after a formula' => ['bank_account_name', "=HYPERLINK(\"http://x\")\xFF"],
+    'invalid utf-8 alone' => ['bank_account_name', "Ali\xFF"],
+    'line break inside a name' => ['bank_account_name', "Ali\nEvil Name,AE070331234567890123456"],
+    'carriage return inside an iban' => ['bank_iban', "GB00\rINJECT"],
+    'tab inside a bank name' => ['bank_name', "Bank\tName"],
+    'null byte' => ['bank_swift', "SAFE\0GB2L"],
+    'newline in an email' => ['payout_email', "safe@example.test\nbcc@example.test"],
 ]);
 
 it('lets ordinary names through the formula rule, including Arabic and Persian ones', function (string $value) {
-    expect(NotSpreadsheetFormula::startsLikeFormula($value))->toBeFalse();
+    expect(NotSpreadsheetFormula::startsLikeFormula($value))->toBeFalse()
+        ->and(NotSpreadsheetFormula::isUnsafe($value))->toBeFalse();
 })->with(['plain' => 'Ayesha Khan', 'arabic' => 'محمد العلي', 'persian' => 'نیما احمدی', 'inner symbols' => "O'Brien - Khan", 'digits' => '12345']);
+
+it('treats bytes that are not valid UTF-8 as unsafe, never as clean', function () {
+    expect(NotSpreadsheetFormula::startsLikeFormula("=\xFF"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::startsLikeFormula("\xFF=1"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::isUnsafe("Ali\xFF"))->toBeTrue()
+        ->and(NotSpreadsheetFormula::isUnsafe(null))->toBeFalse();
+});
 
 it('puts the formula rule on the settings and onboarding bank form requests', function () {
     $fields = ['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift'];
@@ -743,6 +766,11 @@ it('puts the formula rule on the settings and onboarding bank form requests', fu
     }
 
     expect(Validator::make(['payout_email' => '+wise@example.test'], (new SavePayoutPreferenceRequest)->rules())->errors()->has('payout_email'))->toBeTrue();
+
+    foreach ([BankStepRequest::class, SavePayoutPreferenceRequest::class] as $class) {
+        expect(Validator::make(['bank_account_name' => "Ali\xFF"] + $safe, (new $class)->rules())->errors()->has('bank_account_name'))->toBeTrue("$class bytes")
+            ->and(Validator::make(['bank_account_name' => "Ali\nEvil"] + $safe, (new $class)->rules())->errors()->has('bank_account_name'))->toBeTrue("$class newline");
+    }
 });
 
 it('reports a stored formula-leading value as a payout problem and leaves that tutor out of the batch with the reason', function () {
@@ -800,7 +828,7 @@ it('flags nothing for an anonymised tutor owed nothing or in debt', function () 
         ->and(AuditLog::query()->where('action', 'payout_batch.owed_to_anonymised')->exists())->toBeFalse();
 });
 
-it('returns the owed flag even when no batch is made, and writes nothing else', function () {
+it('returns the owed flag even when no batch is made, and writes no batch or line', function () {
     $closed = pbTutor(3);
     $closed->user->delete();
 
@@ -808,7 +836,8 @@ it('returns the owed flag even when no batch is made, and writes nothing else', 
 
     expect($result->batch)->toBeNull()
         ->and($result->anonymisedOwed)->toHaveCount(1)
-        ->and(PayoutBatch::query()->count())->toBe(0);
+        ->and(PayoutBatch::query()->count())->toBe(0)
+        ->and(PayoutBatchLine::query()->count())->toBe(0);
 });
 
 it('shows the admin a persistent warning for an anonymised tutor who is owed money', function () {
@@ -827,23 +856,28 @@ it('shows the admin a persistent warning for an anonymised tutor who is owed mon
 // --- lock order ---------------------------------------------------------------------------------------------------
 
 it('locks each tutor’s users row before their profile row when generating a batch', function () {
-    pbTutor(3);
+    $first = pbTutor(3);
+    $second = pbTutor(3);
 
     $locks = [];
     DB::listen(function ($query) use (&$locks): void {
         if (preg_match('/\bfor (update|share)\b/i', $query->sql) === 1) {
-            $locks[] = str_contains($query->sql, '"users"') ? 'users' : (str_contains($query->sql, '"tutor_profiles"') ? 'profile' : 'other');
+            $table = str_contains($query->sql, '"users"') ? 'users' : (str_contains($query->sql, '"tutor_profiles"') ? 'profile' : null);
+
+            if ($table !== null) {
+                $locks[] = [$table, $query->bindings];
+            }
         }
     });
 
     pbGenerate();
 
-    $firstUsers = array_search('users', $locks, true);
-    $firstProfile = array_search('profile', $locks, true);
+    // Each tutor: the users row, then the profile row, before the next tutor's pair; and the users row is the owner's.
+    $tables = array_column($locks, 0);
+    $owners = [$first->user_id, $second->user_id];
 
-    expect($firstUsers)->not->toBeFalse()
-        ->and($firstProfile)->not->toBeFalse()
-        ->and($firstUsers)->toBeLessThan($firstProfile);
+    expect(array_slice($tables, 0, 4))->toBe(['users', 'profile', 'users', 'profile'])
+        ->and(collect($locks)->where(0, 'users')->take(2)->map(fn ($l) => (int) $l[1][0])->values()->all())->toEqualCanonicalizing($owners);
 });
 
 // --- the line is a snapshot ---------------------------------------------------------------------------------------

@@ -138,15 +138,15 @@ class SavePayoutPreference
     }
 
     /**
-     * Trimmed, blank as null. A value a spreadsheet would run as a formula is refused here too (R263): the Form Request
+     * Trimmed, blank as null. A value a spreadsheet would run as a formula, or that carries a control character or invalid UTF-8, is refused here too (R263): the Form Request
      * says so first, but this action is the authority, whoever calls it.
      */
     private function clean(?string $value, string $field): ?string
     {
         $value = trim((string) $value);
 
-        if (NotSpreadsheetFormula::startsLikeFormula($value)) {
-            throw ValidationException::withMessages([$field => 'This cannot start with =, +, - or @.']);
+        if (NotSpreadsheetFormula::isUnsafe($value)) {
+            throw ValidationException::withMessages([$field => NotSpreadsheetFormula::MESSAGE]);
         }
 
         return $value === '' ? null : $value;
