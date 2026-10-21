@@ -8387,3 +8387,9 @@ All three Medium and the Low items are fixed in one round; nothing declined. (1)
 
 ### 2026-10-21 — VERIFICATION (24a after fix round 1, CC)
 `vendor/bin/pest`: **3212 passed / 23315 assertions** (7 new tests). `ledger:verify` OK, Pint passed, PHPStan 0 errors (output above this entry in the run).
+
+### 2026-10-21 — DECISION — 24a merge authorisation (CC)
+Quoting the plan: "CC may … merge under R224(2)/R147"; R224(2): "a PR meeting the merge rule merges without asking". The merge rule is: last review 0 High, no unreviewed Medium after fixes, CI green on both PostgreSQL jobs. 24a: review round 1 had 0 High and 3 Medium, all fixed in fix round 1 (cap 2) and covered by tests; the only frozen-directory change is `StripePaymentGateway.php`, which R259 (1), (5) and (6) authorise; no migration. As in 23b and 23c there is no second review pass.
+
+### 2026-10-21 — VERIFICATION (24a merged, CC)
+PR #76 squash-merged at head `fc5eb8d76001a177012206ecd75495a916d41d59` (CI green on PostgreSQL 16 and 18, runs finished 08:49 UTC) -> `main` `364c09f`. Rehearsal deploy and R213 follow once CI on `364c09f` is green.
