@@ -8453,3 +8453,6 @@ CI on `0ac5eed` failed on PostgreSQL 16 only: `CardRemovalTest` `crSlot` built a
 
 ### 2026-10-21 — NOTE (24c merge, CC)
 PR #78 squash-merged under R224(2) as `9f9147283940d3e75161a0f997528ce645386ea2` after CI went green on PostgreSQL 16 and 18 on `abe3607038e9af832785580ad2442c7a5fd45101` (review round 1: 0 High / 0 Medium / 3 Low, all fixed; no round 2 review needed, the round 2 change is test-only). Next: confirm CI on the merge commit, then rehearsal push-to-deploy and R213 (R265).
+
+### 2026-10-21 — VERIFICATION (24c rehearsal deploy and R213, CC)
+CI on the merge commit `9f9147283940d3e75161a0f997528ce645386ea2` was green on both PostgreSQL jobs. Pushed it to `rehearsal` (R265's named authorisation: the 24c migration `add_removed_at_to_payment_methods`). `/ops/status` then reported `app.git_sha` `9f914728`, `migrations.pending` 0, `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0, and `/`, `/login`, `/tutors`, `/terms` all 200. 24c is done. Next: 24d (R262).
