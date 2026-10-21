@@ -333,6 +333,15 @@ it('does not check for a refund at the gateway when the platform made one itself
     Bus::assertNotDispatched(ReconcileGatewayRefunds::class);
 });
 
+it('still checks for a refund at the gateway when the platform\'s own unverified refund was refused', function () {
+    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured]);
+    PaymentRefund::factory()->failed()->create(['payment_id' => $unheld->id, 'idempotency_key' => 'unverified-pi_test_unheld', 'amount' => 10000]);
+
+    postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
+
+    Bus::assertDispatchedTimes(ReconcileGatewayRefunds::class, 1);
+});
+
 it('does not call an intent an orphan while a checkout payment still holds it in its raw response, or a recurring attempt carries it', function () {
     $kept = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'raw_response' => ['checkout_intent' => 'pi_kept']]);
     $recurring = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'attempt_no' => 2]);

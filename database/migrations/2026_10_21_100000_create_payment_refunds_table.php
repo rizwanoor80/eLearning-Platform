@@ -78,8 +78,8 @@ return new class extends Migration
             INSERT INTO payment_refunds (payment_id, ledger_entry_id, kind, attempt, idempotency_key, amount, gateway_refund_id, status, requested_at, completed_at, created_at, updated_at)
             SELECT p.id, e.id, 'ledger', 1, 'refund-' || p.gateway_ref || '-' || e.id,
                    greatest(1, coalesce(CASE WHEN r.value->>'amount_fils' ~ '^[0-9]{1,18}$' THEN (r.value->>'amount_fils')::bigint END, least(e.amount, p.amount))),
-                   r.value->>'id', 'succeeded', coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
-                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')), (now() AT TIME ZONE 'UTC'), (now() AT TIME ZONE 'UTC')
+                   r.value->>'id', 'succeeded', coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
+                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')), (now() AT TIME ZONE 'UTC'), (now() AT TIME ZONE 'UTC')
             FROM payments p
             CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(p.raw_response::jsonb->'refunds') = 'object' THEN p.raw_response::jsonb->'refunds' ELSE '{}'::jsonb END) AS r(key, value)
             JOIN ledger_entries e ON e.id = CASE WHEN r.key ~ '^[0-9]{1,18}$' THEN r.key::bigint END AND e.lesson_id = p.lesson_id
@@ -91,8 +91,8 @@ return new class extends Migration
             INSERT INTO payment_refunds (payment_id, ledger_entry_id, kind, attempt, idempotency_key, amount, status, failure_reason, requested_at, completed_at, created_at, updated_at)
             SELECT p.id, e.id, 'ledger', 1, 'refund-' || p.gateway_ref || '-' || e.id, greatest(1, least(e.amount, p.amount)),
                    'failed', left(coalesce(r.value->>'code', 'unknown'), 500),
-                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
-                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')), (now() AT TIME ZONE 'UTC'), (now() AT TIME ZONE 'UTC')
+                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
+                   coalesce(CASE WHEN r.value->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((r.value->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')), (now() AT TIME ZONE 'UTC'), (now() AT TIME ZONE 'UTC')
             FROM payments p
             CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(p.raw_response::jsonb->'refund_failures') = 'object' THEN p.raw_response::jsonb->'refund_failures' ELSE '{}'::jsonb END) AS r(key, value)
             JOIN ledger_entries e ON e.id = CASE WHEN r.key ~ '^[0-9]{1,18}$' THEN r.key::bigint END AND e.lesson_id = p.lesson_id
@@ -114,8 +114,8 @@ return new class extends Migration
                    m.marker->>'id',
                    CASE m.marker->>'status' WHEN 'succeeded' THEN 'succeeded' WHEN 'refused' THEN 'failed' ELSE 'requested' END,
                    CASE WHEN m.marker->>'status' = 'refused' THEN left(coalesce(m.marker->>'code', 'unknown'), 500) END,
-                   coalesce(CASE WHEN m.marker->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((m.marker->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
-                   CASE WHEN m.marker->>'status' IN ('succeeded', 'refused') THEN coalesce(CASE WHEN m.marker->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]' THEN ((m.marker->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')) END,
+                   coalesce(CASE WHEN m.marker->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((m.marker->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')),
+                   CASE WHEN m.marker->>'status' IN ('succeeded', 'refused') THEN coalesce(CASE WHEN m.marker->>'at' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$' THEN ((m.marker->>'at')::timestamptz AT TIME ZONE 'UTC') END, (now() AT TIME ZONE 'UTC')) END,
                    (now() AT TIME ZONE 'UTC'), (now() AT TIME ZONE 'UTC')
             FROM payments p
             CROSS JOIN LATERAL (SELECT CASE WHEN jsonb_typeof(p.raw_response::jsonb->'unverified_refund') = 'object' THEN p.raw_response::jsonb->'unverified_refund' END AS marker) AS m

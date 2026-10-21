@@ -262,6 +262,7 @@ it('caps a re-queued refund at what the gateway can still return, and sends noth
 
 it('finds a refund made in the dashboard whose webhook never arrived before it re-queues, and sends only what is left', function () {
     Bus::fake([ProcessPaymentRefund::class]);
+    Event::fake([PaymentNeedsAttention::class]);
     $payment = prPayment(['amount' => 10000, 'raw_response' => ['amount_received' => 10000]]);
     $entry = prLedgerEntry($payment, 4000);
     $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => 'k-1', 'amount' => 4000]);
@@ -271,6 +272,7 @@ it('finds a refund made in the dashboard whose webhook never arrived before it r
 
     expect($new->amount->toFils())->toBe(1000)
         ->and(PaymentRefund::query()->where('kind', PaymentRefundKind::External->value)->sole()->gateway_refund_id)->toBe('re_dash');
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
 });
 
 it('counts an attempt still in flight against what a re-queue may send', function () {

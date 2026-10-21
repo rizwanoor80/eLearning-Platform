@@ -7,12 +7,14 @@ use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentRefundStatus;
 use App\Enums\Role;
 use App\Enums\UserStatus;
+use App\Events\Payments\PaymentNeedsAttention;
 use App\Exceptions\PaymentGatewayUnavailable;
 use App\Exceptions\RefundRequeueException;
 use App\Jobs\Payments\ProcessPaymentRefund;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Models\User;
+use App\Services\Payments\NoActivePaymentGateway;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Stripe\Exception\ApiErrorException;
@@ -46,10 +48,18 @@ class RequeueFailedRefund
 
         // A refund made at the gateway whose webhook is late or lost would not be in the cap below, so the gateway is
         // asked first (with no lock held) and anything the platform did not make is recorded.
+        $payment = Payment::query()->findOrFail($refund->payment_id);
+
         try {
-            ($this->recordExternalRefunds)(Payment::query()->findOrFail($refund->payment_id));
-        } catch (ApiErrorException|PaymentGatewayUnavailable $e) {
+            $recorded = ($this->recordExternalRefunds)($payment);
+        } catch (ApiErrorException|PaymentGatewayUnavailable|NoActivePaymentGateway $e) {
             throw new RefundRequeueException('The gateway could not be reached to check what it has already refunded. Try again shortly.', 0, $e);
+        }
+
+        // Money that left at the gateway outside the platform is the admins' decision, so a refund found here is said
+        // aloud exactly as the webhook's reconcile job would have (that job will now find nothing new to record).
+        if ($recorded !== null && $recorded > 0) {
+            PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
         }
 
         $new = DB::transaction(function () use ($admin, $refund): PaymentRefund {
