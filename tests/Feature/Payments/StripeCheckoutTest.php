@@ -491,6 +491,65 @@ it('shows the booking page the publishable key only when Stripe is active', func
     $this->actingAs($b['parent'])->get(route('tutors.book', $b['tutor']->id).'?starts_at='.rawurlencode(SC_SLOT))->assertInertia(fn ($page) => $page->where('stripe', null));
 });
 
+// --- 24d (R262): the booking page after the bank's own 3-D Secure page ----------------------------------
+
+it('draws the same booking page when Stripe sends the browser back with its return parameters, and asks Stripe nothing', function () {
+    $b = scBooking();
+    $return = '&payment_intent=pi_test_1&payment_intent_client_secret=pi_test_1_secret_x&redirect_status=succeeded';
+
+    $this->actingAs($b['parent'])->get(route('tutors.book', $b['tutor']->id).'?starts_at='.rawurlencode(SC_SLOT).$return)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('lessons/Book')
+            ->where('slot_available', true)
+            ->where('starts_at', SC_SLOT)
+            ->where('stripe.publishable_key', 'pk_test_example')
+            ->where('learners.0.amount_fils', $b['amount'])
+            ->where('learners.0.quote_token', $b['token']));
+
+    // The page resumes in the browser (it reads the intent with its own client secret); the server created no hold here.
+    expect($this->http->requestsTo('POST /v1/payment_intents'))->toBeEmpty()
+        ->and(Payment::query()->count())->toBe(0);
+});
+
+it('books from a hold only once: a reload of the bank\'s return that posts the same intent again creates nothing new', function () {
+    $b = scBooking();
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', scCaptured($b));
+
+    // After the redirect the page posts the remembered learner and subject with the returned intent's id.
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))
+        ->assertRedirect(route('learners.show', $b['learner']));
+
+    // The same return replayed (a second tab, a back button): the intent is spent now.
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b));
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))
+        ->assertSessionHasErrors();
+
+    expect(Lesson::query()->count())->toBe(1)
+        ->and(Payment::query()->count())->toBe(1)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(1);
+});
+
+it('keeps source tripwires on the booking page (no JS test runner exists: the behaviour itself is checked by hand on rehearsal, see STATUS)', function () {
+    $page = file_get_contents(resource_path('js/pages/lessons/Book.vue'));
+
+    // One Payment Element: the setup is started once and later amount changes wait for it.
+    expect(substr_count($page, 'paymentElement.mount('))->toBe(1)
+        ->and($page)->toContain('cardSetup === null')
+        // Learner and subject cannot change while a payment is in flight or a hold is fixed.
+        ->and(substr_count($page, ':disabled="locked"'))->toBe(2)
+        // The redirect return is read and acted on, not only `redirect: 'if_required'`.
+        ->and($page)->toContain("redirect: 'if_required'")
+        ->and($page)->toContain('resumeAfterRedirect')
+        ->and($page)->toContain('retrievePaymentIntent')
+        // A failed Stripe.js load or a network error must not leave the form stuck.
+        ->and($page)->toContain('startPayment(')
+        ->and($page)->toContain('stripePromise = null');
+});
+
 // --- CancelCheckoutIntent ----------------------------------------------------------------------------
 
 it('cancels only a checkout hold of the caller\'s own, and is silent about everything else', function (array $intent, bool $cancelled) {
