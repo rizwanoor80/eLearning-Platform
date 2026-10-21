@@ -3,14 +3,13 @@
 namespace App\Actions\Payments;
 
 use App\Enums\LedgerAccount;
+use App\Enums\PaymentRefundKind;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
-use App\Events\Payments\PaymentNeedsAttention;
-use App\Exceptions\PaymentCaptureException;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
-use App\Services\Payments\PaymentGatewayManager;
-use App\Support\Money;
+use App\Models\PaymentRefund;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,18 +21,16 @@ use Illuminate\Support\Facades\DB;
  * re-running a failed job (the Stripe driver also looks the key up on Stripe's side, since Stripe
  * forgets an idempotency key after 24 hours).
  *
- * What was confirmed is kept in `payments.raw_response`, no new table (R252 authorises none):
- * `refunds.{entry id}` = `{id, amount_fils, at}` for a refund the gateway made, and
- * `refund_failures.{entry id}` = `{code, at}` for one it refused. A refusal is permanent, is listed to
- * admins and is left alone by the queue and the sweep; any other failure (the network, a rate limit, a
- * gateway that is momentarily not resolvable) propagates so the queue retries it. A failed refund never reverses the ledger.
- *
- * The gateway is called with no lock held; the payment row is locked only to record the outcome,
- * so a webhook for the same payment never waits on Stripe.
+ * 24b (R260): what was asked and answered is a `payment_refunds` row per attempt (`kind` = ledger), written
+ * `requested` before the gateway is called, so the state can be queried, locked and constrained, and a
+ * partial unique index lets only one live attempt exist per entry. A refusal is a `failed` row: permanent,
+ * listed to admins and left alone by the queue and the sweep until an admin re-queues it as a new attempt
+ * (`RequeueFailedRefund`). A `requested` row the queue or the sweep finds is retried with its own key. A
+ * failed refund never reverses the ledger.
  */
 class RefundParentAtGateway
 {
-    public function __construct(private readonly PaymentGatewayManager $gateways) {}
+    public function __construct(private readonly MakeGatewayRefund $makeRefund) {}
 
     /**
      * @return int how many gateway refunds were made by this call
@@ -48,8 +45,10 @@ class RefundParentAtGateway
 
         $made = 0;
 
-        foreach ($this->owed($lesson, $payment) as $entry) {
-            if ($this->refundEntry($payment, $entry)) {
+        foreach ($this->owed($lesson) as $entry) {
+            $row = $this->requestFor($payment, $entry);
+
+            if ($row !== null && ($this->makeRefund)($row)) {
                 $made++;
             }
         }
@@ -58,79 +57,65 @@ class RefundParentAtGateway
     }
 
     /**
-     * The lesson's refund entries that neither succeeded nor were refused yet.
+     * The lesson's refund entries whose latest attempt neither succeeded nor was refused: no attempt yet, or
+     * one still `requested`.
      *
      * @return list<LedgerEntry>
      */
-    public function owed(Lesson $lesson, Payment $payment): array
+    public function owed(Lesson $lesson): array
     {
-        $raw = $payment->fresh()->raw_response ?? [];
-
-        return array_values(LedgerEntry::query()
+        $entries = LedgerEntry::query()
             ->where('lesson_id', $lesson->id)
             ->where('account', LedgerAccount::Refund->value)
             ->where('amount', '>', 0)
             ->orderBy('id')
-            ->get()
-            ->reject(fn (LedgerEntry $e): bool => isset($raw['refunds'][$e->id]) || isset($raw['refund_failures'][$e->id]))
+            ->get();
+
+        $latest = $this->latestAttempts($entries->pluck('id')->values()->all());
+
+        return array_values($entries
+            ->reject(fn (LedgerEntry $e): bool => in_array($latest[$e->id]->status ?? null, [PaymentRefundStatus::Succeeded, PaymentRefundStatus::Failed], true))
             ->all());
     }
 
-    private function refundEntry(Payment $payment, LedgerEntry $entry): bool
+    /**
+     * @param  array<int, int>  $entryIds
+     * @return array<int, PaymentRefund> the highest attempt of each entry
+     */
+    private function latestAttempts(array $entryIds): array
     {
-        $amount = Money::fils(min($entry->amount, $payment->amount->toFils()));
-
-        try {
-            $result = $this->gateways->forCode($payment->gateway)->refund($payment, $amount, "refund-{$payment->gateway_ref}-{$entry->id}");
-        } catch (PaymentCaptureException $e) {
-            $this->recordFailure($payment, $entry, $e->getMessage());
-
-            return false;
-        }
-
-        DB::transaction(function () use ($payment, $entry, $amount, $result): void {
-            $locked = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
-            $raw = $locked->raw_response ?? [];
-            $raw['refunds'][$entry->id] = ['id' => $result->gatewayRef, 'amount_fils' => $amount->toFils(), 'at' => now()->toIso8601String()];
-            unset($raw['refund_failures'][$entry->id]);
-
-            if (($raw['refund_failures'] ?? null) === []) {
-                unset($raw['refund_failures']);
-            }
-
-            $confirmed = array_sum(array_column($raw['refunds'], 'amount_fils'));
-            $refunded = Money::fils(min($confirmed, $locked->amount->toFils()));
-
-            if ($locked->refunded_amount === null || $refunded->compare($locked->refunded_amount) > 0) {
-                $locked->refunded_amount = $refunded;
-            }
-
-            // Never downgrade: the eager callers already set Refunded for a full refund. This is the payment's
-            // status; written with `update()` like `LessonSettlement::refundParent` and `CancelLesson` do.
-            $status = $locked->status;
-
-            if ($locked->refunded_amount->compare($locked->amount) >= 0) {
-                $status = PaymentStatus::Refunded;
-            } elseif ($locked->status === PaymentStatus::Captured) {
-                $status = PaymentStatus::PartiallyRefunded;
-            }
-
-            $locked->update(['status' => $status, 'raw_response' => $raw]);
-        });
-
-        return true;
+        return PaymentRefund::query()->whereIn('ledger_entry_id', $entryIds)->orderBy('attempt')->get()
+            ->keyBy('ledger_entry_id')
+            ->all();
     }
 
-    private function recordFailure(Payment $payment, LedgerEntry $entry, string $code): void
+    /**
+     * The live attempt for the entry, created `requested` if there is none. The insert is a no-op when
+     * another worker wrote it first (the partial unique index), and both then carry the same key.
+     */
+    private function requestFor(Payment $payment, LedgerEntry $entry): ?PaymentRefund
     {
-        DB::transaction(function () use ($payment, $entry, $code): void {
-            $locked = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
-            $raw = $locked->raw_response ?? [];
-            $raw['refund_failures'][$entry->id] = ['code' => $code, 'at' => now()->toIso8601String()];
-            $locked->raw_response = $raw;
-            $locked->save();
-        });
+        $existing = $this->latestAttempts([$entry->id])[$entry->id] ?? null;
 
-        PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::REFUND_FAILED);
+        if ($existing !== null) {
+            return $existing->status === PaymentRefundStatus::Requested ? $existing : null;
+        }
+
+        DB::table('payment_refunds')->insertOrIgnore([
+            'payment_id' => $payment->id,
+            'ledger_entry_id' => $entry->id,
+            'kind' => PaymentRefundKind::Ledger->value,
+            'attempt' => 1,
+            'idempotency_key' => "refund-{$payment->gateway_ref}-{$entry->id}",
+            'amount' => min($entry->amount, $payment->amount->toFils()),
+            'status' => PaymentRefundStatus::Requested->value,
+            'requested_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $row = PaymentRefund::query()->where('ledger_entry_id', $entry->id)->where('attempt', 1)->first();
+
+        return $row?->status === PaymentRefundStatus::Requested ? $row : null;
     }
 }

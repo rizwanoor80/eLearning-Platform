@@ -4,6 +4,8 @@ use App\Actions\Lessons\ResolveDispute;
 use App\Actions\Payments\ApplyPaymentWebhook;
 use App\Enums\LedgerAccount;
 use App\Enums\LessonStatus;
+use App\Enums\PaymentRefundKind;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Lessons\LessonStatusChanged;
 use App\Events\Payments\PaymentNeedsAttention;
@@ -13,10 +15,12 @@ use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
+use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonSettlement;
 use App\Services\Payments\NoActivePaymentGateway;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Stripe\Exception\ApiErrorException;
@@ -61,6 +65,11 @@ function grRefundEntry(Lesson $lesson): LedgerEntry
     return LedgerEntry::query()->where('lesson_id', $lesson->id)->where('account', LedgerAccount::Refund->value)->sole();
 }
 
+function grRefunds(Payment $payment): Collection
+{
+    return PaymentRefund::query()->where('payment_id', $payment->id)->orderBy('id')->get();
+}
+
 function grEvent(Lesson $lesson): LessonStatusChanged
 {
     return new LessonStatusChanged($lesson->fresh(), LessonStatus::Disputed, LessonStatus::Settled);
@@ -80,7 +89,18 @@ it('refunds the parent share of a dispute to the card for that amount, keyed on 
         ->and($this->http->idempotencyKeyOf($request))->toBe("refund-pi_test_1-{$entry->id}")
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded)
         ->and($payment->refunded_amount->toFils())->toBe(3700)
-        ->and($payment->raw_response['refunds'][$entry->id])->toMatchArray(['id' => 're_test_1', 'amount_fils' => 3700]);
+        ->and(grRefunds($payment))->toHaveCount(1);
+
+    $row = grRefunds($payment)->sole();
+    expect($row->kind)->toBe(PaymentRefundKind::Ledger)
+        ->and($row->ledger_entry_id)->toBe($entry->id)
+        ->and($row->attempt)->toBe(1)
+        ->and($row->idempotency_key)->toBe("refund-pi_test_1-{$entry->id}")
+        ->and($row->status)->toBe(PaymentRefundStatus::Succeeded)
+        ->and($row->gateway_refund_id)->toBe('re_test_1')
+        ->and($row->gateway_status)->toBe('succeeded')
+        ->and($row->amount->toFils())->toBe(3700)
+        ->and($row->completed_at)->not->toBeNull();
 
     expect(app(LedgerService::class)->sum($lesson))->toBe(0)
         ->and(Artisan::call('ledger:verify'))->toBe(0);
@@ -112,7 +132,8 @@ it('refunds the full price when the ledger refunds a lesson to the parent', func
 
     $entry = grRefundEntry($lesson);
     expect($this->http->requestsTo('POST /v1/refunds'))->toHaveCount(1)
-        ->and($payment->fresh()->raw_response['refunds'][$entry->id]['amount_fils'])->toBe(10000);
+        ->and(grRefunds($payment)->sole()->amount->toFils())->toBe(10000)
+        ->and(grRefunds($payment)->sole()->ledger_entry_id)->toBe($entry->id);
 });
 
 it('refunds nothing for a lesson with no refund in the ledger, or no gateway payment', function () {
@@ -146,14 +167,15 @@ it('keeps a failed gateway refund for the retry, and makes it on the second atte
 
     $this->http->reply('GET /v1/refunds', ['error' => ['type' => 'api_error', 'message' => 'Stripe is down']], 500);
     expect(fn () => app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson)))->toThrow(ApiErrorException::class);
-    expect($payment->fresh()->raw_response)->not->toHaveKey('refunds')
-        ->and($payment->fresh()->raw_response)->not->toHaveKey('refund_failures');
+    // The attempt was written before the gateway was asked, and stays `requested` for the retry.
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Requested);
 
     grStripeWillRefund($this->http, 10000);
     app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson));
 
     $entry = grRefundEntry($lesson);
-    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) $entry->id)
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
+        ->and(grRefunds($payment)->sole()->ledger_entry_id)->toBe($entry->id)
         ->and(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe($before)
         ->and(app(LedgerService::class)->sum($lesson))->toBe(0);
     Event::assertNotDispatched(PaymentNeedsAttention::class);
@@ -171,7 +193,7 @@ it('tells admins when the queue gives up, and the sweep makes the refund later',
     $this->travel(11)->minutes();
     $this->artisan('payments:retry-refunds')->expectsOutput('Made 1 gateway refund(s).')->assertSuccessful();
 
-    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) grRefundEntry($lesson)->id);
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded);
 });
 
 it('records a refusal, tells admins once, and never asks again', function () {
@@ -189,8 +211,10 @@ it('records a refusal, tells admins once, and never asks again', function () {
     $this->artisan('payments:retry-refunds')->expectsOutput('Made 0 gateway refund(s).')->assertSuccessful();
 
     $entry = grRefundEntry($lesson);
-    expect($payment->fresh()->raw_response['refund_failures'][$entry->id]['code'])->toBe('charge_already_refunded')
-        ->and($payment->fresh()->raw_response)->not->toHaveKey('refunds')
+    $row = grRefunds($payment)->sole();
+    expect($row->status)->toBe(PaymentRefundStatus::Failed)
+        ->and($row->failure_reason)->toContain('charge_already_refunded')
+        ->and($row->ledger_entry_id)->toBe($entry->id)
         ->and($this->http->requests)->toHaveCount($requests)
         ->and(app(LedgerService::class)->balance($lesson, LedgerAccount::Refund))->toBe(10000);
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
@@ -212,7 +236,8 @@ it('lets the sweep find a refund the queue never ran, once, and leaves a young o
     $this->artisan('payments:retry-refunds')->expectsOutput('Made 0 gateway refund(s).')->assertSuccessful();
 
     expect($this->http->requestsTo('POST /v1/refunds'))->toHaveCount(1)
-        ->and($payment->fresh()->raw_response['refunds'])->toHaveCount(1)
+        ->and(grRefunds($payment))->toHaveCount(1)
+        ->and(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
         ->and(Artisan::call('ledger:verify'))->toBe(0);
 });
 
@@ -220,6 +245,7 @@ it('does not tell admins about a charge.refunded webhook for a refund the ledger
     ['lesson' => $lesson, 'payment' => $payment, 'dispute' => $dispute, 'admin' => $admin] = grDisputed();
     grStripeWillRefund($this->http, 3700);
     app(ResolveDispute::class)($admin, $dispute, 37, 63, 'Split.');
+    $entry = grRefundEntry($lesson);
 
     Event::fake([PaymentNeedsAttention::class]);
     $charge = ['id' => 'ch_test_1', 'object' => 'charge', 'payment_intent' => 'pi_test_1', 'amount' => 10000, 'amount_refunded' => 3700];
@@ -232,11 +258,21 @@ it('does not tell admins about a charge.refunded webhook for a refund the ledger
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded);
     Event::assertNotDispatched(PaymentNeedsAttention::class);
 
-    // More than the ledger returned is still the gateway moving money the platform did not.
+    // More than the ledger returned is still the gateway moving money the platform did not: the queued job lists the
+    // gateway's refunds, takes the one the platform has no key for, and records it as an external refund.
+    $this->http->reply('GET /v1/refunds', ['object' => 'list', 'has_more' => false, 'data' => [
+        ['id' => 're_test_1', 'object' => 'refund', 'status' => 'succeeded', 'amount' => 3700, 'currency' => 'aed', 'created' => 1760000000, 'metadata' => ['idempotency_key' => "refund-pi_test_1-{$entry->id}"]],
+        ['id' => 're_dash_1', 'object' => 'refund', 'status' => 'succeeded', 'amount' => 1300, 'currency' => 'aed', 'created' => 1760000100, 'metadata' => []],
+    ]]);
     app(ApplyPaymentWebhook::class)('stripe', 'charge.refunded', [...$charge, 'amount_refunded' => 5000]);
 
     expect($payment->fresh()->refunded_amount->toFils())->toBe(5000);
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+    $external = PaymentRefund::query()->where('kind', PaymentRefundKind::External->value)->sole();
+    expect($external->gateway_refund_id)->toBe('re_dash_1')
+        ->and($external->amount->toFils())->toBe(1300)
+        ->and($external->status)->toBe(PaymentRefundStatus::Succeeded)
+        ->and($external->ledger_entry_id)->toBeNull();
 });
 
 it('treats a gateway that is momentarily not in the registry as a retry, not a permanent refusal, and tells admins once a day', function () {
@@ -246,7 +282,7 @@ it('treats a gateway that is momentarily not in the registry as a retry, not a p
     app(LedgerService::class)->refund($lesson);
 
     expect(fn () => app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson)))->toThrow(NoActivePaymentGateway::class);
-    expect($payment->fresh()->raw_response)->not->toHaveKey('refund_failures');
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Requested);
 
     $this->travel(11)->minutes();
     $this->artisan('payments:retry-refunds')->assertSuccessful();
@@ -257,7 +293,7 @@ it('treats a gateway that is momentarily not in the registry as a retry, not a p
     PaymentGatewayAccount::factory()->active()->create();
     grStripeWillRefund($this->http, 10000);
     $this->artisan('payments:retry-refunds')->expectsOutput('Made 1 gateway refund(s).')->assertSuccessful();
-    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) grRefundEntry($lesson)->id);
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded);
 });
 
 it('keeps a rate-limited refund for the retry instead of recording it as refused', function () {
@@ -268,11 +304,11 @@ it('keeps a rate-limited refund for the retry instead of recording it as refused
     $this->http->reply('POST /v1/refunds', ['error' => ['type' => 'invalid_request_error', 'code' => 'rate_limit', 'message' => 'Too many requests.']], 429);
 
     expect(fn () => app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson)))->toThrow(RateLimitException::class);
-    expect($payment->fresh()->raw_response)->not->toHaveKey('refund_failures');
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Requested);
 
     grStripeWillRefund($this->http, 10000);
     app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson));
-    expect($payment->fresh()->raw_response['refunds'])->toHaveKey((string) grRefundEntry($lesson)->id);
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded);
 });
 
 it('records a refund Stripe reports as failed as a refusal, not as returned money', function () {
@@ -284,8 +320,8 @@ it('records a refund Stripe reports as failed as a refusal, not as returned mone
     $this->http->reply('POST /v1/refunds', ['id' => 're_test_1', 'object' => 'refund', 'status' => 'failed', 'amount' => 10000, 'currency' => 'aed', 'payment_intent' => 'pi_test_1']);
     app(RefundParentAtGatewayListener::class)->handle(grEvent($lesson));
 
-    expect($payment->fresh()->raw_response['refund_failures'][grRefundEntry($lesson)->id]['code'])->toBe('refund_failed')
-        ->and($payment->fresh()->raw_response)->not->toHaveKey('refunds');
+    expect(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Failed)
+        ->and(grRefunds($payment)->sole()->failure_reason)->toBe('refund_failed');
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
 });
 
@@ -298,6 +334,7 @@ it('refunds a fake-gateway payment through the fake driver and records it the sa
     $payment = $payment->fresh();
     expect($payment->refunded_amount->toFils())->toBe(3700)
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded)
-        ->and($payment->raw_response['refunds'])->toHaveCount(1)
+        ->and(grRefunds($payment))->toHaveCount(1)
+        ->and(grRefunds($payment)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
         ->and($this->http->requests)->toBe([]);
 });

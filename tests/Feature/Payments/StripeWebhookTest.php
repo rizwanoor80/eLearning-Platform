@@ -1,16 +1,17 @@
 <?php
 
-use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\OrphanCaptureDetected;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Jobs\Payments\CheckOrphanCapture;
+use App\Jobs\Payments\ReconcileGatewayRefunds;
 use App\Listeners\Payments\SendAdminOrphanCaptureMail;
 use App\Listeners\Payments\SendAdminPaymentAttentionMail;
 use App\Mail\Admin\AdminOrphanCaptureMail;
 use App\Mail\Admin\AdminPaymentAttentionMail;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
+use App\Models\PaymentRefund;
 use App\Models\PaymentWebhookEvent;
 use App\Models\User;
 use App\Support\Money;
@@ -30,6 +31,8 @@ beforeEach(function () {
     PaymentGatewayAccount::factory()->create(['credentials' => ['publishable_key' => 'pk_test_example', 'secret_key' => 'sk_test_example', 'webhook_secret' => STRIPE_TEST_WEBHOOK_SECRET]]);
     $this->payment = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1', 'amount' => 10000]);
     holdFor($this->payment);
+    // The queue is synchronous in tests: left alone, a refund total the ledger lacks would call Stripe from here.
+    Bus::fake([ReconcileGatewayRefunds::class]);
 });
 
 /** The escrow hold a booking writes through `LedgerService`; a test may not use the service for a webhook that must not touch it. */
@@ -74,7 +77,6 @@ function refundedCharge(int $amountRefunded, string $intent = 'pi_test_1'): arra
 }
 
 it('stores a correctly signed event once and answers a replay with a no-op', function () {
-    Event::fake([PaymentNeedsAttention::class]);
     $body = stripeEvent('charge.refunded', refundedCharge(2500));
 
     postStripe($body)->assertOk()->assertJson(['status' => 'received']);
@@ -82,7 +84,7 @@ it('stores a correctly signed event once and answers a replay with a no-op', fun
 
     expect(PaymentWebhookEvent::query()->count())->toBe(1)
         ->and(PaymentWebhookEvent::query()->sole()->object_ref)->toBe('pi_test_1');
-    Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+    Bus::assertDispatchedTimes(ReconcileGatewayRefunds::class, 1);
 });
 
 it('rejects a wrong, missing, stale or tampered signature without storing anything', function () {
@@ -153,16 +155,14 @@ it('records a succeeded or failed intent and changes nothing', function (string 
     Event::assertNotDispatched(PaymentNeedsAttention::class);
 })->with(['payment_intent.succeeded', 'payment_intent.payment_failed']);
 
-it('records a partial refund as an absolute amount and tells the admins', function () {
-    Event::fake([PaymentNeedsAttention::class]);
-
+it('records a partial refund as an absolute amount and queues the check that tells the admins', function () {
     postStripe(stripeEvent('charge.refunded', refundedCharge(2500)))->assertJson(['status' => 'received']);
 
     $payment = $this->payment->fresh();
 
     expect($payment->refunded_amount->toFils())->toBe(2500)
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded);
-    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY && $e->payment->is($payment));
+    Bus::assertDispatched(ReconcileGatewayRefunds::class, fn (ReconcileGatewayRefunds $job) => $job->paymentId === $payment->id);
 });
 
 it('records a refund on a payment with no hold but leaves it captured, so ledger:verify still flags it', function () {
@@ -188,23 +188,20 @@ it('records a full refund as refunded', function () {
 });
 
 it('never lowers a refunded amount, so a late older event cannot undo a newer one', function () {
-    Event::fake([PaymentNeedsAttention::class]);
-
     postStripe(stripeEvent('charge.refunded', refundedCharge(6000), 'evt_new'))->assertJson(['status' => 'received']);
     postStripe(stripeEvent('charge.refunded', refundedCharge(2500), 'evt_old'))->assertJson(['status' => 'received']);
 
     expect($this->payment->fresh()->refunded_amount->toFils())->toBe(6000)
         ->and(PaymentWebhookEvent::query()->count())->toBe(2);
-    Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+    Bus::assertDispatchedTimes(ReconcileGatewayRefunds::class, 1);
 });
 
-it('says nothing about a refund the platform already recorded', function () {
-    Event::fake([PaymentNeedsAttention::class]);
+it('queues nothing about a refund the platform already recorded', function () {
     $this->payment->forceFill(['refunded_amount' => Money::fils(4000), 'status' => PaymentStatus::PartiallyRefunded])->save();
 
     postStripe(stripeEvent('charge.refunded', refundedCharge(4000)))->assertJson(['status' => 'received']);
 
-    Event::assertNotDispatched(PaymentNeedsAttention::class);
+    Bus::assertNotDispatched(ReconcileGatewayRefunds::class);
 });
 
 it('caps a refund at the payment amount', function () {
@@ -260,7 +257,7 @@ it('emails the admins in a queued mail that names ids and an amount and no perso
 
 it('rolls the event back when applying it fails, so the gateway\'s retry is not answered duplicate', function () {
     Event::listen(PaymentNeedsAttention::class, fn () => throw new RuntimeException('queue down'));
-    $body = stripeEvent('charge.refunded', refundedCharge(2500));
+    $body = stripeEvent('charge.dispute.created', ['id' => 'dp_test_1', 'object' => 'dispute', 'payment_intent' => 'pi_test_1', 'amount' => 10000]);
 
     $this->withoutExceptionHandling();
 
@@ -326,14 +323,14 @@ it('mails the admins an orphan alert that names the reference and amount and no 
         && str_contains($mail->render(), '90.00'));
 });
 
-it('does not alert admins that a refund the platform made for an unverified capture happened at the gateway', function () {
-    Event::fake([PaymentNeedsAttention::class]);
-    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured, 'raw_response' => [RefundUnverifiedCapture::MARKER => ['status' => 'requested']]]);
+it('does not check for a refund at the gateway when the platform made one itself for an unverified capture', function () {
+    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured]);
+    PaymentRefund::factory()->requested()->create(['payment_id' => $unheld->id, 'idempotency_key' => 'unverified-pi_test_unheld', 'amount' => 10000]);
 
     postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
 
     expect($unheld->fresh()->refunded_amount->toFils())->toBe(10000);
-    Event::assertNotDispatched(PaymentNeedsAttention::class);
+    Bus::assertNotDispatched(ReconcileGatewayRefunds::class);
 });
 
 it('does not call an intent an orphan while a checkout payment still holds it in its raw response, or a recurring attempt carries it', function () {

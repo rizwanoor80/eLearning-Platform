@@ -3,12 +3,14 @@
 use App\Actions\Lessons\ResolveDispute;
 use App\Enums\LedgerAccount;
 use App\Enums\LessonStatus;
+use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentStatus;
 use App\Events\Lessons\LessonStatusChanged;
 use App\Models\Dispute;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Support\Facades\Event;
@@ -142,13 +144,13 @@ it('lists refund lines from the ledger, marking the ones the gateway has returne
             ->where('receipt.net', 'AED 100.00'));
 
     // The gateway permanently refused it: still not returned, and the receipt says so.
-    $payment->update(['raw_response' => ['refund_failures' => [(string) $entry->id => ['reason' => 'refund_failed']]]]);
+    PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry->id, 'kind' => PaymentRefundKind::Ledger, 'amount' => 3700]);
 
     $this->get(route('receipts.show', $payment))
         ->assertInertia(fn ($page) => $page->where('receipt.refunds.0.state', 'refused')->where('receipt.net', 'AED 100.00'));
 
     // Confirmed by the gateway: the total drops by the amount returned.
-    $payment->update(['raw_response' => ['refunds' => [(string) $entry->id => ['id' => 're_1', 'amount_fils' => 3700]]]]);
+    PaymentRefund::factory()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry->id, 'kind' => PaymentRefundKind::Ledger, 'attempt' => 2, 'amount' => 3700]);
 
     $this->get(route('receipts.show', $payment))
         ->assertInertia(fn ($page) => $page->where('receipt.refunds.0.state', 'returned')->where('receipt.net', 'AED 63.00'));
