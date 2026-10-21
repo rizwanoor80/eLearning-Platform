@@ -126,10 +126,17 @@ let paymentElement: StripePaymentElement | null = null;
 let cardSetup: Promise<void> | null = null;
 let unmounted = false;
 
-function loadStripeOnce(key: string): Promise<Stripe | null> {
+// Stripe.js may fail to load (offline, blocked): that is "no Stripe", and the next attempt loads it afresh.
+async function loadStripeOnce(key: string): Promise<Stripe | null> {
     stripePromise ??= stripeFor(key);
 
-    return stripePromise;
+    try {
+        return await stripePromise;
+    } catch {
+        stripePromise = null;
+
+        return null;
+    }
 }
 
 // The card form needs an amount, so it appears once a learner with a price is chosen and follows the learner.
@@ -151,8 +158,7 @@ async function setUpCard(amount: number): Promise<void> {
     if (!stripe) {
         cardError.value =
             'The card form could not be loaded. Please try again in a moment.';
-        // Allow the next learner change to try again.
-        stripePromise = null;
+        // The next change of learner (so of amount) starts the setup again; so does a reload.
         cardSetup = null;
 
         return;
@@ -227,6 +233,8 @@ function post(paymentIntentId: string) {
         payment_intent_id: paymentIntentId,
     })).post('/lessons', {
         onError: (errors) => {
+            returnNotice.value = null;
+
             if (!('retry' in errors)) {
                 heldIntentId.value = null;
                 choiceLocked.value = false;
@@ -250,12 +258,16 @@ async function resumeAfterRedirect() {
         return;
     }
 
+    paying.value = true;
+
+    // Inertia writes its own history entry for this page a moment after mount (and would put the full URL back);
+    // clean the address only once that has happened, so a reload does not replay the return.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     window.history.replaceState(
         window.history.state,
         '',
         withoutStripeReturn(new URL(window.location.href)),
     );
-    paying.value = true;
 
     const client = await loadStripeOnce(props.stripe.publishable_key);
 
@@ -269,10 +281,23 @@ async function resumeAfterRedirect() {
 
     stripe = client;
 
-    const found = await client.retrievePaymentIntent(stripeReturn.clientSecret);
-    const intent = found.paymentIntent;
+    let found: Awaited<ReturnType<Stripe['retrievePaymentIntent']>> | null =
+        null;
 
-    if (found.error || !intent || intent.id !== stripeReturn.paymentIntentId) {
+    try {
+        found = await client.retrievePaymentIntent(stripeReturn.clientSecret);
+    } catch {
+        // Treated like any other failed check, below.
+    }
+
+    const intent = found?.paymentIntent;
+
+    if (
+        !found ||
+        found.error ||
+        !intent ||
+        intent.id !== stripeReturn.paymentIntentId
+    ) {
         cardError.value =
             'We could not check your payment. Nothing was booked; please try again.';
         paying.value = false;
@@ -288,6 +313,12 @@ async function resumeAfterRedirect() {
         if (intent.status === 'processing') {
             returnNotice.value =
                 'Your bank is still processing the card check. Nothing was booked yet; please wait a minute and try again.';
+        } else if (intent.status === 'succeeded') {
+            returnNotice.value =
+                'This payment has already been used. Check your lessons to see whether the booking went through.';
+        } else if (intent.status === 'canceled') {
+            returnNotice.value =
+                'This card check has ended. Nothing was booked and you were not charged. Please start the payment again.';
         } else {
             cardError.value =
                 'Your bank did not approve the card. Nothing was booked and you were not charged. Please try another card.';
@@ -324,7 +355,7 @@ async function resumeAfterRedirect() {
 
     paying.value = false;
     returnNotice.value =
-        'Your card was approved. Choose the learner and subject, then press Confirm and pay to finish. You will not be charged twice.';
+        'Your card was approved. Choose the learner and subject, then press Confirm and pay to finish. You will not be charged twice. If you choose a different learner or subject than the one you paid for, the card check is released and you will need to enter the card again.';
 }
 
 onMounted(() => {
@@ -340,8 +371,23 @@ async function pay() {
 
     paying.value = true;
     cardError.value = null;
+    returnNotice.value = null;
     form.clearErrors();
 
+    try {
+        await startPayment(stripe, learner.value);
+    } catch {
+        // A network failure or an unexpected Stripe error: nothing was booked, and the form must not stay stuck.
+        cardError.value =
+            'Something went wrong while contacting the payment service. Nothing was booked; please try again.';
+        paying.value = false;
+    }
+}
+
+async function startPayment(
+    client: Stripe,
+    chosen: NonNullable<typeof learner.value>,
+) {
     // The card is already held and only the server's answer was missing: submit the same hold again.
     if (heldIntentId.value !== null) {
         post(heldIntentId.value);
@@ -372,7 +418,7 @@ async function pay() {
         learner_id: learnerId.value,
         tutor_id: props.tutor.id,
         starts_at: props.starts_at,
-        quote_token: learner.value.quote_token,
+        quote_token: chosen.quote_token,
         attempt_id: attemptId.value,
     });
 
@@ -391,7 +437,7 @@ async function pay() {
         subject: subject.value,
     });
 
-    const confirmed = await stripe.confirmPayment({
+    const confirmed = await client.confirmPayment({
         elements,
         clientSecret: intent.body.client_secret,
         redirect: 'if_required',

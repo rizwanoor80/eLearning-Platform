@@ -27,10 +27,14 @@ export function readStripeReturn(search: string): StripeReturn | null {
     const paymentIntentId = query.get('payment_intent');
     const clientSecret = query.get('payment_intent_client_secret');
 
+    // A client secret is `<intent id>_secret_<random>`; anything else is not a return from Stripe.
     if (
         !paymentIntentId ||
-        !/^pi_[A-Za-z0-9_]+$/.test(paymentIntentId) ||
-        !clientSecret
+        !/^pi_[A-Za-z0-9]+$/.test(paymentIntentId) ||
+        !clientSecret ||
+        !new RegExp(`^${paymentIntentId}_secret_[A-Za-z0-9]+$`).test(
+            clientSecret,
+        )
     ) {
         return null;
     }

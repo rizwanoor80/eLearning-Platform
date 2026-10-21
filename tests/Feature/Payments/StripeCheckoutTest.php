@@ -512,7 +512,7 @@ it('draws the same booking page when Stripe sends the browser back with its retu
         ->and(Payment::query()->count())->toBe(0);
 });
 
-it('books from a hold the bank approved on its own page exactly as from one approved in the page', function () {
+it('books from a hold only once: a reload of the bank\'s return that posts the same intent again creates nothing new', function () {
     $b = scBooking();
     $this->http
         ->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))
@@ -522,11 +522,18 @@ it('books from a hold the bank approved on its own page exactly as from one appr
     $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))
         ->assertRedirect(route('learners.show', $b['learner']));
 
-    expect(Lesson::query()->sole()->status)->toBe(LessonStatus::Confirmed)
-        ->and(Payment::query()->sole()->status)->toBe(PaymentStatus::Captured);
+    // The same return replayed (a second tab, a back button): the intent is spent now.
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scCaptured($b));
+
+    $this->actingAs($b['parent'])->post(route('lessons.store'), scForm($b, ['payment_intent_id' => 'pi_test_1']))
+        ->assertSessionHasErrors();
+
+    expect(Lesson::query()->count())->toBe(1)
+        ->and(Payment::query()->count())->toBe(1)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(1);
 });
 
-it('keeps the booking page\'s card and choice guards in place (no JS test runner exists to run them)', function () {
+it('keeps source tripwires on the booking page (no JS test runner exists: the behaviour itself is checked by hand on rehearsal, see STATUS)', function () {
     $page = file_get_contents(resource_path('js/pages/lessons/Book.vue'));
 
     // One Payment Element: the setup is started once and later amount changes wait for it.
@@ -537,7 +544,10 @@ it('keeps the booking page\'s card and choice guards in place (no JS test runner
         // The redirect return is read and acted on, not only `redirect: 'if_required'`.
         ->and($page)->toContain("redirect: 'if_required'")
         ->and($page)->toContain('resumeAfterRedirect')
-        ->and($page)->toContain('retrievePaymentIntent');
+        ->and($page)->toContain('retrievePaymentIntent')
+        // A failed Stripe.js load or a network error must not leave the form stuck.
+        ->and($page)->toContain('startPayment(')
+        ->and($page)->toContain('stripePromise = null');
 });
 
 // --- CancelCheckoutIntent ----------------------------------------------------------------------------
