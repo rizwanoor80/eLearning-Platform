@@ -1,5 +1,5 @@
-# STATUS — cycle 24 r1 — programme "payments ready for live" — END, 24a–24f merged and on rehearsal; written 2026-10-21
-Tests: **3295 passed / 23820 assertions** on `main` `6c6b544` (baseline 3179 / 23162 on `a198cd2`; no test removed) · `ledger:verify` OK · Pint, PHPStan (0 errors), vue-tsc, `npm run build`, RTL grep green · Advisor: 4 times this cycle (24a, 24b, 24c, 24e; Opus 5.5) · Review: every sub-cycle reviewed by a fresh Opus 5.5 subagent, 0 High in any round, every Medium fixed before merge; 24f 0 High / 0 Medium / 9 Low · Context size: not measured by the tool (cloud session); 2 compactions since START · Resume cap 14, 0 used
+# STATUS — cycle 25 r1 — programme "live switch ready" — in progress, START written 2026-10-21
+Tests: baseline **3295 passed / 23820 assertions** on `main` `5d7864a` (code at `6c6b544`) · Advisor: 0 times so far · Review: none yet · Resume cap 12, 0 used
 
 ## §1 Git state
 - `main` = the docs-only commit that carries this file and the CYCLE-LOG END (`[skip ci]`), on top of `2f86d60` (24f log entries) on top of `6c6b544` (PR #81 squash). Every code commit of the cycle is on `main`: 24a `364c09f` (#76), 24b `c2d30e9` (#77), 24c `9f91472` (#78), 24d `92520e1` (#79), 24e `f039d43` (#80), 24f `6c6b544` (#81).
@@ -45,7 +45,16 @@ END. The queue is empty and the plan authorises nothing more. Handoff: **done** 
 Parked or default-taken this cycle: nothing parked.
 
 ## §8 Programme board
-**Cycle 24 r1 — "payments ready for live"** (resume cap 14, 0 used) — closed
+**Cycle 25 r1 — "live switch ready"** (resume cap 12, 0 used) — open
+| Sub-cycle | Branch | PR | Review | State |
+|---|---|---|---|---|
+| 25a test-to-live safety (R266, R271) | `cp/25a-test-to-live` | — | — | next |
+| 25b refund truth (R267) | `cp/25b-refund-truth` | — | — | queued |
+| 25c privacy clean-up (R268) | `cp/25c-privacy-cleanup` | — | — | queued |
+| 25d booking return (R269) | `cp/25d-booking-return` | — | — | queued |
+| 25e CP8 end-to-end test (R270) | `cp/25e-end-to-end` | — | — | queued |
+
+**Cycle 24 r1 (closed) — "payments ready for live"**
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
 | 24a capture robustness (R259) | `cp/24a-capture-robustness` | #76 | Opus 5.5 round 1: 0 High, 3 Medium, 5 Low; fix round 1 | done; merged `364c09f`, rehearsal R213 green |
