@@ -8420,3 +8420,6 @@ Fixed 1 (alert dispatched when the re-queue records an external refund), 5 (`NoA
 
 ### 2026-10-21 — VERIFICATION (24b after fix round 2, head `fd109be`, CC)
 `vendor/bin/pest`: **3234 passed / 23425 assertions** (baseline 3229 / 23414). `ledger:verify` OK. Pint passed, PHPStan 0 errors, `vue-tsc` silent, `npm run build` built, RTL grep passed. `git log origin/main..HEAD`: `fd109be` fix round 2, `c69eb63` fix round 1, `fb75e60` 24b.
+
+### 2026-10-21 — VERIFICATION (24b merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". Rule met: round 2 review had 0 High and one Medium, fixed in fix round 2 and covered by a test; CI green on PostgreSQL 16 and 18 at head `fd109bede9a50fe38037ba6d09fd039a0ef43f0b` (finished 09:45 UTC). Frozen-directory change: `StripePaymentGateway.php` only, as R260 names. PR #77 squash-merged -> `main` `c2d30e9d71a49b985b4c691f8b87ff8c65ed303b`. Rehearsal deploy (migration authorised by R265) and R213 follow once CI on that commit is green.
