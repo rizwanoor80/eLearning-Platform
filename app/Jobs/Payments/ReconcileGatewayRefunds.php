@@ -2,19 +2,14 @@
 
 namespace App\Jobs\Payments;
 
-use App\Enums\PaymentRefundKind;
-use App\Enums\PaymentRefundStatus;
+use App\Actions\Payments\RecordExternalRefunds;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\Payment;
-use App\Models\PaymentRefund;
-use App\Services\Payments\PaymentGatewayManager;
-use App\Services\Payments\StripePaymentGateway;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -42,7 +37,7 @@ class ReconcileGatewayRefunds implements ShouldQueue
         return [30, 120, 600, 1800];
     }
 
-    public function handle(PaymentGatewayManager $gateways): void
+    public function handle(RecordExternalRefunds $record): void
     {
         $payment = Payment::query()->find($this->paymentId);
 
@@ -50,45 +45,13 @@ class ReconcileGatewayRefunds implements ShouldQueue
             return;
         }
 
-        $gateway = $gateways->forCode($payment->gateway);
+        $recorded = $record($payment);
 
         // A driver that cannot list its refunds cannot tell whose they are: say so, as the webhook always did.
-        if (! $gateway instanceof StripePaymentGateway) {
+        if ($recorded === null) {
             PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
 
             return;
-        }
-
-        $ownIds = PaymentRefund::query()->where('payment_id', $payment->id)->whereNotNull('gateway_refund_id')->pluck('gateway_refund_id')->all();
-        $ownKeys = PaymentRefund::query()->where('payment_id', $payment->id)->whereNotNull('idempotency_key')->pluck('idempotency_key')->all();
-        $recorded = 0;
-
-        foreach ($gateway->listRefunds($payment) as $refund) {
-            if (in_array($refund['status'], ['failed', 'canceled'], true) || $refund['amount'] <= 0) {
-                continue;
-            }
-
-            if (in_array($refund['id'], $ownIds, true) || ($refund['idempotency_key'] !== null && in_array($refund['idempotency_key'], $ownKeys, true))) {
-                continue;
-            }
-
-            $at = now()->setTimestamp($refund['created'] > 0 ? $refund['created'] : now()->getTimestamp());
-
-            $recorded += DB::table('payment_refunds')->insertOrIgnore([
-                'payment_id' => $payment->id,
-                'ledger_entry_id' => null,
-                'kind' => PaymentRefundKind::External->value,
-                'attempt' => 1,
-                'idempotency_key' => null,
-                'amount' => $refund['amount'],
-                'gateway_refund_id' => $refund['id'],
-                'gateway_status' => mb_substr($refund['status'], 0, 32),
-                'status' => PaymentRefundStatus::Succeeded->value,
-                'requested_at' => $at,
-                'completed_at' => $at,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
         }
 
         if ($recorded > 0) {

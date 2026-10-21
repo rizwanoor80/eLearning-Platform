@@ -7,6 +7,7 @@ use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentRefundStatus;
 use App\Enums\Role;
 use App\Enums\UserStatus;
+use App\Exceptions\PaymentGatewayUnavailable;
 use App\Exceptions\RefundRequeueException;
 use App\Jobs\Payments\ProcessPaymentRefund;
 use App\Models\Payment;
@@ -14,6 +15,7 @@ use App\Models\PaymentRefund;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Stripe\Exception\ApiErrorException;
 
 /**
  * 24b (R260): an admin asks again for a refund the gateway refused. It is a new attempt (`attempt` + 1) with its own
@@ -21,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  * latest attempt of an entry (or, for a capture the platform never held, of the payment) that failed can be re-queued.
  *
  * The amount is capped at what the gateway can still return: what was received, less every refund that succeeded
- * (including one made at the gateway by someone else) and the payment's own `refunded_amount`. Nothing left means the
+ * (including one made at the gateway by someone else, found by asking the gateway first), every attempt still in flight, and the payment's own `refunded_amount`. Nothing left means the
  * new attempt is recorded `failed` (`exceeds_remaining`) and nothing is sent. The ledger is never touched.
  *
  * Lock order: the payment row, then the attempts.
@@ -30,7 +32,7 @@ class RequeueFailedRefund
 {
     public const EXCEEDS_REMAINING = 'exceeds_remaining';
 
-    public function __construct(private readonly RecordAuditLog $recordAuditLog) {}
+    public function __construct(private readonly RecordAuditLog $recordAuditLog, private readonly RecordExternalRefunds $recordExternalRefunds) {}
 
     /**
      * @throws AuthorizationException
@@ -40,6 +42,14 @@ class RequeueFailedRefund
     {
         if ($admin->role !== Role::Admin || $admin->status !== UserStatus::Active) {
             throw new AuthorizationException('Only an active admin can re-queue a refund.');
+        }
+
+        // A refund made at the gateway whose webhook is late or lost would not be in the cap below, so the gateway is
+        // asked first (with no lock held) and anything the platform did not make is recorded.
+        try {
+            ($this->recordExternalRefunds)(Payment::query()->findOrFail($refund->payment_id));
+        } catch (ApiErrorException|PaymentGatewayUnavailable $e) {
+            throw new RefundRequeueException('The gateway could not be reached to check what it has already refunded. Try again shortly.', 0, $e);
         }
 
         $new = DB::transaction(function () use ($admin, $refund): PaymentRefund {
@@ -101,7 +111,7 @@ class RequeueFailedRefund
 
         $succeeded = (int) PaymentRefund::query()
             ->where('payment_id', $payment->id)
-            ->where('status', PaymentRefundStatus::Succeeded->value)
+            ->whereIn('status', [PaymentRefundStatus::Succeeded->value, PaymentRefundStatus::Requested->value])
             ->sum('amount');
 
         $refunded = max($succeeded, $payment->refunded_amount?->toFils() ?? 0);

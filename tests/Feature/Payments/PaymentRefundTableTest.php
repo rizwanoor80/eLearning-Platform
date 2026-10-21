@@ -184,6 +184,7 @@ it('re-queues a refused ledger refund as a new attempt with its own key, audits 
     $entry = prLedgerEntry($payment, 4000);
     $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => "refund-pi_test_1-{$entry}", 'amount' => 4000]);
     $admin = User::factory()->admin()->create();
+    $this->http->reply('GET /v1/refunds', prRefundList([]));
 
     $new = app(RequeueFailedRefund::class)($admin, $failed);
 
@@ -200,6 +201,7 @@ it('re-queues a refused refund of an unverified capture under its own key', func
     Bus::fake([ProcessPaymentRefund::class]);
     $payment = prPayment();
     $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'idempotency_key' => 'unverified-pi_test_1', 'amount' => 10000]);
+    $this->http->reply('GET /v1/refunds', prRefundList([]));
 
     $new = app(RequeueFailedRefund::class)(User::factory()->admin()->create(), $failed);
 
@@ -235,6 +237,7 @@ it('caps a re-queued refund at what the gateway can still return, and sends noth
     PaymentRefund::factory()->external()->create(['payment_id' => $payment->id, 'amount' => 8000, 'gateway_refund_id' => 're_dash']);
     $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => 'k-1', 'amount' => 4000]);
     $admin = User::factory()->admin()->create();
+    $this->http->reply('GET /v1/refunds', prRefundList([['id' => 're_dash', 'object' => 'refund', 'amount' => 8000, 'status' => 'succeeded', 'created' => 1790000000, 'metadata' => []]]));
 
     $capped = app(RequeueFailedRefund::class)($admin, $failed);
 
@@ -244,12 +247,70 @@ it('caps a re-queued refund at what the gateway can still return, and sends noth
     $capped->update(['status' => PaymentRefundStatus::Failed, 'failure_reason' => 'refund_failed']);
     PaymentRefund::factory()->external()->create(['payment_id' => $payment->id, 'amount' => 2000, 'gateway_refund_id' => 're_dash2']);
 
+    $this->http->reply('GET /v1/refunds', prRefundList([
+        ['id' => 're_dash', 'object' => 'refund', 'amount' => 8000, 'status' => 'succeeded', 'created' => 1790000000, 'metadata' => []],
+        ['id' => 're_dash2', 'object' => 'refund', 'amount' => 2000, 'status' => 'succeeded', 'created' => 1790000000, 'metadata' => []],
+    ]));
+
     $none = app(RequeueFailedRefund::class)($admin, $capped->fresh());
 
     expect($none->status)->toBe(PaymentRefundStatus::Failed)
         ->and($none->failure_reason)->toBe(RequeueFailedRefund::EXCEEDS_REMAINING)
         ->and($none->attempt)->toBe(3);
     Bus::assertDispatchedTimes(ProcessPaymentRefund::class, 1);
+});
+
+it('finds a refund made in the dashboard whose webhook never arrived before it re-queues, and sends only what is left', function () {
+    Bus::fake([ProcessPaymentRefund::class]);
+    $payment = prPayment(['amount' => 10000, 'raw_response' => ['amount_received' => 10000]]);
+    $entry = prLedgerEntry($payment, 4000);
+    $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entry, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => 'k-1', 'amount' => 4000]);
+    $this->http->reply('GET /v1/refunds', prRefundList([['id' => 're_dash', 'object' => 'refund', 'amount' => 9000, 'status' => 'succeeded', 'created' => 1790000000, 'metadata' => []]]));
+
+    $new = app(RequeueFailedRefund::class)(User::factory()->admin()->create(), $failed);
+
+    expect($new->amount->toFils())->toBe(1000)
+        ->and(PaymentRefund::query()->where('kind', PaymentRefundKind::External->value)->sole()->gateway_refund_id)->toBe('re_dash');
+});
+
+it('counts an attempt still in flight against what a re-queue may send', function () {
+    Bus::fake([ProcessPaymentRefund::class]);
+    $payment = prPayment();
+    $entryA = prLedgerEntry($payment, 7000);
+    $entryB = prLedgerEntry($payment, 6000);
+    PaymentRefund::factory()->requested()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entryA, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => 'k-a', 'amount' => 7000]);
+    $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'ledger_entry_id' => $entryB, 'kind' => PaymentRefundKind::Ledger, 'idempotency_key' => 'k-b', 'amount' => 6000]);
+    $this->http->reply('GET /v1/refunds', prRefundList([]));
+
+    $new = app(RequeueFailedRefund::class)(User::factory()->admin()->create(), $failed);
+
+    expect($new->amount->toFils())->toBe(3000);
+});
+
+it('does not re-queue when the gateway cannot be asked what it has already refunded', function () {
+    Bus::fake([ProcessPaymentRefund::class]);
+    $payment = prPayment();
+    $failed = PaymentRefund::factory()->failed()->create(['payment_id' => $payment->id, 'idempotency_key' => 'unverified-pi_test_1', 'amount' => 10000]);
+
+    expect(fn () => app(RequeueFailedRefund::class)(User::factory()->admin()->create(), $failed))->toThrow(RefundRequeueException::class);
+    Bus::assertNotDispatched(ProcessPaymentRefund::class);
+    expect(PaymentRefund::query()->count())->toBe(1);
+});
+
+it('copies a row whose recorded time is malformed with the time of the copy, and stores UTC whatever the server\'s time zone', function () {
+    $payment = prPayment(['raw_response' => ['amount_received' => 10000, 'unverified_refund' => ['status' => 'succeeded', 'id' => 're_old', 'amount_fils' => 10000, 'at' => 'yesterday-ish']]]);
+    DB::table('payment_refunds')->where('payment_id', $payment->id)->delete();
+    DB::statement("SET TIME ZONE 'Asia/Dubai'");
+
+    $migration = require base_path('database/migrations/2026_10_21_100000_create_payment_refunds_table.php');
+    $copy = new ReflectionMethod($migration, 'copyUnverifiedRefunds');
+    $copy->invoke($migration);
+
+    $row = PaymentRefund::query()->where('payment_id', $payment->id)->sole();
+    DB::statement('SET TIME ZONE DEFAULT');
+
+    expect($row->gateway_refund_id)->toBe('re_old')
+        ->and(abs($row->requested_at->diffInMinutes(now(), true)))->toBeLessThan(5);
 });
 
 it('makes a requested refund on the queue, once, and skips a row that is no longer requested', function () {
@@ -286,6 +347,7 @@ it('shows the admin page to an active admin only, and offers Re-queue on a refus
     $done = PaymentRefund::factory()->create(['payment_id' => prPayment(['gateway_ref' => 'pi_test_2'])->id]);
     $external = PaymentRefund::factory()->external()->failed()->create(['payment_id' => prPayment(['gateway_ref' => 'pi_test_3'])->id]);
     $admin = User::factory()->admin()->create();
+    $this->http->reply('GET /v1/refunds', prRefundList([]));
 
     $this->actingAs(User::factory()->create())->get('/admin/payment-refunds')->assertForbidden();
     $this->actingAs(User::factory()->admin()->create(['status' => UserStatus::Suspended]))->get('/admin/payment-refunds')->assertForbidden();

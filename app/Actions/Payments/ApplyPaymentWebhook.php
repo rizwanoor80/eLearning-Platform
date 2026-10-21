@@ -5,6 +5,7 @@ namespace App\Actions\Payments;
 use App\Enums\LedgerAccount;
 use App\Enums\LedgerEntryType;
 use App\Enums\PaymentRefundKind;
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Jobs\Payments\CheckOrphanCapture;
@@ -105,7 +106,7 @@ class ApplyPaymentWebhook
             ->sum('amount');
 
         // R259 (2): a refund the platform made itself for an unverified capture is already reported.
-        $ownRefund = PaymentRefund::query()->where('payment_id', $payment->id)->where('kind', PaymentRefundKind::Unverified->value)->exists();
+        $ownRefund = PaymentRefund::query()->where('payment_id', $payment->id)->where('kind', PaymentRefundKind::Unverified->value)->where('status', '<>', PaymentRefundStatus::Failed->value)->exists();
 
         if ($new->toFils() > $ledgerRefunded && ! $ownRefund) {
             // 24b (R260): which refund is not the platform's is for the gateway to say, and this action holds the
