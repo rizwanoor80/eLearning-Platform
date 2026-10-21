@@ -27,13 +27,15 @@ it('never gives a year group a code or label the seeded defaults use', function 
         ->toBe(YearGroup::query()->where('curriculum_id', $curriculum->id)->count());
 });
 
-it('draws a curriculum code that does not exist yet, and says so when none is left', function () {
-    $this->seed(CurriculumSeeder::class);
-    $left = count(CurriculumCode::cases()) - Curriculum::query()->count();
+it('draws curriculum codes that do not exist yet, one at a time or many at once, and says so when none is left', function () {
+    Curriculum::query()->firstOrCreate(['code' => CurriculumCode::Gcse], ['name' => 'GCSE', 'sort' => 0]);
 
-    for ($i = 0; $i < $left; $i++) {
-        Curriculum::factory()->create();
-    }
+    Curriculum::factory()->count(2)->create();
+    Curriculum::factory()->create();
+
+    expect(Curriculum::query()->pluck('code')->map(fn ($code) => $code->value)->unique()->count())->toBe(4);
+
+    Curriculum::factory()->create();
 
     expect(Curriculum::query()->count())->toBe(count(CurriculumCode::cases()))
         ->and(fn () => Curriculum::factory()->create())->toThrow(LogicException::class);

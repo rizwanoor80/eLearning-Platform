@@ -444,15 +444,14 @@ it('works out lifetime earnings from the ledger alone, against hand-counted amou
  */
 function ernActionLesson(TutorProfile $tutor, LessonStatus $status, int $endedMinutesAgo = 120, ?int $startsInMinutes = null): array
 {
-    static $offset = 0;
 
     $parent = User::factory()->create();
     // One shared curriculum: the factory draws a new code per call, and there are only five.
     $curriculum = Curriculum::query()->firstOrCreate(['code' => CurriculumCode::Gcse], ['name' => CurriculumCode::Gcse->value, 'sort' => 0]);
     $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $curriculum->id]);
     $start = $startsInMinutes === null
-        ? now()->subMinutes($endedMinutesAgo + 60 + $offset++)
-        : now()->addMinutes($startsInMinutes + $offset++);
+        ? now()->subMinutes($endedMinutesAgo + 60)
+        : now()->addMinutes($startsInMinutes);
 
     $lesson = Lesson::factory()->withStatus($status)->startingAt($start)->create([
         'tutor_profile_id' => $tutor->id,
