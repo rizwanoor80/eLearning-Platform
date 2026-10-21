@@ -2,6 +2,7 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\LedgerEntryType;
 use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
@@ -41,7 +42,7 @@ class SettleGatewayRefund
 
         $status = DB::transaction(function () use ($row, $gatewayStatus, $gatewayRefundId, &$alerts): PaymentRefundStatus {
             $locked = Payment::query()->whereKey($row->payment_id)->lockForUpdate()->firstOrFail();
-            $fresh = PaymentRefund::query()->whereKey($row->id)->firstOrFail();
+            $fresh = PaymentRefund::query()->whereKey($row->id)->lockForUpdate()->firstOrFail();
             $gatewayStatus = mb_substr($gatewayStatus, 0, 32);
 
             if ($fresh->status !== PaymentRefundStatus::Requested) {
@@ -90,9 +91,11 @@ class SettleGatewayRefund
                 'completed_at' => now(),
             ]);
 
-            // A refund made at the gateway by someone else only becomes a row here: the `charge.refunded` webhook decides
-            // what the payment shows for it (it keeps a capture the platform never held visible to `ledger:verify`).
-            if ($fresh->kind !== PaymentRefundKind::External) {
+            // A refund made at the gateway by someone else advances only a payment the platform holds: the
+            // `charge.refunded` webhook decides what any other payment shows (it keeps a capture the platform never held
+            // visible to `ledger:verify`). On a held one it counts with the rest, so a dashboard refund that
+            // succeeds after a platform refund is not lost from `refunded_amount`.
+            if ($fresh->kind !== PaymentRefundKind::External || $this->isHeld($locked)) {
                 $this->advance($locked, $fresh);
             }
 
@@ -114,6 +117,11 @@ class SettleGatewayRefund
         }
 
         return $status;
+    }
+
+    private function isHeld(Payment $payment): bool
+    {
+        return DB::table('ledger_entries')->where('lesson_id', $payment->lesson_id)->where('type', LedgerEntryType::Hold->value)->exists();
     }
 
     /**

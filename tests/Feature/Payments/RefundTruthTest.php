@@ -332,6 +332,49 @@ it('tells admins once a day when a refund has stayed pending past 72 hours', fun
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
 });
 
+it('counts a dashboard refund that succeeds after the platform\'s own, so refunded_amount is the sum of both', function () {
+    Event::fake([PaymentNeedsAttention::class]);
+    $payment = rtHeldPayment();
+    $own = rtLedgerRequested($payment, ['idempotency_key' => 'refund-pi_test_1-1', 'amount' => 7000]);
+    $dashboard = PaymentRefund::factory()->external()->requested()->create(['payment_id' => $payment->id, 'amount' => 3000, 'gateway_refund_id' => 're_dash_1']);
+    $settle = app(SettleGatewayRefund::class);
+
+    $settle($own, 'succeeded', 're_test_1');
+    $settle($dashboard, 'succeeded', 're_dash_1');
+
+    expect($payment->fresh()->refunded_amount->toFils())->toBe(10000)
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Refunded);
+});
+
+it('tells admins when the sweep is the one to record a dashboard refund', function () {
+    Event::fake([PaymentNeedsAttention::class]);
+    $payment = rtHeldPayment();
+    PaymentRefund::factory()->external()->requested()->create(['payment_id' => $payment->id, 'amount' => 1000, 'gateway_refund_id' => 're_dash_0', 'requested_at' => now()->subHour()]);
+    $this->http->reply('GET /v1/refunds', rtList([rtRefundObject('pending', 're_dash_0', 1000), rtRefundObject('pending', 're_dash_1', 2500)]));
+
+    Artisan::call('payments:retry-refunds', ['--no-interaction' => true]);
+
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+});
+
+it('raises one alert, not two, when a refusal arrives after a webhook already failed the row', function () {
+    Event::fake([PaymentNeedsAttention::class]);
+    $payment = rtHeldPayment();
+    $row = rtLedgerRequested($payment, ['idempotency_key' => 'refund-pi_test_1-1']);
+    $this->http->reply('GET /v1/refunds', rtList([]))->reply('POST /v1/refunds', ['error' => ['code' => 'charge_already_refunded', 'message' => 'refused', 'type' => 'invalid_request_error']], 400);
+
+    // The webhook settles the row first; the stale in-memory row still says requested when the call is refused.
+    app(SettleGatewayRefund::class)($row, 'failed', 're_test_1');
+    $stale = $row->replicate();
+    $stale->id = $row->id;
+    $stale->exists = true;
+    $stale->status = PaymentRefundStatus::Requested;
+
+    app(MakeGatewayRefund::class)($stale);
+
+    Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
+});
+
 // ---- paging ----
 
 /**

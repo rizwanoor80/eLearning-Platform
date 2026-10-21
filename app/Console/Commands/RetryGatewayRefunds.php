@@ -88,7 +88,10 @@ class RetryGatewayRefunds extends Command
 
         $pending = $this->pendingAtGateway()->each(function (Payment $payment) use ($recordExternal): void {
             try {
-                $recordExternal($payment);
+                // The same word to admins as the reconcile job gives: a dashboard refund the sweep records first is not silent.
+                if (($recordExternal($payment) ?? 0) > 0) {
+                    PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+                }
             } catch (Throwable $e) {
                 report($e);
             }

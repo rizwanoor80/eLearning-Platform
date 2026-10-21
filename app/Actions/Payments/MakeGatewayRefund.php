@@ -40,12 +40,16 @@ class MakeGatewayRefund
         try {
             $result = $this->gateways->forCode($payment->gateway)->refund($payment, $row->amount, $row->idempotency_key);
         } catch (PaymentCaptureException $e) {
-            PaymentRefund::query()->whereKey($row->id)->where('status', PaymentRefundStatus::Requested->value)->update([
+            $failed = PaymentRefund::query()->whereKey($row->id)->where('status', PaymentRefundStatus::Requested->value)->update([
                 'status' => PaymentRefundStatus::Failed->value,
                 'failure_reason' => mb_substr($e->getMessage(), 0, 500),
                 'completed_at' => now(),
             ]);
-            PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::REFUND_FAILED);
+
+            // Told once: a webhook that already failed the row through `SettleGatewayRefund` has raised the alert.
+            if ($failed === 1) {
+                PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::REFUND_FAILED);
+            }
 
             return false;
         }
