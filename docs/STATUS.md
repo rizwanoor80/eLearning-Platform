@@ -1,10 +1,12 @@
-# STATUS — cycle 23 r3 — programme "money in, money out" COMPLETE: 23a–23h merged, rehearsal at `01f5f34`; written 2026-10-21 (END)
-Tests: **3179 / 23162** on `ecaa365` (`fb5f6f0`: 3172 / 23129; +7 R258 tests) · `ledger:verify` OK · pint, PHPStan 0 errors, `vue-tsc`, `npm run build` and RTL grep green · CI on merge commit `01f5f34` green on PostgreSQL 16 and 18 (PostgreSQL 18 after one confirming re-run of an unrelated `YearGroupFactory` flake, §6) · Advisor: 0 times in the r3 fix round (cycle total: 23a, 23b, 23c, 23d, 23f, 23g, 23h, all Opus 5.5; 23e none; one Fable 5.1 attempt failed on a rate limit and does not count) · Review: 23h round 1 FAIL (1 High, 1 Medium), round 2 (Opus 5.5, `ba765ee`) **0 High, 0 Medium, 3 Low**, merged; earlier rounds in §8 · Context size: not measured by the tool (cloud session, no `/context`); at least 1 compaction
+# STATUS — cycle 24 r1 — programme "payments ready for live" — step 1 done, 24a starting; written 2026-10-21
+Tests: baseline **3179 / 23162** on `ecaa365` (main `a198cd2`) · `ledger:verify` OK at baseline · Advisor: 0 times so far this cycle · Review: none yet · Context size: not measured by the tool (cloud session); 0 compactions since START · Resume cap 14, 0 used
 
 ## §1 Git state
+- **Cycle 24 r1 (current):** `main` = `a198cd2` (PLAN.md only on top of `878913d`), `rehearsal` = `01f5f34`, no cycle 24 branch yet, no production deploy. The cycle 23 text below (§1–§6a) is kept until each sub-cycle replaces what it supersedes.
 - `main` = `01f5f34` (PR #75 squash) plus the docs-only commit that carries this file and the CYCLE-LOG END (`[skip ci]`). `rehearsal` = `01f5f34` (R213 green). `cp/23h-payout-batches` and `hold/23h-ledger-payout` are still on the remote (not deleted; no branch deleted this cycle). No production deploy.
 
 ## §2 Step map
+Cycle 24 r1: 1. START, R222 check, board — [done]. 2. 24a capture robustness (R259) — [next]. 3. 24b refund state (R260, R265). 4. 24c card removal (R261, R265). 5. 24d booking page (R262). 6. 24e payout hardening (R263, R265). 7. 24f test hygiene (R264). 8. END — halt. Cycle 23 map follows.
 1. START, R222 check, board, ADR-030 — [done]. 2. 23a `bdb6481`. 3. 23b `b568853`. 4. 23c `509e654`. 5. 23d `e5a30cb`. 6. 23e `ad0f955`. 7. 23f `f3409b5`. 8. 23g `42fa588`. 9. 23h payout batches — [done: `01f5f34`, rehearsal deployed, R213 green]. 10. 23h fix round under R258, review round 2, merge under R147 — [done]. 11. END — [here; halt]. Resume cap 16, 0 used.
 
 ## §3 What changed this cycle
@@ -32,6 +34,7 @@ Tests: **3179 / 23162** on `ecaa365` (`fb5f6f0`: 3172 / 23129; +7 R258 tests) ·
 - CC (DEVIATION, 23d): no refunds table (R252); `->update([...])` for the payment status write because the lesson-status guard test greps `app/` files that mention `Lesson` for `->status =` (the guard was left as it is).
 
 ## §5 Why stopping
+Cycle 24: not stopping; the programme runs under R224 and halts only at END or a stated gate. (Cycle 23 text follows.)
 END. Cycle 23 r3 is complete: step 10 (23h fix round, PR #75 merged as `01f5f34`, rehearsal deployed, R213 green with 0 pending migrations) and step 11 (this write). The queue is empty: PLAN.md authorises nothing further. Done: 23a–23h merged and on rehearsal. Next: the owner's reply after `/clear` (Owner actions below) and the next plan. Ruled out: any production deploy; any further frozen-file change; building the `YearGroupFactory` fix or the other Deferred items without a plan line.
 
 ## §6 Mismatches
@@ -51,12 +54,24 @@ END. Cycle 23 r3 is complete: step 10 (23h fix round, PR #75 merged as `01f5f34`
 - **Merge call:** the first `merge_pull_request` call was rejected by parameter validation (short SHA) before any merge; the one merge that happened used the full SHA.
 
 ## §7 Next step / Owner actions
+Cycle 24: no owner action is needed to continue. The live-money readiness list is written at END. Owner actions 14 and 15 below are answered by this plan being run. Carried unchanged: 2, 3, 4, 5, 6–12.
 **Owner action 14:** nothing in the plan is left to run. To start the next cycle: `/clear` this session, ask the planner ("where are we?") for the next PLAN.md, and reply `update` when it is on `main`. (Recommended: this is the only path; nothing else is authorised.) Reply `update` when done.
 **Owner action 15 (Recommended, optional — before any live money):** read the 23c Deferred notes (a)–(g) and the 23h Deferred list; they, not rehearsal, gate a live-money switch. Production stays untouched until you authorise `trustutor-production`. Reply `update` when done.
 
 Parked or default-taken this cycle: nothing parked. Defaults taken: the R258 design calls above (window statuses, SQL rule, N+1 accepted). Carried: Owner action 5 (`mail.from_name`, still `trusTutor Team` at the 23h deploy; ADR-006 spells it `TrusTutor`), 2, 3, 4, 6–12 (full text: `git show 467f057:docs/STATUS.md` §7). Owner-blocking, carried: D-04 with counsel (VAT line and tax invoice numbers); authorising `trustutor-production`; Postmark wiring (R120). **R214 value at the deploy:** `mail.from_name` = `trusTutor Team`, `mail.from_address` `support@trustutor.com`, mailer `smtp`.
 
 ## §8 Programme board
+**Cycle 24 r1 — "payments ready for live"** (resume cap 14, 0 used)
+| Sub-cycle | Branch | PR | Review | State |
+|---|---|---|---|---|
+| 24a capture robustness (R259) | `cp/24a-capture-robustness` | — | — | next |
+| 24b refund state (R260, R265) | `cp/24b-refund-state` | — | — | queued |
+| 24c card removal (R261, R265) | `cp/24c-card-removal` | — | — | queued |
+| 24d booking page (R262) | `cp/24d-book-page` | — | — | queued (needs 24a) |
+| 24e payout hardening (R263, R265) | `cp/24e-payout-hardening` | — | — | queued |
+| 24f test hygiene (R264) | `cp/24f-test-hygiene` | — | — | queued |
+
+**Cycle 23 (closed):**
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
 | 23a gateway registry (R246) | `cp/23a-gateway-registry` | #68 | Opus 5.5 round 1: 0 High; fix round 1 applied | done; rehearsal `bdb6481`, R213 green |
