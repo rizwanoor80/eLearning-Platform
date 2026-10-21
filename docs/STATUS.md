@@ -1,55 +1,49 @@
-# STATUS — cycle 25 r1 — programme "live switch ready" — in progress, START written 2026-10-21
-Tests: baseline **3295 passed / 23820 assertions** on `main` `5d7864a` (code at `6c6b544`) · Advisor: 0 times so far · Review: none yet · Resume cap 12, 0 used
+# STATUS — cycle 25 r1 — programme "live switch ready" — HALTED (failed rehearsal deploy), 2026-10-21
+Tests: **3338 passed / 24009 assertions** on `main` `b4775f4` (baseline 3295 / 23820) · Advisor: 2 times (25a, 25b; both Claude Opus 5.5) · Review: 25a 0 High / 1 Medium / 3 Low, 25b 0 High / 2 Medium / several Low, all Mediums fixed · Resume cap 12, 0 used · Context size not measured (cloud session), 1 compaction
 
 ## §1 Git state
-- `main` = the docs-only commit that carries this file and the CYCLE-LOG END (`[skip ci]`), on top of `2f86d60` (24f log entries) on top of `6c6b544` (PR #81 squash). Every code commit of the cycle is on `main`: 24a `364c09f` (#76), 24b `c2d30e9` (#77), 24c `9f91472` (#78), 24d `92520e1` (#79), 24e `f039d43` (#80), 24f `6c6b544` (#81).
-- `rehearsal` = `6c6b544`, R213 green (0 pending migrations, Horizon running, 0 failed jobs, ledger ok with 0 unbalanced lessons and 0 stranded payments, `/`, `/login`, `/tutors`, `/terms` all 200). No production deploy. No branch deleted; the six `cp/24*` branches are still on the remote.
+- `main` = the docs-only commit carrying this file and the CYCLE-LOG entries (`[skip ci]`), on top of `b4775f4` (25b, PR #83 squash) on top of `d20d3cf` (25a, PR #82 squash). CI on `d20d3cf` green (run 39620892593); CI on `b4775f4` was queued at write time (run 39627593382) and its PR head `f9bab71` was green on PostgreSQL 16 and 18.
+- `rehearsal` ref = `d20d3cf`, **but the server still runs `6c6b544`** (see §5). `b4775f4` has not been pushed to `rehearsal`. No production deploy. No branch deleted; `cp/25a-test-to-live` and `cp/25b-refund-truth` remain on the remote.
 
 ## §2 Step map
-START, 24a, 24b, 24c, 24d, 24e, 24f: done. END: this write. The queue is empty: PLAN.md authorises nothing further.
+START: done. 25a (R266, R271): code merged; rehearsal deploy did not land. 25b (R267): merged, not deployed. 25c, 25d, 25e, END: not started.
 
-## §3 What changed this cycle
-- **24a (R259) capture robustness:** a captured payment that never reached a ledger entry is refunded by an hourly sweep; capture failures leave a state a retry can finish.
-- **24b (R260, R265) refund state:** refund attempts are recorded and re-queued against what the gateway says is left; a dashboard refund is reconciled; alerts when a refund is found at the gateway.
-- **24c (R261, R265) card removal:** a parent can remove a saved card (DB first, row-locked, refused while a pending payment uses it); every account-level card reader is live-scoped; the gateway detach runs as a queued job.
-- **24d (R262) booking page:** the booking page survives a 3-D Secure redirect and resumes; learner changes during a payment are guarded; the selects are disabled while paying.
-- **24e (R263, R265) payout hardening:** admin check inside all four payout actions; payout details that a spreadsheet would run as a formula, hold a control character or invalid UTF-8 are refused where typed and the export refuses stored ones; closed accounts still owed money are reported and audited, never silently dropped; lock order in `GeneratePayoutBatch` (users row `FOR SHARE`, then profile `FOR UPDATE`); netting and snapshot tests.
-- **24f (R264) test hygiene:** `CurriculumFactory` and `YearGroupFactory` can no longer collide with seeded rows (and `CurriculumFactory` is safe for `count(n)->create()`); the 23g test gaps closed: lifetime earnings proved against hand-counted fils, lessons moved through the real actions, the null `payout_problem` path, earnings-nav visibility.
-- No frozen file was changed. No gateway row was switched to `live`; no key was entered, read or logged; Stripe was never called from CI or the sandbox.
+## §3 What changed
+- **25a (R266) test-to-live safety:** Stripe idempotency keys are `{mode}:{app.env}:{raw}`; every payment and saved card carries the `gateway_mode` of the driver that made the call (migration `2026_10_22_100000_add_gateway_mode_to_payments_and_payment_methods.php`, additive, backfill `test`); a card from the other mode is unusable (computed on read); webhooks compare `livemode` to the active row; `payments:mode-readiness` is read-only and lists what blocks a switch.
+- **25b (R267) refund truth:** a Stripe refund reported `pending` is recorded `requested` and moved only through `SettleGatewayRefund` (the `refund.updated` / `charge.refund.updated` webhooks, the reconcile job or the hourly sweep); failed/canceled is recorded Failed with an admin alert; `charge.refunded` never settles a row; `StripePaymentGateway` pages through every refund (cap 50 pages, which throws rather than create a second refund); a refund stuck over 72 h alerts admins; `ledger:verify` and the ops ledger check report a capture whose hold is missing or not the payment's amount (`UnheldCaptures`). No migration.
+- No frozen file changed except the named R267 edit to `StripePaymentGateway::refund()`/`listRefunds()` (DECISION logged); `PaymentGateway` interface, `LedgerService`, `LessonStateMachine` and the ledger migration untouched. No gateway row switched to live; no key entered, read or logged; Stripe never called from CI or the sandbox.
 
 ## §4 Decisions and by whom
-- R224(2) merges without asking, taken for all six PRs, each quoted in a VERIFICATION entry (CC).
-- 24e: values starting `=`, `+`, `-`, `@` are refused where typed rather than altered on export (advisor, Opus 5.5).
-- 24f: review Lows 3, 5, 6, 9, 11, 12 accepted as notes (listed under Deferred), Lows 4, 7, 8 fixed (CC).
-- Defaults taken: option 1 of every question, as logged.
+- R224(2) merge without asking, taken for PR #82 and PR #83 (VERIFICATION entries).
+- 25a: stamp the mode from the driver that made the call (advisor, Opus 5.5). Other-mode cards gated dynamically on read, not a stored "unusable" flag (CC, DECISION).
+- 25b: `charge.refunded` never settles a row (advisor, Opus 5.5); R267 frozen-path edit (CC, DECISION).
+- Review fixes: 25a Medium and Lows 5, 6; 25b Mediums 1, 2 and Lows 4, 5. Not fixed: see §6.
 
 ## §5 Why stopping
-END. The queue is empty and the plan authorises nothing more. Handoff: **done** 24a–24f, merged and on rehearsal; **next** the owner's manual check on rehearsal (Owner action 16), then the next plan; **ruled out** any production deploy, any gateway row to `live`, any frozen-file change, and building the Deferred items without a plan line.
+R224 halt: **failed post-deploy check.** `rehearsal` was fast-forwarded to `d20d3cf` at about 14:58 UTC (R111, R213, R271). `GET /ops/status` still reports `app.git_sha` `6c6b544`, release 80800625, `migrations.pending` 0, Horizon running, 0 failed jobs, ledger ok, about 40 minutes later; a normal deploy lands in about 40 seconds. The cause cannot be read from a cloud session (no ssh, no Forge log). Nothing was re-pushed and no empty commit made. Handoff: **done** START, 25a, 25b merged; **next** Owner action 18, then 25c to 25e and END; **ruled out** re-pushing the same sha, any production deploy, any live switch.
 
 ## §6 Mismatches
-- R263(1)/R265: `payout_batch_lines` already held `payout_method` and `details`, so no migration was added and R265's migration authorisation was not used.
-- R263(2): "same lock order as `OpenDispute`" was already true of `GeneratePayoutBatch`; the change was a docblock plus a regression test.
-- 24a/R260 overlap: the 24a hourly sweep already refunds a captured payment with no ledger entry.
-- 24f review (Low, not built): `DocumentTypeFactory` uses `fake()->unique()->word()`, which can return `id`, a seeded document-type code (no test combines them today); the rehearsal demo learner now shows the year group "Factory year group N" (cosmetic).
+- Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/25*` branches, which were used.
+- R266 says a card from the other mode is "marked unusable"; it is computed on read from `gateway_mode` instead (no data change needed on a switch back).
+- 25a, not built (not authorised): `env` metadata on intents; ignoring other-environment events in `CheckOrphanCapture` (pre-existing); the setup intent has no idempotency key (pre-existing); the re-add mail has no wording for the final-attempt cancellation and two race paths.
+- 25b, not fixed: a pending dashboard refund still inflates `refunded_amount` through `charge.refunded` until the reconcile records it; an `unverified` payment stays Captured while its refund is pending, so `ledger:verify` lists it as stranded (correct); the REFUND_FAILED mail wording is wrong for the stuck-72 h, External and unverified cases and `ReconcileGatewayRefunds::failed()` raises REFUNDED_AT_GATEWAY too broadly; after a mode switch an other-mode payment's pending own refund can be marked Failed and `StripeModeReadiness` counts External rows as blockers; duplicate lines in `--list` and `ledger:verify`.
+- Deploy note: the idempotency-key format changes at the deploy, so deploy with no pending recurring attempts in flight. Open `open_refunds` count may include failed refunds.
 
 ## §7 Next step / Owner actions
-**Owner action 16 (Recommended — the 24d check that no JS test runner can do):** on rehearsal, open a booking page and: (a) pay with a card that forces 3-D Secure, complete it and confirm you return to the booking, resumed; (b) change the learner quickly several times and confirm nothing double-submits; (c) confirm the selects are disabled while the payment runs; (d) reload after the return and confirm it does not replay the payment. Recommended because nothing in CI exercises the redirect. Reply `update` when done.
-**Owner action 17:** to start the next cycle: `/clear` this session, ask the planner ("where are we?") for the next PLAN.md, and reply `update` when it is on `main`. (Recommended: this is the only path; nothing else is authorised.) Reply `update` when done.
+**Owner action 18 (Recommended — unblocks the programme):** in Forge, open the `trustutor-rehearsal` site's deployment history and find the deploy for `d20d3cf` (pushed about 14:58 UTC on 2026-10-21). If it failed, read the log (do not paste secrets into the repo) and fix or re-run the deploy from Forge; if there is no deploy at all, the push webhook did not fire: trigger "Deploy Now" for the `rehearsal` branch. Expected: `GET /ops/status` then reports `d20d3cf`, `migrations.pending` 0 after the 25a migration. Reply `update` when done.
+**Owner action 19:** to continue: `/clear` this session, then reply `update`. CC then verifies rehearsal at `d20d3cf`, fast-forwards `rehearsal` to the latest green `main` (carrying 25b), and runs 25c to 25e and END. (Recommended: this is the only path; nothing else is authorised.) Reply `update` when done.
+**Owner action 20 (before any live switch, not now):** in the Stripe dashboard subscribe the live webhook endpoint to `refund.updated` (and optionally `charge.refund.updated`) alongside the existing events; replace the keys and the webhook signing secret together. Reply `update` when done.
 
-**Live-money readiness (what stands between rehearsal and a live switch):**
-1. *Done this cycle:* capture robustness (24a), refund state and re-queue (24b), card removal (24c), 3-D Secure return on the booking page (24d), formula-safe payout details and the export guard (24e), collision-proof factories and the 23g test gaps (24f).
-2. *Owner-blocking, carried:* D-04 with counsel (VAT line and tax invoice numbers); authorising `trustutor-production`; Postmark wiring (R120); Owner action 5 (`mail.from_name`, still `trusTutor Team`; ADR-006 spells it `TrusTutor`); Owner actions 2, 3, 4, 6–12 (full text: `git show 467f057:docs/STATUS.md` §7). **R214 value at the deploy:** `mail.from_name` = `trusTutor Team`, `mail.from_address` `support@trustutor.com`, mailer `smtp`.
-3. *Still open and gating (read the Deferred lists below before any switch):* 23c (a)–(g) and the 23h list; 24b: lesson-level ledger check for unverified captures, `listRefunds` limit 100 with no paging, a pending dashboard refund recorded as Succeeded; 24c: the detach job's final failure only logs, a pending payment orphaned on a non-reserved lesson blocks removal with no admin override; 24d: the Stripe client secret stays in `history.state.page.url` and access logs by Stripe's design, and a crafted link can show "Your card was approved" with no hold behind it; 24e: `AnonymizeUser` leaves the bank fields in place and a closed account's money needs an admin's manual decision.
-4. *Owner steps that no code can do:* enter the live keys in the admin registry only after counsel and production are authorised, run one small live capture and refund by hand, and watch `/ops/status` for a day before announcing.
+Live-money readiness list is rewritten at END (25e), after 25c to 25e; the 24 list above is superseded for 24a-24f/25a/25b items only by §3.
 
-Parked or default-taken this cycle: nothing parked.
+Parked or default-taken: nothing parked. Default taken: option 1 of every question.
 
 ## §8 Programme board
-**Cycle 25 r1 — "live switch ready"** (resume cap 12, 0 used) — open
+**Cycle 25 r1 — "live switch ready"** (resume cap 12, 0 used) — halted
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 25a test-to-live safety (R266, R271) | `cp/25a-test-to-live` | — | — | next |
-| 25b refund truth (R267) | `cp/25b-refund-truth` | — | — | queued |
+| 25a test-to-live safety (R266, R271) | `cp/25a-test-to-live` | #82 | Opus 5.5 round 1: 0 High, 1 Medium, 3 Low; fix round 1 | merged `d20d3cf`; rehearsal deploy NOT landed |
+| 25b refund truth (R267) | `cp/25b-refund-truth` | #83 | Opus 5.5 round 1: 0 High, 2 Medium, Lows; fix round 1 | merged `b4775f4`; not deployed |
 | 25c privacy clean-up (R268) | `cp/25c-privacy-cleanup` | — | — | queued |
 | 25d booking return (R269) | `cp/25d-booking-return` | — | — | queued |
 | 25e CP8 end-to-end test (R270) | `cp/25e-end-to-end` | — | — | queued |
@@ -67,6 +61,7 @@ Parked or default-taken this cycle: nothing parked.
 **Cycle 23 (closed):** 23a–23h merged (PRs #68–#75); last `01f5f34`. Detail: `git show 01f5f34:docs/STATUS.md` §8.
 
 ## Deferred
+- **25b, not built:** see §6 (the REFUND_FAILED wording, dashboard-refund inflation until reconcile, other-mode refund after a switch, duplicate list lines). 25b closes the 24b items "lesson-level ledger check", "listRefunds paging" and "pending dashboard refund recorded as Succeeded".
 - **24f review notes (Low, not built):** the real-action bucket test calls `AutoReleaseLesson` on a lesson it would not pick up itself (the ledger and status end the same); the nav source tripwire would not catch an extra unconditional Earnings link, and `settings/Layout.vue` is not covered; the 300-draw year-group loop is only a weak guard, the regex assertion is the real one; `DocumentTypeFactory` can draw the seeded code `id`; the demo learner now shows "Factory year group N".
 - **24e, not built:** `AnonymizeUser` leaves the bank fields in place; `FOR SHARE` on users rows briefly blocks other UPDATEs for the batch transaction; a first release landing after the candidate query waits for the next batch; `scopeCannotBePaid` cannot see encrypted content problems; a repeated `payout_batch.owed_to_anonymised` audit row on every generation; a dead trashed branch in `reasonToSkip()` kept as a guard; a payout email whose local part starts with `+`/`-` is now refused; flag columns run one earnings query per row; pre-rule lines carrying unsafe values make the export refuse (mark them failed and regenerate).
 - **24d, not built:** the client secret stays in `history.state.page.url` and access logs by Stripe's design; sessionStorage entries are not removed after an in-page decline; resume uses the freshly drawn quote token (a price change fails safely via `amount_mismatch`); a wrong pick in the no-remembered-choice path releases the hold; a crafted link can show "Your card was approved" with no hold behind it; there is no JS test runner (see Owner action 16).

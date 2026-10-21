@@ -8525,3 +8525,48 @@ Context size not measured by the tool (cloud session); 2 compactions this run (o
 
 ### 2026-10-21 — START (cycle 25 r1, programme "live switch ready", CC)
 `update` received. `git fetch` + fast-forward: `main` = `5d7864a` ("PLAN.md cycle 25 r1: mark refund.updated handling as new (R240) [skip ci]"); the plan is already committed by the planner (R215), so no "PLAN.md cycle 25 r1" commit by CC. No END exists in this log for cycle 25 r1. R222 window check: cloud session (`CLAUDE_CODE_REMOTE=true`), the SessionStart hook reported "Nothing to migrate"; `vendor/` and `tools/phpstan.phar` present; no window or ssh conflict. Plan echo: 25a (R266 + R271, advisor min 1), 25b (R267, min 1), 25c (R268, min 1), 25d (R269, min 0), 25e (R270, min 0), then END. Resume cap 12, 0 used. Branches named by the plan: `cp/25a-test-to-live`, `cp/25b-refund-truth`, `cp/25c-privacy-cleanup`, `cp/25d-booking-return`, `cp/25e-end-to-end`, each from `origin/main`. Disclosure: the session harness also names a branch `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md (checkpoint protocol, branch per cycle) name the `cp/25*` branches and authorise pushing them, so those are used; docs-only commits go to `main` per R210. Baseline: Pest 3295 / 23820 on `6c6b544`. Not touched: `LessonStateMachine.php`, `LedgerService.php`, the ledger migration; no key handled; no gateway row switched to live.
+
+### 2026-10-21 — ADVISOR (25a, CC)
+Consulted before touching Stripe idempotency keys, saved cards and webhook handling. Model that answered: Claude Opus 5.5 (`claude-opus-5-5`). Quote: "Stamp the mode from the driver instance that makes the call, not from a fresh row read." Adopted: `payments.gateway_mode` and `payment_methods.gateway_mode` are stamped from the driver that made the call.
+
+### 2026-10-21 — DECISION (25a, dynamic gating of other-mode cards, CC)
+R266 asks that a card saved in the other mode be "unusable". Built as a computed read (a card is usable when its `gateway_mode` equals the active row's mode) rather than a stored flag, so a switch back to the earlier mode needs no data change and nothing can be left marked unusable by a half-finished switch. Disclosed in STATUS §6.
+
+### 2026-10-21 — VERIFICATION (25a gates, CC)
+`vendor/bin/pest`: **3312 passed / 23916 assertions** (baseline 3295 / 23820; no test removed). `ledger:verify` OK. Pint, PHPStan 0 errors, RTL grep and `npm run build` green. `git log origin/main..HEAD`: `9759c6c`, `0daf236`. CI run 39618150675 green on PostgreSQL 16 and 18. Migration `2026_10_22_100000_add_gateway_mode_to_payments_and_payment_methods.php` is additive (backfill `test`, CHECK with COALESCE).
+
+### 2026-10-21 — REVIEW (25a round 1, PR #82, fresh subagent `claude-opus-5-5`)
+Verdict: **0 High / 1 Medium / 3 Low**. Numbered verdicts: (1) MEDIUM a failed pending attempt of the other mode could be retried against the wrong mode; (2) PASS idempotency key `{mode}:{app.env}:{raw}`; (3) PASS webhook `livemode` compared to the active row; (4) PASS WITH NOTE LOW the setup intent carries no idempotency key (pre-existing); (5) LOW wording gap in the re-add mail; (6) LOW a docblock above the `ChargeReservedLesson` constructor; (7) PASS `payments:mode-readiness` is read-only.
+
+### 2026-10-21 — DECISION (25a fix round 1, 1 of cap 2, CC)
+Fixed: (1) such an attempt is now `Skipped`; (5) and (6) fixed. Not fixed: (4), pre-existing and not authorised. No round 2: the changes are the reviewer's own suggested fixes, 0 High and no unfixed Medium remain.
+
+### 2026-10-21 — VERIFICATION (25a merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #82 squash-merged -> `main` `d20d3cfdfefd1dbccae4d5ddd411502cafb76f04`; CI on `main` run 39620892593 green.
+
+### 2026-10-21 — VERIFICATION (25a rehearsal, R213, FAILED, CC)
+Authorisations quoted: R111 (rehearsal deploy by push), R213 (post-deploy check), R271 (the additive 25a migrations may run on rehearsal). `rehearsal` fast-forwarded `6c6b544..d20d3cf` at about 14:58 UTC. **The check failed:** about 25 minutes later, and again after 25b merged, `GET /ops/status` still reports `app.git_sha` `6c6b544`, release 80800625, `migrations.pending` 0, Horizon running, 0 failed jobs, ledger ok. The `rehearsal` ref is at `d20d3cf`, so the deploy did not land (webhook not fired, or the deploy script failed before switching the release; a cloud session has no ssh and no Forge log). Not done on purpose: no re-push of the same sha, no empty commit, no ssh. Per R224 a failed post-deploy check halts the programme; 25b was not pushed to rehearsal. Owner action 18 in STATUS §7.
+
+### 2026-10-21 — START (25b, R267, CC)
+Branch `cp/25b-refund-truth` from `main` `d20d3cf`. Advisor minimum 1.
+
+### 2026-10-21 — ADVISOR (25b, CC)
+Model that answered: Claude Opus 5.5 (`claude-opus-5-5`). Quote: "Never settle a row from it: it cannot say which refund moved." (on `charge.refunded`). Adopted: `charge.refunded` only reconciles; `refund.updated` settles by the metadata idempotency key first, then by refund id.
+
+### 2026-10-21 — DECISION (25b, frozen-path edit, CC)
+`app/Services/Payments/*` is frozen after CP5, but CP5 is still open and R267 names the change: "`StripePaymentGateway::listRefunds` and `ReconcileGatewayRefunds` page through every refund (Stripe's cursor), not the first 100". Edited `StripePaymentGateway::refund()` and `listRefunds()` only; the `PaymentGateway` interface (frozen, R255) is unchanged. Proof (red then green, `RefundTruthTest`): 150 refunds on one payment are all found; at the 50-page cap the lookup throws `RuntimeException('stripe_refund_pages_exhausted')`, deliberately not a `PaymentCaptureException`, so a truncated lookup never falls through to `refunds->create()`.
+
+### 2026-10-21 — VERIFICATION (25b gates on `916b70f`, CC)
+Pest **3335 passed / 24005 assertions** (baseline after 25a 3312 / 23916), `ledger:verify` OK, Pint, PHPStan 0, RTL green. CI run 39621754361 green on PostgreSQL 16 and 18. Proof for R267: pending -> succeeded, pending -> failed, 150 refunds on one payment, `ledger:verify` lists an unheld or mis-held capture (`UnheldCaptures`).
+
+### 2026-10-21 — REVIEW (25b round 1, PR #83, fresh subagent `claude-opus-5-5`)
+Verdict: **0 High / 2 Medium / several Low**. Numbered verdicts: (1) MEDIUM an External refund that succeeds could advance a payment whose lesson has no Hold; (2) MEDIUM the row was read without a lock in `SettleGatewayRefund`; (3) PASS WITH NOTE a pending dashboard refund still inflates `refunded_amount` through `charge.refunded` until the reconcile records it; (4) LOW a refusal arriving after the webhook already failed the row raised a second alert; (5) LOW the hourly sweep recorded a dashboard refund silently; (6) LOW the REFUND_FAILED wording is wrong for the stuck-72 h, External and unverified cases, and `ReconcileGatewayRefunds::failed()` raises REFUNDED_AT_GATEWAY too broadly; (7) LOW after a mode switch an other-mode payment's pending own refund can be marked Failed, and `StripeModeReadiness` counts External rows as blockers; (8) LOW duplicate lines in `--list` and `ledger:verify`; (9) PASS paging cap; (10) PASS no ledger or state-machine write from a webhook; (11) PASS idempotency and replay.
+
+### 2026-10-21 — DECISION (25b fix round 1, 1 of cap 2, CC)
+Fixed on `f9bab71`: (1) an External success advances only when the lesson is held (`isHeld`); (2) the row is locked `FOR UPDATE`; (4) the alert is raised only when the update moved the row; (5) the sweep raises REFUNDED_AT_GATEWAY when it records a dashboard refund. Three tests added. Not fixed, disclosed in STATUS §6: (3), (6), (7), (8), none High or Medium and none authorised beyond R267.
+
+### 2026-10-21 — VERIFICATION (25b merged, CC)
+Gates on `f9bab71`: Pest **3338 passed / 24009 assertions**, `ledger:verify` OK, Pint, PHPStan 0, RTL green; CI run 39626966208 green on PostgreSQL 16 and 18. `git log origin/main..HEAD`: `f9bab71`, `916b70f`. Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #83 squash-merged -> `main` `b4775f4c9f234de599656b7ac43dab4bdbf08611`. 25b adds no migration. Not pushed to `rehearsal` (see the failed 25a check).
+
+### 2026-10-21 — HANDOFF (cycle 25 halt, CC)
+Halt reason: R224 failed post-deploy check. Context size not measured by the tool (cloud session); 1 compaction this run (during 25b). Done: START, 25a and 25b merged. Next: Owner action 18 (Forge deploy of `d20d3cf`), then 25c, 25d, 25e and END. Ruled out: re-pushing `rehearsal`, empty commits, any production deploy, any gateway row to live. Owner to `/clear` this session, then reply `update`.
