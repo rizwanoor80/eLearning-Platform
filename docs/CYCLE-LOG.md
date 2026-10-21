@@ -8393,3 +8393,15 @@ Quoting the plan: "CC may … merge under R224(2)/R147"; R224(2): "a PR meeting 
 
 ### 2026-10-21 — VERIFICATION (24a merged, CC)
 PR #76 squash-merged at head `fc5eb8d76001a177012206ecd75495a916d41d59` (CI green on PostgreSQL 16 and 18, runs finished 08:49 UTC) -> `main` `364c09f`. Rehearsal deploy and R213 follow once CI on `364c09f` is green.
+
+### 2026-10-21 — VERIFICATION (24a rehearsal deploy and R213, CC)
+`rehearsal` = `main` `364c09f` (CI green on PostgreSQL 16 and 18). Authenticated `GET /ops/status` on the rehearsal host (token from the environment, not echoed): HTTP 200, `app.git_sha` `364c09f15c73…`, `migrations.pending` 0, `horizon.status` running (1 supervisor), `queues.failed_jobs` 0, `scheduler.status` ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0, `video.active_provider` daily. HTTPS smoke: `/` 200, `/login` 200, `/tutors` 200, `/terms` 200. 24a is live on rehearsal; production untouched.
+
+### 2026-10-21 — START (24b refund state, R260 + R265, branch `cp/24b-refund-state` from `main` `364c09f`, CC)
+Scope: `payment_refunds` table replacing the refund JSON in `payments.raw_response`; refunds written before the gateway call and called with no lock held; admin re-queue of a failed refund; reconciliation of refunds made at the gateway by someone else; immediate refund of a capture a recurring charge strands; Stripe timeouts. Rehearsal migration authorised by R265 (R213 must show `pending 0`). Production untouched; no key read, printed or logged; Stripe is faked in every test.
+
+### 2026-10-21 — ADVISOR (24b design, 1 of minimum 1, fresh subagent `claude-opus-5-5`, CC)
+Model that answered: Claude Opus 5.5 (`claude-opus-5-5`). Design taken as advised: attempt-1 keys keep the old format so a refund the old code made is found by the same key; a queue retry reuses the row's key and only the sweep applies the 10-minute grace; the webhook never calls Stripe itself (a queued after-commit `ReconcileGatewayRefunds` does); an external refund is one whose id and idempotency key are both unknown; a re-queue is capped by the remaining refundable amount; `gateway_status` is stored; the Stripe timeout is set on the `CurlClient` singleton (2 calls × 20 s < the 60 s Horizon timeout).
+
+### 2026-10-21 — VERIFICATION (24b gates on `fb75e60`, PR #77, CC)
+`vendor/bin/pest`: **3229 passed / 23414 assertions** (baseline 3212 / 23315; +17 tests, suite did not shrink). `php artisan ledger:verify`: "Ledger OK: every lesson and every payout sums to zero." Pint passed, PHPStan (`tools/phpstan.phar`) 0 errors, `npm run build` ok, `vue-tsc --noEmit` clean, `scripts/rtl-check.sh` passed. `git log origin/main..HEAD`: `fb75e60 24b: refund state in a table, re-queue, reconciliation, Stripe timeouts (R260, R265)`. Disclosure for STATUS §6: the 24a unverified-capture sweep already refunds a `Captured` payment with no ledger entries (the `NeedsReview` case); 24b adds the immediate event dispatch from the recurring charge, and moves the state into the table.
