@@ -8,6 +8,7 @@ use App\Enums\LessonType;
 use App\Enums\LevelTier;
 use App\Enums\PaymentStatus;
 use App\Enums\TutorProfileStatus;
+use App\Events\Payments\UnverifiedCaptureNeedsRefund;
 use App\Exceptions\BookingException;
 use App\Exceptions\PaymentCaptureException;
 use App\Models\AvailabilityRule;
@@ -36,6 +37,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 // 2026-09-14 06:00 UTC is a Monday; Tuesday is weekday 2 (Sunday = 0) — same
 // reference point as SlotCalculatorLoaderTest/PermitCapTest.
@@ -530,6 +532,9 @@ it('expires the lesson and records a failed payment when capture is declined, wr
 });
 
 it('records a captured payment but no HOLD when the sweep expires the lesson before confirmation', function () {
+    // R259 (2) refunds such a payment by itself; held back here so the payment stays the stranded one `ledger:verify` lists.
+    Event::fake([UnverifiedCaptureNeedsRefund::class]);
+
     ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
     ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
 
@@ -582,6 +587,7 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
 
     $payment = Payment::query()->where('lesson_id', $lesson->id)->firstOrFail();
     expect($payment->status)->toBe(PaymentStatus::Captured);
+    Event::assertDispatched(UnverifiedCaptureNeedsRefund::class, fn ($e) => $e->payment->is($payment));
 
     expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe(0);
 
@@ -596,6 +602,9 @@ it('records a captured payment but no HOLD when the sweep expires the lesson bef
 });
 
 it('records a captured payment but no HOLD when something other than a lesson-transition failure breaks the post-capture step (round-2 review Low)', function () {
+    // R259 (2) refunds such a payment by itself; held back here so the payment stays the stranded one `ledger:verify` lists.
+    Event::fake([UnverifiedCaptureNeedsRefund::class]);
+
     ['tutor' => $tutor, 'curriculum_id' => $curriculumId, 'subject_id' => $subjectId] = bookableTutorSetup();
     ['parent' => $parent, 'learner' => $learner] = parentAndLearner($curriculumId);
 
@@ -626,6 +635,7 @@ it('records a captured payment but no HOLD when something other than a lesson-tr
 
     $payment = Payment::query()->where('lesson_id', $lesson->id)->firstOrFail();
     expect($payment->status)->toBe(PaymentStatus::Captured);
+    Event::assertDispatched(UnverifiedCaptureNeedsRefund::class, fn ($e) => $e->payment->is($payment));
 
     expect(LedgerEntry::query()->where('lesson_id', $lesson->id)->count())->toBe(0);
 

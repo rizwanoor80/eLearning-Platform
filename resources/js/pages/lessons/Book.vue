@@ -80,11 +80,18 @@ const form = useForm({
 });
 
 // `slot` is a server-side form error key that is not one of the form's fields.
-const slotError = computed(
-    () => (form.errors as Record<string, string | undefined>).slot,
-);
+// `retry` is the server saying the payment could not be confirmed but the card hold is still good.
+const slotError = computed(() => {
+    const errors = form.errors as Record<string, string | undefined>;
+
+    return errors.slot ?? errors.retry;
+});
 
 const cardError = ref<string | null>(null);
+// One id per payment attempt: a double click or a retry asks Stripe for the same hold, never a second one. A new
+// attempt starts after any failure that is not "try again on the same hold".
+const attemptId = ref(crypto.randomUUID());
+const heldIntentId = ref<string | null>(null);
 const paying = ref(false);
 const cardHost = ref<HTMLElement | null>(null);
 const cardReady = ref(false);
@@ -161,19 +168,34 @@ function post(paymentIntentId: string) {
         subject_id: Number(subj),
         quote_token: learner.value?.quote_token ?? '',
         payment_intent_id: paymentIntentId,
-    })).post('/lessons', { onFinish: () => (paying.value = false) });
+    })).post('/lessons', {
+        onError: (errors) => {
+            if (!('retry' in errors)) {
+                heldIntentId.value = null;
+                attemptId.value = crypto.randomUUID();
+            }
+        },
+        onFinish: () => (paying.value = false),
+    });
 }
 
 // Stripe: the browser only places a hold on the card (3-D Secure if the bank asks); the server takes the money
 // inside the booking, so a refused slot or a changed price never charges anyone.
 async function pay() {
-    if (!stripe || !elements || !learner.value) {
+    if (!stripe || !elements || !learner.value || paying.value) {
         return;
     }
 
     paying.value = true;
     cardError.value = null;
     form.clearErrors();
+
+    // The card is already held and only the server's answer was missing: submit the same hold again.
+    if (heldIntentId.value !== null) {
+        post(heldIntentId.value);
+
+        return;
+    }
 
     const submitted = await elements.submit();
 
@@ -193,6 +215,7 @@ async function pay() {
         tutor_id: props.tutor.id,
         starts_at: props.starts_at,
         quote_token: learner.value.quote_token,
+        attempt_id: attemptId.value,
     });
 
     if (!intent.ok) {
@@ -223,7 +246,8 @@ async function pay() {
         return;
     }
 
-    post(confirmed.paymentIntent.id);
+    heldIntentId.value = confirmed.paymentIntent.id;
+    post(heldIntentId.value);
 }
 
 function submit() {

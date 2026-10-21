@@ -26,7 +26,7 @@ class CheckoutIntentController extends Controller
 
         /** @var User $user */
         $user = $request->user();
-        /** @var array{learner_id: int, tutor_id: int, starts_at: string, quote_token: string} $data */
+        /** @var array{learner_id: int, tutor_id: int, starts_at: string, quote_token: string, attempt_id: string} $data */
         $data = $request->validated();
 
         // Same strict parse as the booking form: a value that does not format back to itself is not a time.

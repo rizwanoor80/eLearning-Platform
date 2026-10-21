@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\Payments\ReconcileUnrecordedPayments;
 use App\Actions\Payments\RefundParentAtGateway;
+use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\LedgerAccount;
+use App\Enums\PaymentStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\LedgerEntry;
 use App\Models\Lesson;
@@ -32,7 +35,7 @@ class RetryGatewayRefunds extends Command
      * nothing left (and an overlapping one is stopped by `onOneServer()->withoutOverlapping()`). A refusal
      * is permanent and only listed; it is never retried here.
      */
-    public function handle(RefundParentAtGateway $refund): int
+    public function handle(RefundParentAtGateway $refund, RefundUnverifiedCapture $refundUnverified, ReconcileUnrecordedPayments $reconcile): int
     {
         if ($this->option('list')) {
             return $this->list($refund);
@@ -55,7 +58,25 @@ class RetryGatewayRefunds extends Command
             }
         });
 
+        // R259 (5): payments a dead booking request recorded but never finished, settled first so a
+        // capture it found is refunded in the same run.
+        $settled = $reconcile();
+
+        // R259 (2): a captured payment with no ledger entry at all is a booking that could not be confirmed.
+        $this->unverifiedCaptures()->each(function (Payment $payment) use ($refundUnverified, &$made): void {
+            try {
+                $made += $refundUnverified($payment) ? 1 : 0;
+            } catch (Throwable $e) {
+                report($e);
+
+                if (Cache::add("refund-sweep-alert:{$payment->id}", true, now()->addDay())) {
+                    PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUND_FAILED);
+                }
+            }
+        });
+
         $this->info("Made {$made} gateway refund(s).");
+        $this->info("Settled {$settled} unrecorded payment(s).");
 
         return self::SUCCESS;
     }
@@ -85,6 +106,24 @@ class RetryGatewayRefunds extends Command
         $this->table(['Lesson', 'Payment', 'Ledger entry', 'Amount (fils)', 'State'], $rows);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Captured payments the platform never held: no ledger entry for their lesson, old enough that the
+     * queued refund has had its chance, and not yet refunded or refused.
+     *
+     * @return LazyCollection<int, Payment>
+     */
+    private function unverifiedCaptures(): LazyCollection
+    {
+        return Payment::query()
+            ->where('status', PaymentStatus::Captured->value)
+            ->whereNotNull('gateway_ref')
+            ->where('updated_at', '<=', now()->subMinutes(self::GRACE_MINUTES))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('ledger_entries as e')->whereColumn('e.lesson_id', 'payments.lesson_id'))
+            ->whereRaw("coalesce(raw_response::jsonb->'unverified_refund'->>'status', '') not in ('succeeded', 'refused')")
+            ->orderBy('id')
+            ->lazyById();
     }
 
     /**

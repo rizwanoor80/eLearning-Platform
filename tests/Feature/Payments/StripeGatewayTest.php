@@ -1,8 +1,10 @@
 <?php
 
 use App\Enums\PaymentGatewayMode;
+use App\Enums\PaymentStatus;
 use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
+use App\Exceptions\PaymentGatewayUnavailable;
 use App\Models\Lesson;
 use App\Models\Payment;
 use App\Models\PaymentGatewayAccount;
@@ -14,6 +16,7 @@ use App\Services\Payments\StripePaymentGateway;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
 use Stripe\Exception\ApiConnectionException;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\InvalidRequestException;
 use Tests\Support\Payments\FakeStripeHttp;
 
@@ -88,7 +91,7 @@ it('captures the held intent the parent confirmed, and keeps only a whitelisted 
     $result = $this->gateway->capture($this->lesson, Money::fils(10000), (string) $this->lesson->id);
 
     expect($result->gatewayRef)->toBe('pi_test_1')
-        ->and($result->rawResponse)->toBe(['driver' => 'stripe', 'id' => 'pi_test_1', 'status' => 'succeeded', 'amount' => 10000, 'currency' => 'aed', 'latest_charge' => 'ch_test_1'])
+        ->and($result->rawResponse)->toBe(['driver' => 'stripe', 'id' => 'pi_test_1', 'status' => 'succeeded', 'amount' => 10000, 'amount_received' => 10000, 'currency' => 'aed', 'latest_charge' => 'ch_test_1'])
         ->and(json_encode($result->rawResponse))->not->toContain('cus_secret')->not->toContain('pm_secret')
         ->and($this->http->requests)->toHaveCount(2);
 });
@@ -121,7 +124,7 @@ it('refuses an intent that is not the held authorisation for this booking, and n
 })->with([
     'not confirmed yet' => [['status' => 'requires_payment_method'], 'payment_not_completed'],
     'processing' => [['status' => 'processing'], 'payment_not_completed'],
-    'already captured' => [['status' => 'succeeded', 'amount_received' => 10000], 'payment_not_completed'],
+    'captured for a different amount' => [['status' => 'succeeded', 'amount_received' => 5000], 'payment_not_completed'],
     'cancelled' => [['status' => 'canceled'], 'payment_not_completed'],
     'automatic capture' => [['capture_method' => 'automatic'], 'payment_not_completed'],
     'too little' => [['amount' => 9999, 'amount_capturable' => 9999], 'amount_mismatch'],
@@ -207,10 +210,81 @@ it('keeps its keys out of a dump and refuses to be serialised', function () {
         ->and(fn () => serialize($gateway))->toThrow(LogicException::class);
 });
 
-it('lets an ambiguous failure propagate instead of calling it a decline', function () {
+it('reports an unreachable gateway as unavailable, never as a decline', function () {
     stripeChooses('pi_test_1');
 
-    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(ApiConnectionException::class);
+    try {
+        $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+        $this->fail('Expected PaymentGatewayUnavailable');
+    } catch (PaymentGatewayUnavailable $e) {
+        expect($e->intentId)->toBe('pi_test_1')->and($e->getPrevious())->toBeInstanceOf(ApiConnectionException::class);
+    }
+});
+
+it('retries a capture after a dropped connection with one intent and one capture (R259 (1))', function () {
+    // First attempt: the capture call fails, and the look-up that follows has no answer either.
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', ['error' => ['type' => 'api_error', 'message' => 'x']], 500);
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentGatewayUnavailable::class);
+
+    // Second attempt, same hold: it goes through.
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', stripeCaptured());
+
+    $result = $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+
+    expect($result->gatewayRef)->toBe('pi_test_1')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(2)
+        ->and(collect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->map(fn ($r) => $this->http->idempotencyKeyOf($r))->unique()->all())->toBe(['capture-pi_test_1'])
+        ->and($this->http->requestsTo('POST /v1/payment_intents'))->toHaveCount(2);
+});
+
+it('treats a rate limit and a lock timeout as retryable, not as a refusal', function (array $error, int $status) {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', ['error' => $error], $status)
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent());
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentGatewayUnavailable::class);
+})->with([
+    'rate limit' => [['type' => 'invalid_request_error', 'code' => 'rate_limit', 'message' => 'slow down'], 429],
+    'lock timeout' => [['type' => 'invalid_request_error', 'code' => 'lock_timeout', 'message' => 'busy'], 409],
+]);
+
+it('finds out what happened when the capture answer is lost: taken means the booking carries on', function () {
+    $this->http
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeIntent())
+        ->reply('POST /v1/payment_intents/pi_test_1/capture', ['error' => ['type' => 'api_error', 'message' => 'x']], 500)
+        ->reply('GET /v1/payment_intents/pi_test_1', stripeCaptured());
+    stripeChooses('pi_test_1');
+
+    $result = $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+
+    expect($result->gatewayRef)->toBe('pi_test_1')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(1);
+});
+
+it('resumes an intent a first request already captured, without capturing again', function () {
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeCaptured());
+    stripeChooses('pi_test_1');
+
+    $result = $this->gateway->capture($this->lesson, Money::fils(10000), '1');
+
+    expect($result->gatewayRef)->toBe('pi_test_1')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
+});
+
+it('does not resume a captured intent another payment already carries', function () {
+    Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1']);
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', stripeCaptured());
+    stripeChooses('pi_test_1');
+
+    expect(fn () => $this->gateway->capture($this->lesson, Money::fils(10000), '1'))->toThrow(PaymentCaptureException::class, 'payment_already_used');
 });
 
 it('saves a card and returns the token and display details only', function () {
@@ -299,8 +373,45 @@ it('turns a card Stripe no longer knows into a failed attempt, so the slot is no
     expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(PaymentCaptureException::class, 'card_unusable');
 })->with([
     'unknown payment method' => [400, ['type' => 'invalid_request_error', 'code' => 'resource_missing', 'message' => 'No such PaymentMethod']],
-    'key reused with other parameters' => [400, ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']],
 ]);
+
+it('does not call a rate limit or a lock timeout on a saved-card charge a dead card', function (array $error, int $status) {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
+    $this->http->reply('POST /v1/payment_intents', ['error' => $error], $status);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k1'))->toThrow(ApiErrorException::class);
+})->with([
+    'rate limit' => [['type' => 'invalid_request_error', 'code' => 'rate_limit', 'message' => 'slow down'], 429],
+    'lock timeout' => [['type' => 'invalid_request_error', 'code' => 'lock_timeout', 'message' => 'busy'], 409],
+]);
+
+it('answers a key reused with other parameters by finding the attempt\'s intent, including one made before the metadata key', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    Payment::factory()->create(['lesson_id' => $this->lesson->id, 'attempt_no' => 1, 'gateway_ref' => null, 'status' => PaymentStatus::Pending]);
+    $this->http
+        ->reply('POST /v1/payment_intents', ['error' => ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']], 400)
+        ->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => [
+            stripeCaptured(['id' => 'pi_legacy', 'metadata' => ['kind' => 'recurring', 'lesson_id' => (string) $this->lesson->id, 'attempt' => '1']]),
+        ]]);
+
+    expect($this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-legacy')->gatewayRef)->toBe('pi_legacy');
+});
+
+it('leaves the attempt pending, never a failed one, when a reused key finds no intent', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    $this->http
+        ->reply('POST /v1/payment_intents', ['error' => ['type' => 'idempotency_error', 'message' => 'Keys must be used with the same parameters']], 400)
+        ->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => []]);
+
+    expect(fn () => $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-gone'))->toThrow(RuntimeException::class);
+});
+
+it('leaves another account\'s intent alone when settling a stranded one', function () {
+    $this->http->reply('GET /v1/payment_intents/pi_theirs', stripeIntent(['id' => 'pi_theirs', 'metadata' => ['kind' => 'checkout', 'account_user_id' => '999999']]));
+
+    expect($this->gateway->settleStrandedIntent('pi_theirs', (string) $this->payer->id)['status'])->toBe('missing')
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_theirs/cancel'))->toHaveCount(0);
+});
 
 it('lets a still-processing saved-card charge propagate and does not cancel it', function () {
     $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe']);
@@ -411,4 +522,40 @@ it('never puts a key or a webhook secret in an exception message or a request bo
     }
 
     expect(json_encode($this->http->requests))->not->toContain('whsec_example');
+});
+
+it('looks up the intent an aged attempt already made before creating another (R259 (6))', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    Payment::factory()->create(['lesson_id' => $this->lesson->id, 'attempt_no' => 1, 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'created_at' => now()->subHours(13)]);
+    $this->http->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => [
+        stripeCaptured(['id' => 'pi_other', 'metadata' => ['idempotency_key' => 'someone-else']]),
+        stripeCaptured(['id' => 'pi_made_earlier', 'metadata' => ['idempotency_key' => 'k-aged']]),
+    ]]);
+
+    $result = $this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-aged');
+    [$list] = $this->http->requestsTo('GET /v1/payment_intents');
+
+    expect($result->gatewayRef)->toBe('pi_made_earlier')
+        ->and($list['params']['customer'])->toBe('cus_test_1')
+        ->and($this->http->requestsTo('POST /v1/payment_intents'))->toHaveCount(0);
+});
+
+it('creates the intent as normal when an aged attempt left none, and never lists for a young one', function () {
+    $method = PaymentMethod::factory()->create(['account_user_id' => $this->payer->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_test_1']);
+    Payment::factory()->create(['lesson_id' => $this->lesson->id, 'attempt_no' => 1, 'gateway_ref' => null, 'status' => PaymentStatus::Pending, 'created_at' => now()->subHours(13)]);
+    $this->http
+        ->reply('GET /v1/payment_intents', ['object' => 'list', 'has_more' => false, 'data' => []])
+        ->reply('POST /v1/payment_intents', stripeCaptured(['id' => 'pi_new']));
+
+    expect($this->gateway->chargeSavedCard($this->lesson, Money::fils(10000), $method, 'k-aged')->gatewayRef)->toBe('pi_new')
+        ->and($this->http->requestsTo('POST /v1/payment_intents')[0]['params']['metadata']['idempotency_key'])->toBe('k-aged');
+
+    $young = Lesson::factory()->create(['booked_by_user_id' => $this->payer->id]);
+    Payment::factory()->create(['lesson_id' => $young->id, 'attempt_no' => 1, 'gateway_ref' => null, 'status' => PaymentStatus::Pending]);
+    $this->http->reply('POST /v1/payment_intents', stripeCaptured(['id' => 'pi_young']));
+    $before = count($this->http->requestsTo('GET /v1/payment_intents'));
+
+    $this->gateway->chargeSavedCard($young, Money::fils(10000), $method, 'k-young');
+
+    expect(count($this->http->requestsTo('GET /v1/payment_intents')))->toBe($before);
 });

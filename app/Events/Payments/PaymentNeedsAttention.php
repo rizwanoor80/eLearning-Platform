@@ -25,5 +25,8 @@ class PaymentNeedsAttention
     /** 23d (R256): the ledger returned money to the parent but the gateway refused, or kept failing to, refund it. */
     public const REFUND_FAILED = 'refund_failed';
 
+    /** R259 (2): a captured payment for a booking that could not be confirmed was refunded to the parent's card automatically. */
+    public const UNVERIFIED_CAPTURE_REFUNDED = 'unverified_capture_refunded';
+
     public function __construct(public readonly Payment $payment, public readonly string $reason) {}
 }
