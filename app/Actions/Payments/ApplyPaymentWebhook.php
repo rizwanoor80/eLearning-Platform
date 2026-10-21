@@ -29,6 +29,12 @@ use Illuminate\Support\Facades\DB;
  *   that only the ledger has recorded so far (the gateway call is queued) is recorded on the payment
  *   but not reported. A total larger than the ledger explains queues `ReconcileGatewayRefunds` (24b), which
  *   lists the gateway's refunds, records the ones the platform did not make and tells admins.
+ * - `refund.updated` (and the older `charge.refund.updated`, whose object is the same refund): the gateway's word on
+ *   one refund (25b, R267). It settles the platform's own `requested` row through `SettleGatewayRefund` (found by the
+ *   idempotency key in the refund's metadata first, since the webhook can arrive before the refund id is stored, then by
+ *   id). A refund no row explains queues `ReconcileGatewayRefunds`. `charge.refunded` never settles a row: it cannot say
+ *   which refund moved. While any row is `requested` it only queues the reconcile, and the platform's own open refunds
+ *   are taken out of the total it records, because the gateway counts a `pending` refund as refunded.
  * - `charge.dispute.created`: admins are told. No state changes.
  * - Anything else is ignored by the controller before it is stored.
  */
@@ -38,8 +44,12 @@ class ApplyPaymentWebhook
         'payment_intent.succeeded',
         'payment_intent.payment_failed',
         'charge.refunded',
+        'refund.updated',
+        'charge.refund.updated',
         'charge.dispute.created',
     ];
+
+    public function __construct(private readonly SettleGatewayRefund $settle) {}
 
     /**
      * @param  array<string, mixed>  $object  the event's `data.object`
@@ -52,7 +62,7 @@ class ApplyPaymentWebhook
             return;
         }
 
-        if ($type !== 'charge.refunded' && $type !== 'charge.dispute.created') {
+        if (! in_array($type, ['charge.refunded', 'charge.dispute.created', 'refund.updated', 'charge.refund.updated'], true)) {
             return;
         }
 
@@ -72,15 +82,34 @@ class ApplyPaymentWebhook
             return;
         }
 
+        if ($type !== 'charge.refunded') {
+            $this->applyRefundUpdate($payment, $object);
+
+            return;
+        }
+
         $refunded = $object['amount_refunded'] ?? null;
 
         if (! is_int($refunded) || $refunded <= 0) {
             return;
         }
 
-        $new = Money::fils(min($refunded, $payment->amount->toFils()));
+        $open = PaymentRefund::query()->where('payment_id', $payment->id)->where('status', PaymentRefundStatus::Requested->value);
+        $hasOpen = $open->clone()->exists();
 
-        if ($payment->refunded_amount !== null && $new->compare($payment->refunded_amount) <= 0) {
+        // The gateway counts a refund it reports `pending` in the charge's total. The platform's own open refunds are
+        // taken out (all of them, whether or not the refund id is stored yet: counting too low is safe, because the
+        // amount is never lowered and a later event raises it, and counting too high is not), floored at what is
+        // confirmed. A pending refund made in the Stripe dashboard still counts until the reconcile records it.
+        $pending = (int) $open->clone()->where('kind', '<>', PaymentRefundKind::External->value)->sum('amount');
+        $confirmed = (int) PaymentRefund::query()->where('payment_id', $payment->id)->where('status', PaymentRefundStatus::Succeeded->value)->sum('amount');
+        $new = Money::fils(min(max($refunded - $pending, $confirmed), $payment->amount->toFils()));
+
+        if ($new->toFils() <= 0 || ($payment->refunded_amount !== null && $new->compare($payment->refunded_amount) <= 0)) {
+            if ($hasOpen) {
+                dispatch(new ReconcileGatewayRefunds($payment->id))->afterCommit();
+            }
+
             return;
         }
 
@@ -108,9 +137,41 @@ class ApplyPaymentWebhook
         // R259 (2): a refund the platform made itself for an unverified capture is already reported.
         $ownRefund = PaymentRefund::query()->where('payment_id', $payment->id)->where('kind', PaymentRefundKind::Unverified->value)->where('status', '<>', PaymentRefundStatus::Failed->value)->exists();
 
-        if ($new->toFils() > $ledgerRefunded && ! $ownRefund) {
+        if ($hasOpen || ($refunded > $ledgerRefunded && ! $ownRefund)) {
             // 24b (R260): which refund is not the platform's is for the gateway to say, and this action holds the
             // payment's lock, so the lookup is a queued job that runs once this has committed.
+            dispatch(new ReconcileGatewayRefunds($payment->id))->afterCommit();
+        }
+    }
+
+    /**
+     * 25b (R267): `$object` is the refund itself. Its own status is the word on one refund.
+     *
+     * @param  array<string, mixed>  $object
+     */
+    private function applyRefundUpdate(Payment $payment, array $object): void
+    {
+        $id = is_string($object['id'] ?? null) && $object['id'] !== '' ? $object['id'] : null;
+        $status = is_string($object['status'] ?? null) ? $object['status'] : null;
+        $metadata = is_array($object['metadata'] ?? null) ? $object['metadata'] : [];
+        $key = is_string($metadata['idempotency_key'] ?? null) && $metadata['idempotency_key'] !== '' ? $metadata['idempotency_key'] : null;
+
+        if ($id === null || $status === null) {
+            return;
+        }
+
+        $rows = PaymentRefund::query()->where('payment_id', $payment->id);
+        $row = ($key !== null ? $rows->clone()->where('idempotency_key', $key)->first() : null)
+            ?? $rows->clone()->where('gateway_refund_id', $id)->first();
+
+        if ($row !== null) {
+            ($this->settle)($row, $status, $id);
+
+            return;
+        }
+
+        // A refund no row explains (made in the Stripe dashboard): the reconcile lists the gateway's refunds and records it.
+        if (! in_array($status, ['failed', 'canceled'], true)) {
             dispatch(new ReconcileGatewayRefunds($payment->id))->afterCommit();
         }
     }

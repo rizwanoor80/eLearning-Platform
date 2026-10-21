@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Actions\Payments\ReconcileUnrecordedPayments;
+use App\Actions\Payments\RecordExternalRefunds;
 use App\Actions\Payments\RefundParentAtGateway;
 use App\Actions\Payments\RefundUnverifiedCapture;
 use App\Enums\LedgerAccount;
@@ -27,7 +28,10 @@ class RetryGatewayRefunds extends Command
      */
     public const GRACE_MINUTES = 10;
 
-    protected $signature = 'payments:retry-refunds {--list : Only list refunds the gateway has refused or has not yet confirmed}';
+    /** 25b (R267): how long a refund the gateway reports `pending` may stay that way before admins are told. */
+    public const STUCK_HOURS = 72;
+
+    protected $signature = 'payments:retry-refunds {--list : Only list refunds the gateway has refused, reports pending, or has not yet confirmed}';
 
     protected $description = 'Ask the payment gateway for refunds the ledger has recorded and the gateway has not confirmed (23d, R256)';
 
@@ -38,7 +42,7 @@ class RetryGatewayRefunds extends Command
      * nothing left (and an overlapping one is stopped by `onOneServer()->withoutOverlapping()`). A refusal
      * is permanent and only listed; it is never retried here.
      */
-    public function handle(RefundParentAtGateway $refund, RefundUnverifiedCapture $refundUnverified, ReconcileUnrecordedPayments $reconcile): int
+    public function handle(RefundParentAtGateway $refund, RefundUnverifiedCapture $refundUnverified, ReconcileUnrecordedPayments $reconcile, RecordExternalRefunds $recordExternal): int
     {
         if ($this->option('list')) {
             return $this->list($refund);
@@ -78,7 +82,23 @@ class RetryGatewayRefunds extends Command
             }
         });
 
+        // 25b (R267): a refund Stripe reports `pending` that no ledger entry explains (one made in the dashboard) is
+        // settled by listing the gateway's refunds; one stuck for days is reported once a day.
+        $this->alertStuck();
+
+        $pending = $this->pendingAtGateway()->each(function (Payment $payment) use ($recordExternal): void {
+            try {
+                // The same word to admins as the reconcile job gives: a dashboard refund the sweep records first is not silent.
+                if (($recordExternal($payment) ?? 0) > 0) {
+                    PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
+                }
+            } catch (Throwable $e) {
+                report($e);
+            }
+        })->count();
+
         $this->info("Made {$made} gateway refund(s).");
+        $this->info("Checked {$pending} payment(s) with a refund still pending at the gateway.");
         $this->info("Settled {$settled} unrecorded payment(s).");
 
         return self::SUCCESS;
@@ -110,12 +130,61 @@ class RetryGatewayRefunds extends Command
             ->with('payment')
             ->orderBy('id')
             ->each(function (PaymentRefund $failed) use (&$rows): void {
-                $rows[] = [$failed->payment->lesson_id, $failed->payment_id, $failed->ledger_entry_id ?? '-', $failed->amount->toFils(), 'refused: '.($failed->failure_reason ?? 'unknown')];
+                // A refund someone else made at the gateway that then failed is information, not a refusal of the platform's.
+                $label = $failed->kind === PaymentRefundKind::External ? 'failed at gateway (not the platform\'s refund)' : 'refused';
+                $rows[] = [$failed->payment->lesson_id, $failed->payment_id, $failed->ledger_entry_id ?? '-', $failed->amount->toFils(), $label.': '.($failed->failure_reason ?? 'unknown')];
+            });
+
+        // 25b (R267): refunds the gateway has accepted but reports `pending` are not yet money returned.
+        PaymentRefund::query()
+            ->where('status', PaymentRefundStatus::Requested->value)
+            ->whereNotNull('gateway_refund_id')
+            ->with('payment')
+            ->orderBy('id')
+            ->each(function (PaymentRefund $pending) use (&$rows): void {
+                $rows[] = [$pending->payment->lesson_id, $pending->payment_id, $pending->ledger_entry_id ?? '-', $pending->amount->toFils(), 'pending at gateway ('.($pending->gateway_status ?? 'unknown').')'];
             });
 
         $this->table(['Lesson', 'Payment', 'Ledger entry', 'Amount (fils)', 'State'], $rows);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Payments with an external refund still `requested` (Stripe reported it `pending`) old enough to be the sweep's.
+     * The platform's own `requested` rows are re-asked by the ledger and unverified paths above, by the same key.
+     *
+     * @return LazyCollection<int, Payment>
+     */
+    private function pendingAtGateway(): LazyCollection
+    {
+        return Payment::query()
+            ->whereExists(fn ($query) => $query->selectRaw('1')->from('payment_refunds as r')
+                ->whereColumn('r.payment_id', 'payments.id')
+                ->where('r.kind', PaymentRefundKind::External->value)
+                ->where('r.status', PaymentRefundStatus::Requested->value)
+                ->where('r.requested_at', '<=', now()->subMinutes(self::GRACE_MINUTES)))
+            ->orderBy('id')
+            ->lazyById();
+    }
+
+    /**
+     * Refunds the gateway holds (an id is stored) that have stayed `requested` past {@see self::STUCK_HOURS}: a card
+     * refund that takes days is Stripe's to finish, but one that never does is for an admin. Alerted once a day.
+     */
+    private function alertStuck(): void
+    {
+        PaymentRefund::query()
+            ->where('status', PaymentRefundStatus::Requested->value)
+            ->whereNotNull('gateway_refund_id')
+            ->where('requested_at', '<=', now()->subHours(self::STUCK_HOURS))
+            ->with('payment')
+            ->orderBy('id')
+            ->each(function (PaymentRefund $row): void {
+                if (Cache::add("refund-stuck-alert:{$row->id}", true, now()->addDay())) {
+                    PaymentNeedsAttention::dispatch($row->payment, PaymentNeedsAttention::REFUND_FAILED);
+                }
+            });
     }
 
     /**

@@ -63,6 +63,9 @@ final class StripePaymentGateway implements PaymentGateway
 
     public const CONNECT_TIMEOUT_SECONDS = 5;
 
+    /** R267: a guard against a runaway cursor, never a limit a payment should meet (100 refunds a page). */
+    private const MAX_REFUND_PAGES = 50;
+
     /** The instant format the checkout writes into `metadata.starts_at` (the booking form's own). */
     public const STARTS_AT_FORMAT = 'Y-m-d\TH:i:s\Z';
 
@@ -479,9 +482,7 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         try {
-            $existing = $this->client->refunds->all(['payment_intent' => $payment->gateway_ref, 'limit' => 100]);
-
-            foreach ($existing->data as $made) {
+            foreach ($this->eachRefund($payment->gateway_ref) as $made) {
                 if (($made->metadata['idempotency_key'] ?? null) === $idempotencyKey) {
                     return $this->refundResult($made);
                 }
@@ -521,7 +522,7 @@ final class StripePaymentGateway implements PaymentGateway
 
         $found = [];
 
-        foreach ($this->client->refunds->all(['payment_intent' => $payment->gateway_ref, 'limit' => 100])->data as $refund) {
+        foreach ($this->eachRefund($payment->gateway_ref) as $refund) {
             $key = $refund->metadata['idempotency_key'] ?? null;
 
             $found[] = [
@@ -534,6 +535,42 @@ final class StripePaymentGateway implements PaymentGateway
         }
 
         return $found;
+    }
+
+    /**
+     * 25b (R267): every refund of the PaymentIntent, page after page by Stripe's cursor (`starting_after` the last
+     * id of the page, while `has_more`), so a payment with more than one page of refunds is read to the end. The
+     * ceiling is a guard against a loop, not a limit anyone should meet (50 pages of 100); past it the lookup throws.
+     *
+     * @return \Generator<int, Refund>
+     */
+    private function eachRefund(string $paymentIntentId): \Generator
+    {
+        $after = null;
+
+        for ($page = 0; $page < self::MAX_REFUND_PAGES; $page++) {
+            $params = ['payment_intent' => $paymentIntentId, 'limit' => 100];
+
+            if ($after !== null) {
+                $params['starting_after'] = $after;
+            }
+
+            $list = $this->client->refunds->all($params);
+
+            foreach ($list->data as $refund) {
+                $after = $refund->id;
+
+                yield $refund;
+            }
+
+            if (! $list->has_more || $list->data === []) {
+                return;
+            }
+        }
+
+        // Not a refusal (`PaymentCaptureException` is permanent): a truncated lookup must never fall through to
+        // `refunds->create()`, which could make a second refund. The queue retries; an admin sees the failure.
+        throw new RuntimeException('stripe_refund_pages_exhausted');
     }
 
     private function refundResult(Refund $refund): PaymentCaptureResult

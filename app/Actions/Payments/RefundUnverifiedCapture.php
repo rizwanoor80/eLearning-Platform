@@ -5,7 +5,6 @@ namespace App\Actions\Payments;
 use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
-use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +14,8 @@ use Illuminate\Support\Facades\DB;
  * came back unclean, or the hold could not be written) leaves a `captured` payment with no ledger entry
  * at all. The platform never held that money, so there is nothing for the ledger to reverse
  * (`LedgerService` is untouched): the parent's card is refunded at the gateway and the payment row
- * records it, which also takes it off `ledger:verify`'s stranded list. Admins are told once it is done,
- * or when the gateway refuses.
+ * records it, which also takes it off `ledger:verify`'s stranded list. Admins are told once it is done
+ * (by `SettleGatewayRefund`), or when the gateway refuses.
  *
  * 24b (R260): the state is a `payment_refunds` row (kind `unverified`), written `requested` before the
  * gateway is asked and finished after it answers; the payment is never set `refunded` first. The refund key
@@ -74,12 +73,8 @@ class RefundUnverifiedCapture
             ]);
         });
 
-        if ($row === null || ! ($this->makeRefund)($row)) {
-            return false;
-        }
-
-        PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED);
-
-        return true;
+        // The admin alert (`UNVERIFIED_CAPTURE_REFUNDED`) is raised by `SettleGatewayRefund` when the refund succeeds,
+        // which for a refund the gateway reports `pending` is later (25b, R267).
+        return $row !== null && ($this->makeRefund)($row);
     }
 }
