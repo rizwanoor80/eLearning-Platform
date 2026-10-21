@@ -11,11 +11,12 @@ use App\Models\User;
 use App\Providers\PaymentGatewayServiceProvider;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
  * The fake driver's "Add a card" (R100): stores a chosen test card as the account's saved card.
- * One card per account in v1 — `payment_methods.account_user_id` is unique — so a second call
+ * One live card per account in v1 — `payment_methods_one_live_per_account` — so a second call
  * replaces the first. Holds a fake token, brand, last four and expiry only (invariant 15); the
  * page picks from two cards and never takes typed digits. CP5 replaces this with the real
  * driver's capture, and it refuses to run anywhere but the fake-gateway environments so a fake card is never stored on production.
@@ -47,9 +48,9 @@ class SaveTestCard
 
         $saved = (new FakePaymentGateway)->saveCard($account, $card->value);
 
-        $method = PaymentMethod::query()->updateOrCreate(
-            ['account_user_id' => $account->id],
-            [
+        $method = DB::transaction(function () use ($account, $saved): PaymentMethod {
+            $live = PaymentMethod::query()->live()->where('account_user_id', $account->id)->lockForUpdate()->first();
+            $attributes = [
                 'gateway' => 'fake',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,
                 'gateway_token' => $saved->gatewayToken,
@@ -59,8 +60,16 @@ class SaveTestCard
                 'exp_year' => $saved->expYear,
                 'status' => PaymentMethodStatus::Active,
                 'last_failed_at' => null,
-            ],
-        );
+            ];
+
+            if ($live === null) {
+                return PaymentMethod::query()->create(['account_user_id' => $account->id] + $attributes);
+            }
+
+            $live->update($attributes);
+
+            return $live;
+        });
 
         ($this->audit)($account, 'payment_method.saved', $method, null, [
             'gateway' => 'fake',

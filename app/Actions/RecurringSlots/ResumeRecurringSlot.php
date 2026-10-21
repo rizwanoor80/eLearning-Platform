@@ -59,7 +59,7 @@ class ResumeRecurringSlot
             }
 
             if ($actor->role === Role::AccountOwner) {
-                $card = PaymentMethod::query()->where('account_user_id', $actor->id)->first();
+                $card = PaymentMethod::query()->live()->where('account_user_id', $actor->id)->first();
 
                 // A card that has declined stays flagged (`last_failed_at`) until it is replaced, so pressing
                 // Resume with the same card is refused.

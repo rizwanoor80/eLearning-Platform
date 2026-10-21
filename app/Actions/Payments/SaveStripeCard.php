@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use App\Support\Payments\ActiveStripe;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -37,12 +38,12 @@ class SaveStripeCard
         $row = $this->stripe->row() ?? throw new NoActivePaymentGateway('Stripe is not the active payment gateway.');
         $saved = $this->gateways->forRow($row)->saveCard($account, $setupIntentId);
 
-        $previous = PaymentMethod::query()->where('account_user_id', $account->id)->first();
-        $previousToken = $previous?->gateway === 'stripe' ? $previous->gateway_token : null;
-
-        $method = PaymentMethod::query()->updateOrCreate(
-            ['account_user_id' => $account->id],
-            [
+        // The live row is locked, so a removal that commits first leaves this to create a new row instead of
+        // writing the new token onto the removed one.
+        [$method, $previousToken] = DB::transaction(function () use ($account, $saved): array {
+            $live = PaymentMethod::query()->live()->where('account_user_id', $account->id)->lockForUpdate()->first();
+            $previousToken = $live?->gateway === 'stripe' ? $live->gateway_token : null;
+            $attributes = [
                 'gateway' => 'stripe',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,
                 'gateway_token' => $saved->gatewayToken,
@@ -52,8 +53,16 @@ class SaveStripeCard
                 'exp_year' => $saved->expYear,
                 'status' => PaymentMethodStatus::Active,
                 'last_failed_at' => null,
-            ],
-        );
+            ];
+
+            if ($live === null) {
+                return [PaymentMethod::query()->create(['account_user_id' => $account->id] + $attributes), null];
+            }
+
+            $live->update($attributes);
+
+            return [$live, $previousToken];
+        });
 
         ($this->audit)($account, 'payment_method.saved', $method, null, ['gateway' => 'stripe', 'last4' => $saved->last4]);
 

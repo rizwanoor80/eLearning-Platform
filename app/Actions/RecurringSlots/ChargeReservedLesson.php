@@ -79,10 +79,11 @@ class ChargeReservedLesson
         }
 
         [$paymentId, $attempt, $methodId] = $begun;
+        $resumed = $begun[3] ?? false;
         $lesson = Lesson::query()->findOrFail($lessonId);
         $method = $methodId === null ? null : PaymentMethod::query()->find($methodId);
 
-        if ($method === null || ! $method->isUsable()) {
+        if ($method === null || ! $method->isUsable(allowRemoved: $resumed)) {
             return $this->fail($lessonId, $paymentId, $attempt, null, 'no_usable_card');
         }
 
@@ -105,7 +106,7 @@ class ChargeReservedLesson
     }
 
     /**
-     * @return array{0: int, 1: int, 2: int|null}|ChargeOutcome [payment id, attempt number, card id]
+     * @return array{0: int, 1: int, 2: int|null, 3?: bool}|ChargeOutcome [payment id, attempt number, card id, resumed]
      */
     private function begin(int $lessonId, ?PaymentGateway $gateway): array|ChargeOutcome
     {
@@ -138,9 +139,16 @@ class ChargeReservedLesson
                     return ChargeOutcome::Skipped;
                 }
 
-                $method = PaymentMethod::query()->where('account_user_id', $lesson->learner->account_user_id)->first();
+                // The card this attempt was created with, not the account's current one: a card removed since
+                // (24c) must still be asked about, because the earlier run may already have taken the money and
+                // the gateway replays that result for the same idempotency key.
+                if ($pending->payment_method_id !== null) {
+                    return [$pending->id, $attempt, $pending->payment_method_id, true];
+                }
 
-                return [$pending->id, $attempt, $method?->id];
+                $live = PaymentMethod::query()->live()->where('account_user_id', $lesson->learner->account_user_id)->value('id');
+
+                return [$pending->id, $attempt, $live];
             }
 
             $due = ($lesson->next_charge_at !== null && ! $lesson->next_charge_at->isFuture()) || $lesson->starts_at->lessThanOrEqualTo(now());
@@ -181,7 +189,9 @@ class ChargeReservedLesson
             }
 
             $account = $lesson->learner->account_user_id;
-            $method = PaymentMethod::query()->where('account_user_id', $account)->first();
+            // Locked until this transaction commits the pending payment, so a removal either finishes first (and
+            // this sees no live card) or waits and then refuses because a payment with the card is pending.
+            $method = PaymentMethod::query()->live()->where('account_user_id', $account)->lockForUpdate()->first();
 
             $payment = Payment::query()->where('lesson_id', $lesson->id)->where('attempt_no', $attempt)->first();
 

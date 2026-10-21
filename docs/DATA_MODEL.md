@@ -73,7 +73,7 @@ _Registry and content tables without relations: `settings`, `content_blocks`, `p
 - An adult student has one learner row with `is_minor=false` and `display_name` = their own name.
 
 ### payment_methods
-`id, account_user_id (fk → users, unique — one card in v1), gateway, gateway_customer_ref, gateway_token, brand, last4, exp_month, exp_year, status (active|expired|failed, default active), last_failed_at, timestamps`
+`id, account_user_id (fk → users; at most one live card per account, enforced by the partial unique index payment_methods_one_live_per_account where removed_at is null), gateway, gateway_customer_ref, gateway_token, brand, last4, exp_month, exp_year, status (active|expired|failed, default active), last_failed_at, removed_at (nullable — set when the parent removes the card, 24c/R261; the row stays so old payments and lessons keep their foreign key), timestamps`
 - Never store PAN. Token only. The model hides `gateway_token` from serialisation (invariant 15).
 - v1.5 (as built): `lessons.payment_method_id` is a real foreign key to this table (`restrictOnDelete`), added by the same 4a migration that creates the table. `payments.payment_method_id` already exists as a plain nullable column (CP3); only its foreign key is added with 4e.
 

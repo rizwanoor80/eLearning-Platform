@@ -185,7 +185,7 @@ class CreateRecurringSlot
 
     private function requireUsableCard(Learner $learner): void
     {
-        $card = PaymentMethod::query()->where('account_user_id', $learner->account_user_id)->first();
+        $card = PaymentMethod::query()->live()->where('account_user_id', $learner->account_user_id)->first();
 
         // A card is good through the last day of its expiry month (`PaymentMethod::isUsable`).
         if ($card === null || ! $card->isUsable()) {
