@@ -2,6 +2,7 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\PaymentGatewayMode;
 use App\Exceptions\BookingException;
 use App\Models\Learner;
 use App\Models\Lesson;
@@ -82,7 +83,7 @@ class CreateCheckoutIntent
         }
 
         $options = isset($data['attempt_id']) && $data['attempt_id'] !== ''
-            ? ['idempotency_key' => StripeIdempotency::key($this->stripe->row()->mode, 'checkout-'.hash('sha256', implode('|', [$user->id, $data['attempt_id'], $learner->id, $tutor->id, $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT), $price->toFils()])))]
+            ? ['idempotency_key' => StripeIdempotency::key($this->stripe->row()->mode ?? PaymentGatewayMode::Test, 'checkout-'.hash('sha256', implode('|', [$user->id, $data['attempt_id'], $learner->id, $tutor->id, $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT), $price->toFils()])))]
             : [];
 
         $intent = $this->stripe->client()->paymentIntents->create([

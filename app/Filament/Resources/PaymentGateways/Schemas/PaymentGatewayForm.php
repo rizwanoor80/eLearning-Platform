@@ -86,7 +86,7 @@ class PaymentGatewayForm
 
         return sprintf(
             'Cards, customers and payments exist in one Stripe mode only. After this change %d saved cards (%d active weekly slots) cannot be charged until the parent adds the card again; '
-            .'nothing is deleted and switching back makes them usable again. Payments made in the mode being left can no longer be refunded here (%d refunds are still open). '
+            .'nothing is deleted, and switching back makes them usable again unless the parent has added the card again in the meantime. Payments made in the mode being left can no longer be refunded here (%d refunds are still open). '
             .'%d payments are still pending. A failed weekly charge for this reason counts toward the auto-pause strike like any other failed charge. '
             .'Replace the API keys and the webhook secret in the same save. The confirmation is written to the audit log.',
             $r['unusable_cards'], $r['slots_needing_new_card'], $r['open_refunds'], $r['pending_payments'],

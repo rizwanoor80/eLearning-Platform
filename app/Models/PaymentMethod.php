@@ -132,7 +132,7 @@ class PaymentMethod extends Model
         $today = now()->startOfDay();
 
         if ($this->savedInOtherMode()) {
-            return self::READD_NOTICE;
+            return __(self::READD_NOTICE);
         }
 
         if ($lastDay->lessThan($today)) {

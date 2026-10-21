@@ -25,7 +25,7 @@ class CreateCardSetupIntent
     public function __invoke(User $account): array
     {
         $client = $this->stripe->client();
-        $mode = $this->stripe->row()->mode;
+        $mode = $this->stripe->row()->mode ?? PaymentGatewayMode::Test;
 
         // R266: a customer exists in one Stripe mode only, so only one made in the active mode is reused. A
         // card saved before the mode column existed was made in test (null reads as test).

@@ -236,8 +236,9 @@ it('never continues a pending attempt that began in the other mode', function ()
         'payer_user_id' => $card->account_user_id, 'amount' => $lesson->price, 'status' => PaymentStatus::Pending,
     ]);
 
-    expect(app(ChargeReservedLesson::class)($lesson->id, $this->liveDriver))->toBe(ChargeOutcome::RetryScheduled)
-        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->failure_reason)->toBe(ChargeReservedLesson::GATEWAY_MODE_CHANGED)
+    // It may already hold money, so it is neither continued nor failed: it stays pending for the owner.
+    expect(app(ChargeReservedLesson::class)($lesson->id, $this->liveDriver))->toBe(ChargeOutcome::Skipped)
+        ->and(Payment::query()->where('lesson_id', $lesson->id)->sole()->status)->toBe(PaymentStatus::Pending)
         ->and($this->http->requests)->toBe([]);
 });
 
@@ -397,4 +398,20 @@ it('does not hand out a driver for a row whose keys disagree with its mode', fun
     DB::table('payment_gateways')->where('id', $row->id)->update(['mode' => 'live']);
 
     expect(fn () => app(PaymentGatewayManager::class)->forRow($row->fresh()))->toThrow(NoActivePaymentGateway::class);
+});
+
+it('keeps the retry and the error log for a removed card when Stripe is not the active gateway', function () {
+    $card = PaymentMethod::factory()->create(['gateway' => 'stripe', 'gateway_mode' => PaymentGatewayMode::Test, 'removed_at' => now(), 'status' => PaymentMethodStatus::Active]);
+
+    expect(fn () => app()->call([new DetachRemovedCard($card->id), 'handle']))->toThrow(NoActivePaymentGateway::class)
+        ->and($this->http->requests)->toBe([]);
+});
+
+it('refuses a Stripe payment with no mode at the database', function () {
+    $lesson = Lesson::factory()->create();
+
+    expect(fn () => DB::transaction(fn () => DB::table('payments')->insert([
+        'lesson_id' => $lesson->id, 'payer_user_id' => $lesson->booked_by_user_id, 'attempt_no' => 1, 'gateway' => 'stripe',
+        'amount' => 10000, 'currency' => 'AED', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+    ])))->toThrow(QueryException::class);
 });

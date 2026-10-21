@@ -26,6 +26,7 @@ use App\Services\Payments\StripePaymentGateway;
 use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -72,9 +73,6 @@ class ChargeReservedLesson
     /** The failure reason for a card that was saved in the other Stripe mode (R266). */
     public const CARD_OTHER_MODE = 'card_other_mode';
 
-    /** The failure reason for a pending attempt that was begun in the other Stripe mode (R266). */
-    public const GATEWAY_MODE_CHANGED = 'gateway_mode_changed';
-
     public function __construct(private readonly PauseRecurringSlot $pause) {}
 
     public function __invoke(int $lessonId, ?PaymentGateway $gateway): ChargeOutcome
@@ -95,13 +93,17 @@ class ChargeReservedLesson
         $mode = StripePaymentGateway::modeOf($gateway);
 
         // A pending attempt stamped in another mode (it began before a switch) is never continued: it could pick
-        // up a card of this mode and charge it onto a row of the other.
+        // up a card of this mode and charge it onto a row of the other. It is not failed either: like any pending
+        // attempt it may already hold money (R138), and only the mode it began in can say how it ended. It stays
+        // pending for the owner (`payments:mode-readiness` counts it) until the switch is undone.
         if ($mode !== null && Payment::query()->whereKey($paymentId)->first()?->gatewayMode() !== $mode) {
-            return $this->fail($lessonId, $paymentId, $attempt, null, self::GATEWAY_MODE_CHANGED);
+            Log::warning('A pending weekly charge began in the other Stripe mode and was left untouched.', ['lesson_id' => $lessonId, 'payment_id' => $paymentId]);
+
+            return ChargeOutcome::Skipped;
         }
 
         // A card saved in the other Stripe mode is told apart so the parent is asked to add it again. The card is
-        // not marked as declined: it did nothing wrong, and switching back makes it usable again.
+        // not marked as declined: it did nothing wrong, and switching back makes it usable again unless the parent added the card again meanwhile.
         if ($method !== null && $mode !== null && $method->savedInOtherMode($mode)) {
             return $this->fail($lessonId, $paymentId, $attempt, null, self::CARD_OTHER_MODE);
         }
