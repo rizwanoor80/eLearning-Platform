@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Stripe\Exception\ApiErrorException;
 use Throwable;
 
@@ -51,7 +52,9 @@ class DetachRemovedCard implements ShouldQueue
                 return;
             }
 
-            throw $e;
+            // Rethrown without the original: its trace carries the token as an argument, and the failed-jobs
+            // table stores traces.
+            throw new RuntimeException('Stripe could not detach a removed card ('.$e::class.', '.($e->getStripeCode() ?? 'no code').').');
         }
     }
 

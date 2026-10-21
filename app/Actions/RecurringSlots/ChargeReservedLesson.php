@@ -189,7 +189,9 @@ class ChargeReservedLesson
             }
 
             $account = $lesson->learner->account_user_id;
-            $method = PaymentMethod::query()->live()->where('account_user_id', $account)->first();
+            // Locked until this transaction commits the pending payment, so a removal either finishes first (and
+            // this sees no live card) or waits and then refuses because a payment with the card is pending.
+            $method = PaymentMethod::query()->live()->where('account_user_id', $account)->lockForUpdate()->first();
 
             $payment = Payment::query()->where('lesson_id', $lesson->id)->where('attempt_no', $attempt)->first();
 

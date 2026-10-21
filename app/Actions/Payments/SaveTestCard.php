@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Providers\PaymentGatewayServiceProvider;
 use App\Services\Payments\FakePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -47,9 +48,9 @@ class SaveTestCard
 
         $saved = (new FakePaymentGateway)->saveCard($account, $card->value);
 
-        $method = PaymentMethod::query()->updateOrCreate(
-            ['account_user_id' => $account->id, 'removed_at' => null],
-            [
+        $method = DB::transaction(function () use ($account, $saved): PaymentMethod {
+            $live = PaymentMethod::query()->live()->where('account_user_id', $account->id)->lockForUpdate()->first();
+            $attributes = [
                 'gateway' => 'fake',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,
                 'gateway_token' => $saved->gatewayToken,
@@ -59,8 +60,16 @@ class SaveTestCard
                 'exp_year' => $saved->expYear,
                 'status' => PaymentMethodStatus::Active,
                 'last_failed_at' => null,
-            ],
-        );
+            ];
+
+            if ($live === null) {
+                return PaymentMethod::query()->create(['account_user_id' => $account->id] + $attributes);
+            }
+
+            $live->update($attributes);
+
+            return $live;
+        });
 
         ($this->audit)($account, 'payment_method.saved', $method, null, [
             'gateway' => 'fake',

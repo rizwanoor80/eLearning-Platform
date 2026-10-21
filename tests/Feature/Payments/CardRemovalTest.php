@@ -27,7 +27,6 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
-use Stripe\Exception\ApiErrorException;
 use Tests\Support\Payments\FakeStripeHttp;
 
 /**
@@ -186,7 +185,17 @@ it('lets the detach job fail, to be retried, on any other gateway error, and nev
     $card->update(['removed_at' => now()]);
     $this->http->reply('POST /v1/payment_methods/pm_old_1/detach', ['error' => ['type' => 'api_error', 'message' => 'boom']], 500);
 
-    expect(fn () => app()->call([new DetachRemovedCard($card->id), 'handle']))->toThrow(ApiErrorException::class);
+    // The rethrown error has no Stripe exception behind it: its trace would carry the token into failed_jobs.
+    try {
+        app()->call([new DetachRemovedCard($card->id), 'handle']);
+        $thrown = null;
+    } catch (Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->toBeInstanceOf(RuntimeException::class)
+        ->and($thrown->getPrevious())->toBeNull()
+        ->and($thrown->getMessage())->not->toContain('pm_old_1');
 
     $live = crStripeCard(User::factory()->create(), 'pm_live_1');
     $fake = PaymentMethod::factory()->create(['removed_at' => now()]);
