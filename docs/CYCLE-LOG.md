@@ -8513,3 +8513,12 @@ Fixed on `eac126f`: (7) `CurriculumFactory` keeps a per-instance list of codes i
 
 ### 2026-10-21 — VERIFICATION (24f merged, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". Rule met: 0 High, 0 Medium, both Low FAILs fixed; CI green on PostgreSQL 16 and 18 at head `eac126ff60f2fd69cff71d5fd33191f57c3d0218`. PR #81 squash-merged -> `main` `6c6b54472264a4a9d02918351fd2f3db1741ae4c`. 24f adds no migration and no app code.
+
+### 2026-10-21 — VERIFICATION (24f rehearsal, R213, CC)
+Main `6c6b544` CI green on PostgreSQL 16 and 18 (run 39599363623); `rehearsal` fast-forwarded to it (`f039d43..6c6b544`). `GET /ops/status` on rehearsal: `app.git_sha` matched `6c6b544`; `migrations.pending` 0; `horizon.status` running; `queues.failed_jobs` 0; `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0; `/`, `/login`, `/tutors`, `/terms` all 200. 24f adds no migration.
+
+### 2026-10-21 — END (cycle 24 r1, programme "payments ready for live", CC)
+24a–24f merged (PRs #76–#81, last `6c6b544`) and on rehearsal with R213 green each time. Pest **3295 / 23820** (baseline 3179 / 23162); `ledger:verify` OK; Pint, PHPStan 0 errors, RTL grep and `npm run build` green. Advisor consulted **4 times** (24a, 24b, 24c, 24e), all `claude-opus-5-5`, all adopted; 24d and 24f needed none (minimum 0). Every sub-cycle had a fresh-subagent review; no High in any round; every Medium fixed before merge; resume cap 14, 0 used. No frozen file changed, no gateway row switched to live, no key handled, no production deploy. STATUS.md rewritten with the live-money readiness list and Owner actions 16 (the 24d 3-D Secure manual check on rehearsal) and 17.
+
+### 2026-10-21 — HANDOFF (cycle 24 END, CC)
+Context size not measured by the tool (cloud session); 2 compactions this run (one after 24a, one during 24f). Done: 24a–24f. Next: Owner action 16, then the next plan. Ruled out: production deploy, live gateway switch, frozen-file changes. Owner to `/clear` this session, then reply `update`.
