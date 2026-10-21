@@ -106,6 +106,10 @@ class PaymentGatewayManager
             throw new NoActivePaymentGateway($problem);
         }
 
+        if (($problem = $row->keyModeProblem()) !== null) {
+            throw new NoActivePaymentGateway($problem);
+        }
+
         return match ($code) {
             PaymentGatewayCode::Fake => new FakePaymentGateway,
             PaymentGatewayCode::Stripe => new StripePaymentGateway(

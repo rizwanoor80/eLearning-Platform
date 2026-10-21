@@ -350,7 +350,7 @@ it('refunds a captured-but-unclean payment to the card by itself, and lets ledge
         ->and($payment->refunded_amount?->toFils())->toBe($b['amount'])
         ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
         ->and($refunds)->toHaveCount(1)
-        ->and($this->http->idempotencyKeyOf($refunds[0]))->toBe('unverified-pi_test_1')
+        ->and($this->http->idempotencyKeyOf($refunds[0]))->toBe('test:testing:unverified-pi_test_1')
         ->and(Lesson::query()->sole()->status)->toBe(LessonStatus::Expired);
 
     $this->travel(2)->hours();
@@ -438,7 +438,7 @@ it('derives the PaymentIntent idempotency key from the browser attempt, so a dou
 
     $keys = collect($this->http->requestsTo('POST /v1/payment_intents'))->map(fn ($r) => $this->http->idempotencyKeyOf($r));
 
-    expect($keys[0])->toStartWith('checkout-')->toBe($keys[1])->not->toBe($keys[2]);
+    expect($keys[0])->toStartWith('test:testing:checkout-')->toBe($keys[1])->not->toBe($keys[2]);
 });
 
 it('refuses an intent request that carries no attempt id', function () {

@@ -15,6 +15,8 @@ use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Services\Payments\NoActivePaymentGateway;
+use App\Services\Payments\PaymentGatewayManager;
+use App\Services\Payments\StripePaymentGateway;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Stripe\Exception\ApiErrorException;
@@ -34,7 +36,11 @@ class RequeueFailedRefund
 {
     public const EXCEEDS_REMAINING = 'exceeds_remaining';
 
-    public function __construct(private readonly RecordAuditLog $recordAuditLog, private readonly RecordExternalRefunds $recordExternalRefunds) {}
+    public function __construct(
+        private readonly RecordAuditLog $recordAuditLog,
+        private readonly RecordExternalRefunds $recordExternalRefunds,
+        private readonly PaymentGatewayManager $gateways,
+    ) {}
 
     /**
      * @throws AuthorizationException
@@ -49,6 +55,18 @@ class RequeueFailedRefund
         // A refund made at the gateway whose webhook is late or lost would not be in the cap below, so the gateway is
         // asked first (with no lock held) and anything the platform did not make is recorded.
         $payment = Payment::query()->findOrFail($refund->payment_id);
+
+        // R266: a payment made in the other Stripe mode cannot be refunded on this account, so asking again would only
+        // fail again and loop.
+        try {
+            $mode = StripePaymentGateway::modeOf($this->gateways->forCode($payment->gateway));
+        } catch (NoActivePaymentGateway $e) {
+            throw new RefundRequeueException('The payment gateway is not available, so this refund cannot be asked for again.', 0, $e);
+        }
+
+        if ($mode !== null && $payment->gatewayMode() !== $mode) {
+            throw new RefundRequeueException('This payment was made in Stripe '.$payment->gatewayMode()?->value.' mode, which is not the mode Stripe is in now, so it cannot be refunded here. Refund it in the Stripe dashboard of that mode.');
+        }
 
         try {
             $recorded = ($this->recordExternalRefunds)($payment);

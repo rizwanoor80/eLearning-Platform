@@ -86,7 +86,7 @@ it('refunds the parent share of a dispute to the card for that amount, keyed on 
     $payment = $payment->fresh();
 
     expect($request['params'])->toMatchArray(['payment_intent' => 'pi_test_1', 'amount' => 3700])
-        ->and($this->http->idempotencyKeyOf($request))->toBe("refund-pi_test_1-{$entry->id}")
+        ->and($this->http->idempotencyKeyOf($request))->toBe("test:testing:refund-pi_test_1-{$entry->id}")
         ->and($payment->status)->toBe(PaymentStatus::PartiallyRefunded)
         ->and($payment->refunded_amount->toFils())->toBe(3700)
         ->and(grRefunds($payment))->toHaveCount(1);

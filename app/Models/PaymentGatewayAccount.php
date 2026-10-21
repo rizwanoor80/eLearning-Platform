@@ -59,6 +59,11 @@ class PaymentGatewayAccount extends Model
                 }
             }
 
+            // R266: a Stripe row whose mode disagrees with its keys would stamp every reference with the wrong mode.
+            if (($gateway->is_active || $gateway->isDirty(['mode', 'credentials'])) && ($problem = $gateway->keyModeProblem()) !== null) {
+                throw new LogicException($problem);
+            }
+
             if ($gateway->is_active && ($problem = $gateway->activationProblem()) !== null) {
                 throw new LogicException($problem);
             }
@@ -141,6 +146,39 @@ class PaymentGatewayAccount extends Model
 
         if (! config('payments.live_mode_allowed')) {
             return "Live mode is not allowed on this server, so {$this->name} cannot be switched to live.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Why the keys on a Stripe row do not belong to its mode, or null when they do (or there is nothing to check).
+     * Only the prefix is read (`sk_test_`, `rk_live_`, `pk_live_`), and it is never put in the message.
+     */
+    public function keyModeProblem(): ?string
+    {
+        if ($this->gatewayCode() !== PaymentGatewayCode::Stripe) {
+            return null;
+        }
+
+        $word = $this->mode === PaymentGatewayMode::Live ? 'live' : 'test';
+
+        foreach (['secret_key' => ['sk_', 'rk_'], 'publishable_key' => ['pk_']] as $key => $kinds) {
+            $value = $this->credentials[$key] ?? null;
+
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $matches = false;
+
+            foreach ($kinds as $kind) {
+                $matches = $matches || str_starts_with($value, "{$kind}{$word}_");
+            }
+
+            if (! $matches) {
+                return "The Stripe {$key} on {$this->name} is not a {$word}-mode key, so the mode and the keys disagree. Fix one of them.";
+            }
         }
 
         return null;

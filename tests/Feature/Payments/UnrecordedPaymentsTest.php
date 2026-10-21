@@ -152,7 +152,7 @@ it('refunds a captured payment the platform never held in the hourly sweep, once
     $payment = $payment->fresh();
     expect($payment->status)->toBe(PaymentStatus::Refunded)
         ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Succeeded)
-        ->and($this->http->idempotencyKeyOf($this->http->requestsTo('POST /v1/refunds')[0]))->toBe('unverified-pi_test_1');
+        ->and($this->http->idempotencyKeyOf($this->http->requestsTo('POST /v1/refunds')[0]))->toBe('test:testing:unverified-pi_test_1');
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED);
 
     $this->artisan('payments:retry-refunds')->expectsOutputToContain('Made 0 gateway refund(s).')->assertSuccessful();

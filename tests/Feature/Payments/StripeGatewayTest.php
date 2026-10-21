@@ -118,7 +118,7 @@ it('captures once per intent: the capture call carries an idempotency key derive
     $calls = $this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture');
 
     expect($calls)->toHaveCount(1)
-        ->and($this->http->idempotencyKeyOf($calls[0]))->toBe('capture-pi_test_1');
+        ->and($this->http->idempotencyKeyOf($calls[0]))->toBe('test:testing:capture-pi_test_1');
 });
 
 it('captures nothing when the checkout named no intent', function () {
@@ -250,7 +250,7 @@ it('retries a capture after a dropped connection with one intent and one capture
 
     expect($result->gatewayRef)->toBe('pi_test_1')
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(2)
-        ->and(collect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->map(fn ($r) => $this->http->idempotencyKeyOf($r))->unique()->all())->toBe(['capture-pi_test_1'])
+        ->and(collect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->map(fn ($r) => $this->http->idempotencyKeyOf($r))->unique()->all())->toBe(['test:testing:capture-pi_test_1'])
         ->and($this->http->requestsTo('POST /v1/payment_intents'))->toHaveCount(2);
 });
 
@@ -341,7 +341,7 @@ it('charges a saved card off session with the caller\'s idempotency key', functi
     [$request] = $this->http->requestsTo('POST /v1/payment_intents');
 
     expect($result->gatewayRef)->toBe('pi_test_2')
-        ->and($this->http->idempotencyKeyOf($request))->toBe('lesson:7:attempt:1')
+        ->and($this->http->idempotencyKeyOf($request))->toBe('test:testing:lesson:7:attempt:1')
         ->and($request['params'])->toMatchArray(['amount' => 10000, 'currency' => 'aed', 'customer' => 'cus_test_1', 'payment_method' => 'pm_test_1', 'off_session' => true, 'confirm' => true]);
 });
 
@@ -449,7 +449,7 @@ it('refunds a Stripe payment by its intent with the given idempotency key, and t
     expect($result->gatewayRef)->toBe('re_test_1')
         ->and($request['params'])->toMatchArray(['payment_intent' => 'pi_test_1', 'amount' => 4000])
         ->and($request['params']['metadata'])->toMatchArray(['idempotency_key' => 'refund-pi_test_1-55'])
-        ->and($this->http->idempotencyKeyOf($request))->toBe('refund-pi_test_1-55');
+        ->and($this->http->idempotencyKeyOf($request))->toBe('test:testing:refund-pi_test_1-55');
 });
 
 it('returns the refund Stripe already made for a key instead of creating a second one, even after Stripe forgot the key', function () {

@@ -2,9 +2,11 @@
 
 namespace App\Actions\Payments;
 
+use App\Enums\PaymentGatewayMode;
 use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\Payments\ActiveStripe;
+use App\Support\Payments\StripeIdempotency;
 
 /**
  * R248: the SetupIntent the card page's Stripe Elements form confirms. The account keeps one Stripe
@@ -23,17 +25,23 @@ class CreateCardSetupIntent
     public function __invoke(User $account): array
     {
         $client = $this->stripe->client();
+        $mode = $this->stripe->row()->mode ?? PaymentGatewayMode::Test;
 
+        // R266: a customer exists in one Stripe mode only, so only one made in the active mode is reused. A
+        // card saved before the mode column existed was made in test (null reads as test).
         $customer = PaymentMethod::query()
             ->where('account_user_id', $account->id)
             ->where('gateway', 'stripe')
+            ->where(fn ($query) => $mode === PaymentGatewayMode::Test
+                ? $query->whereNull('gateway_mode')->orWhere('gateway_mode', $mode->value)
+                : $query->where('gateway_mode', $mode->value))
             ->latest('id') // a removed card's customer is still the account's customer: reuse it
             ->value('gateway_customer_ref');
 
         if (! is_string($customer) || $customer === '') {
             $customer = $client->customers->create(
                 ['metadata' => ['account_user_id' => (string) $account->id]],
-                ['idempotency_key' => 'customer-account-'.$account->id],
+                ['idempotency_key' => StripeIdempotency::key($mode, 'customer-account-'.$account->id)],
             )->id;
         }
 

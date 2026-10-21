@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\PaymentGatewayMode;
 use App\Enums\PaymentMethodStatus;
 use App\Models\PaymentMethod;
 use App\Models\User;
@@ -32,6 +33,18 @@ class PaymentMethodFactory extends Factory
             'status' => PaymentMethodStatus::Active,
             'last_failed_at' => null,
         ];
+    }
+
+    /**
+     * A Stripe row carries the mode it was made in (R266, and a CHECK requires it): `test` unless a test says otherwise.
+     */
+    public function configure(): static
+    {
+        return $this->afterMaking(function (PaymentMethod $row): void {
+            if ($row->gateway === 'stripe' && $row->gateway_mode === null) {
+                $row->gateway_mode = PaymentGatewayMode::Test;
+            }
+        });
     }
 
     public function declining(): static

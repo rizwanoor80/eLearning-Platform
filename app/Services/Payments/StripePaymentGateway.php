@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Enums\PaymentGatewayMode;
 use App\Exceptions\PaymentCapturedUnverified;
 use App\Exceptions\PaymentCaptureException;
 use App\Exceptions\PaymentGatewayUnavailable;
@@ -11,6 +12,7 @@ use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\Money;
 use App\Support\Payments\CheckoutIntent;
+use App\Support\Payments\StripeIdempotency;
 use Illuminate\Support\Carbon;
 use LogicException;
 use RuntimeException;
@@ -53,6 +55,9 @@ final class StripePaymentGateway implements PaymentGateway
 
     private const KIND_RECURRING = 'recurring';
 
+    /** The reason a stored reference from the other Stripe mode is refused with (R266). */
+    public const OTHER_MODE_REASON = 'other_mode_reference';
+
     /** R260: per request, so two calls (a refund's list and create) finish inside the 60-second queue timeout. */
     public const TIMEOUT_SECONDS = 20;
 
@@ -83,6 +88,24 @@ final class StripePaymentGateway implements PaymentGateway
     public function driver(): string
     {
         return 'stripe';
+    }
+
+    /** The Stripe mode this driver's keys belong to; every reference it creates is stamped with it (R266). */
+    public function mode(): PaymentGatewayMode
+    {
+        return $this->live ? PaymentGatewayMode::Live : PaymentGatewayMode::Test;
+    }
+
+    /** The mode a reference made through `$gateway` belongs to: its own for Stripe, null for a gateway with no modes. */
+    public static function modeOf(PaymentGateway $gateway): ?PaymentGatewayMode
+    {
+        return $gateway instanceof self ? $gateway->mode() : null;
+    }
+
+    /** What goes in the `Idempotency-Key` header: the raw key with this row's mode and the environment (R266). */
+    private function scoped(string $key): string
+    {
+        return StripeIdempotency::key($this->mode(), $key);
     }
 
     /**
@@ -190,7 +213,7 @@ final class StripePaymentGateway implements PaymentGateway
                 $captured = $this->client->paymentIntents->capture(
                     $intent->id,
                     ['amount_to_capture' => $amount->toFils(), 'expand' => ['latest_charge']],
-                    ['idempotency_key' => 'capture-'.$intent->id],
+                    ['idempotency_key' => $this->scoped('capture-'.$intent->id)],
                 );
             } catch (CardException $e) {
                 throw new PaymentCaptureException($this->declineCode($e));
@@ -316,6 +339,12 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('payment_method_not_stripe');
         }
 
+        // R266: a customer or card token made in the other Stripe mode does not exist here. It is refused
+        // before any call, so a test reference is never sent to the live account (or the reverse).
+        if ($method->gatewayMode() !== $this->mode()) {
+            throw new PaymentCaptureException(self::OTHER_MODE_REASON);
+        }
+
         // Stripe forgets an idempotency key after 24 hours. An attempt that has been pending for long
         // enough that its key may be gone first looks for the intent it made, so the retry never creates
         // a second charge (R259 (6)).
@@ -337,7 +366,7 @@ final class StripePaymentGateway implements PaymentGateway
                         'account_user_id' => (string) $method->account_user_id,
                         'idempotency_key' => $idempotencyKey,
                     ],
-                ], ['idempotency_key' => $idempotencyKey]);
+                ], ['idempotency_key' => $this->scoped($idempotencyKey)]);
             } catch (CardException $e) {
                 throw new PaymentCaptureException($this->declineCode($e));
             } catch (IdempotencyException $e) {
@@ -444,6 +473,11 @@ final class StripePaymentGateway implements PaymentGateway
             throw new PaymentCaptureException('not_a_stripe_payment');
         }
 
+        // R266: a PaymentIntent made in the other Stripe mode cannot be refunded here; refused before any call.
+        if ($payment->gatewayMode() !== $this->mode()) {
+            throw new PaymentCaptureException(self::OTHER_MODE_REASON);
+        }
+
         try {
             $existing = $this->client->refunds->all(['payment_intent' => $payment->gateway_ref, 'limit' => 100]);
 
@@ -457,7 +491,7 @@ final class StripePaymentGateway implements PaymentGateway
                 'payment_intent' => $payment->gateway_ref,
                 'amount' => $amount->toFils(),
                 'metadata' => ['payment_id' => (string) $payment->id, 'idempotency_key' => $idempotencyKey],
-            ], ['idempotency_key' => $idempotencyKey]);
+            ], ['idempotency_key' => $this->scoped($idempotencyKey)]);
         } catch (CardException|InvalidRequestException $e) {
             // A rate limit (a subclass of InvalidRequestException) or a lock timeout is Stripe asking us to try
             // again, not refusing: it must reach the queue, because a refusal is recorded as permanent.
@@ -480,7 +514,8 @@ final class StripePaymentGateway implements PaymentGateway
      */
     public function listRefunds(Payment $payment): array
     {
-        if ($payment->gateway !== $this->driver() || $payment->gateway_ref === null) {
+        // A payment made in the other Stripe mode has no refunds on this account to list (R266).
+        if ($payment->gateway !== $this->driver() || $payment->gateway_ref === null || $payment->gatewayMode() !== $this->mode()) {
             return [];
         }
 

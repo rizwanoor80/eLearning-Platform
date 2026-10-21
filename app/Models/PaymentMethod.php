@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentGatewayMode;
 use App\Enums\PaymentMethodStatus;
+use App\Services\Payments\PaymentGatewayManager;
 use Carbon\CarbonImmutable;
 use Database\Factories\PaymentMethodFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property string $gateway
  * @property string|null $gateway_customer_ref
  * @property string $gateway_token
+ * @property PaymentGatewayMode|null $gateway_mode
  * @property string $brand
  * @property string $last4
  * @property int $exp_month
@@ -35,6 +38,9 @@ class PaymentMethod extends Model
 {
     /** @use HasFactory<PaymentMethodFactory> */
     use HasFactory;
+
+    /** What the parent is told when the card was saved in the other payment mode (R266). */
+    public const READD_NOTICE = 'We changed how payments are processed, so please add your card again. Until you do, weekly lessons cannot be charged.';
 
     protected $guarded = ['id'];
 
@@ -54,6 +60,7 @@ class PaymentMethod extends Model
             'exp_month' => 'integer',
             'exp_year' => 'integer',
             'status' => PaymentMethodStatus::class,
+            'gateway_mode' => PaymentGatewayMode::class,
             'last_failed_at' => 'datetime',
             'removed_at' => 'datetime',
         ];
@@ -71,6 +78,40 @@ class PaymentMethod extends Model
     }
 
     /**
+     * The Stripe mode this card's customer and token exist in (R266). A Stripe card saved before the column
+     * existed was made against the test account, so no value means `test`; another gateway has no mode.
+     */
+    public function gatewayMode(): ?PaymentGatewayMode
+    {
+        return $this->gateway === 'stripe' ? ($this->gateway_mode ?? PaymentGatewayMode::Test) : null;
+    }
+
+    /**
+     * True when this is a Stripe card saved in a different mode than `$against`, or than the active Stripe row when
+     * none is given: its customer and token do not exist there, so it cannot be charged and the parent has to add
+     * the card again (R266). Read at the moment of asking, not stored, so there is nothing to undo if the row is
+     * switched back. A caller that already holds the driver passes its mode, which also saves the lookup.
+     */
+    public function savedInOtherMode(?PaymentGatewayMode $against = null): bool
+    {
+        if ($this->gateway !== 'stripe') {
+            return false;
+        }
+
+        if ($against === null) {
+            $active = app(PaymentGatewayManager::class)->activeRow();
+
+            if ($active === null || $active->code !== 'stripe') {
+                return false;
+            }
+
+            $against = $active->mode;
+        }
+
+        return $against !== $this->gatewayMode();
+    }
+
+    /**
      * Chargeable now: not removed, `active` and not past the last day of its expiry month. `allowRemoved` is for
      * resuming a charge that began before the card was removed.
      */
@@ -78,7 +119,7 @@ class PaymentMethod extends Model
     {
         $lastDay = CarbonImmutable::create($this->exp_year, $this->exp_month, 1)->endOfMonth()->startOfDay();
 
-        return ($allowRemoved || $this->removed_at === null) && $this->status === PaymentMethodStatus::Active && ! $lastDay->lessThan(now()->startOfDay());
+        return ($allowRemoved || $this->removed_at === null) && $this->status === PaymentMethodStatus::Active && ! $lastDay->lessThan(now()->startOfDay()) && ! $this->savedInOtherMode();
     }
 
     /**
@@ -89,6 +130,10 @@ class PaymentMethod extends Model
     {
         $lastDay = CarbonImmutable::create($this->exp_year, $this->exp_month, 1)->endOfMonth()->startOfDay();
         $today = now()->startOfDay();
+
+        if ($this->savedInOtherMode()) {
+            return __(self::READD_NOTICE);
+        }
 
         if ($lastDay->lessThan($today)) {
             return __('This card has expired. Add a new one so weekly lessons keep being charged.');

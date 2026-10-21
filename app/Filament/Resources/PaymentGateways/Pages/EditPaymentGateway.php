@@ -43,6 +43,10 @@ class EditPaymentGateway extends EditRecord
             }
         }
 
+        $confirmedSwitch = (bool) ($data[PaymentGatewayForm::MODE_SWITCH_CONFIRMATION] ?? false)
+            && PaymentGatewayForm::changesStripeMode($record, $data['mode'] ?? null);
+        unset($data[PaymentGatewayForm::MODE_SWITCH_CONFIRMATION]);
+
         $before = $this->audited($record);
 
         $record->fill($data);
@@ -72,7 +76,8 @@ class EditPaymentGateway extends EditRecord
                 'payment_gateway.updated',
                 $record,
                 array_intersect_key($before, array_flip($changedFields)),
-                array_intersect_key($after, array_flip($changedFields)) + ($changedKeys !== [] ? ['credentials_changed' => $changedKeys] : []),
+                array_intersect_key($after, array_flip($changedFields)) + ($changedKeys !== [] ? ['credentials_changed' => $changedKeys] : [])
+                    + ($confirmedSwitch ? ['mode_switch_confirmed' => true] : []),
             );
         }
 

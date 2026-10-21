@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\StripePaymentGateway;
 use App\Services\Scheduling\Slot;
 use App\Services\Scheduling\SlotCalculator;
 use App\Services\Tutors\TutorRateBands;
@@ -146,6 +147,7 @@ class BookLesson
             'lesson_id' => $lesson->id,
             'payer_user_id' => $bookedBy->id,
             'gateway' => $this->gateway->driver(),
+            'gateway_mode' => StripePaymentGateway::modeOf($this->gateway),
             'gateway_ref' => null,
             'amount' => $price,
             'status' => PaymentStatus::Pending,
