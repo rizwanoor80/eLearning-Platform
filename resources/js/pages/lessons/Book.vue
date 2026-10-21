@@ -5,12 +5,26 @@ import type {
     StripeElements,
     StripePaymentElement,
 } from '@stripe/stripe-js';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch,
+} from 'vue';
 import InputError from '@/components/InputError.vue';
 import TestModeBanner from '@/components/TestModeBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import {
+    forgetChoice,
+    readStripeReturn,
+    recallChoice,
+    rememberChoice,
+    withoutStripeReturn,
+} from '@/lib/bookingReturn';
 import { postJson, stripeFor } from '@/lib/stripe';
 
 type SubjectRow = { curriculum_id: number; subject_id: number; label: string };
@@ -88,6 +102,8 @@ const slotError = computed(() => {
 });
 
 const cardError = ref<string | null>(null);
+// A calm explanation (not an error) after the bank's page sent the parent back.
+const returnNotice = ref<string | null>(null);
 // One id per payment attempt: a double click or a retry asks Stripe for the same hold, never a second one. A new
 // attempt starts after any failure that is not "try again on the same hold".
 const attemptId = ref(crypto.randomUUID());
@@ -96,9 +112,25 @@ const paying = ref(false);
 const cardHost = ref<HTMLElement | null>(null);
 const cardReady = ref(false);
 
+// The choices the payment was started for stay fixed from the first click until the booking ends: changing the
+// learner or subject under a card hold would make the hold (and its quote) belong to a different booking.
+const choiceLocked = ref(false);
+const locked = computed(
+    () => paying.value || form.processing || choiceLocked.value,
+);
+
 let stripe: Stripe | null = null;
+let stripePromise: Promise<Stripe | null> | null = null;
 let elements: StripeElements | null = null;
 let paymentElement: StripePaymentElement | null = null;
+let cardSetup: Promise<void> | null = null;
+let unmounted = false;
+
+function loadStripeOnce(key: string): Promise<Stripe | null> {
+    stripePromise ??= stripeFor(key);
+
+    return stripePromise;
+}
 
 // The card form needs an amount, so it appears once a learner with a price is chosen and follows the learner.
 const cardAmount = computed(() =>
@@ -107,47 +139,72 @@ const cardAmount = computed(() =>
         : null,
 );
 
+// Builds Stripe's elements and mounts the Payment Element exactly once. Everything after the first call (a quick
+// run of learner changes included) waits for that one setup and only updates the amount.
+async function setUpCard(amount: number): Promise<void> {
+    if (!props.stripe) {
+        return;
+    }
+
+    stripe = await loadStripeOnce(props.stripe.publishable_key);
+
+    if (!stripe) {
+        cardError.value =
+            'The card form could not be loaded. Please try again in a moment.';
+        // Allow the next learner change to try again.
+        stripePromise = null;
+        cardSetup = null;
+
+        return;
+    }
+
+    if (unmounted) {
+        return;
+    }
+
+    elements = stripe.elements({
+        mode: 'payment',
+        amount,
+        currency: 'aed',
+        captureMethod: 'manual',
+        allowedPaymentMethodTypes: ['card'],
+    });
+    paymentElement = elements.create('payment');
+    await nextTick();
+
+    if (cardHost.value && !unmounted) {
+        paymentElement.mount(cardHost.value);
+        cardReady.value = true;
+    }
+}
+
 watch(
     cardAmount,
-    async (amount) => {
+    (amount) => {
         if (!props.stripe || amount === null) {
             return;
         }
 
-        if (elements) {
-            elements.update({ amount });
+        if (cardSetup === null) {
+            cardSetup = setUpCard(amount);
 
             return;
         }
 
-        stripe = await stripeFor(props.stripe.publishable_key);
-
-        if (!stripe) {
-            cardError.value =
-                'The card form could not be loaded. Please try again in a moment.';
-
-            return;
-        }
-
-        elements = stripe.elements({
-            mode: 'payment',
-            amount,
-            currency: 'aed',
-            captureMethod: 'manual',
-            allowedPaymentMethodTypes: ['card'],
+        // Setup may still be running: use the amount as it is when it finishes, not the one captured here.
+        void cardSetup.then(() => {
+            if (elements && cardAmount.value !== null) {
+                elements.update({ amount: cardAmount.value });
+            }
         });
-        paymentElement = elements.create('payment');
-        await nextTick();
-
-        if (cardHost.value) {
-            paymentElement.mount(cardHost.value);
-            cardReady.value = true;
-        }
     },
     { immediate: true },
 );
 
-onBeforeUnmount(() => paymentElement?.destroy());
+onBeforeUnmount(() => {
+    unmounted = true;
+    paymentElement?.destroy();
+});
 
 const canSubmit = computed(
     () =>
@@ -155,7 +212,7 @@ const canSubmit = computed(
         learner.value !== null &&
         subject.value !== '' &&
         learner.value.price !== null &&
-        (!props.stripe || cardReady.value),
+        (!props.stripe || cardReady.value || heldIntentId.value !== null),
 );
 
 function post(paymentIntentId: string) {
@@ -172,6 +229,7 @@ function post(paymentIntentId: string) {
         onError: (errors) => {
             if (!('retry' in errors)) {
                 heldIntentId.value = null;
+                choiceLocked.value = false;
                 attemptId.value = crypto.randomUUID();
             }
         },
@@ -179,10 +237,104 @@ function post(paymentIntentId: string) {
     });
 }
 
+// 3-D Secure that needs the bank's own page leaves the site and comes back to this URL with the intent in the
+// query string. The card is held (or it was refused); say which, and finish the booking the parent already asked
+// for when the page can still remember it.
+const stripeReturn =
+    typeof window === 'undefined'
+        ? null
+        : readStripeReturn(window.location.search);
+
+async function resumeAfterRedirect() {
+    if (!stripeReturn || !props.stripe) {
+        return;
+    }
+
+    window.history.replaceState(
+        window.history.state,
+        '',
+        withoutStripeReturn(new URL(window.location.href)),
+    );
+    paying.value = true;
+
+    const client = await loadStripeOnce(props.stripe.publishable_key);
+
+    if (!client) {
+        cardError.value =
+            'The card form could not be loaded. Please try again in a moment.';
+        paying.value = false;
+
+        return;
+    }
+
+    stripe = client;
+
+    const found = await client.retrievePaymentIntent(stripeReturn.clientSecret);
+    const intent = found.paymentIntent;
+
+    if (found.error || !intent || intent.id !== stripeReturn.paymentIntentId) {
+        cardError.value =
+            'We could not check your payment. Nothing was booked; please try again.';
+        paying.value = false;
+
+        return;
+    }
+
+    if (intent.status !== 'requires_capture') {
+        forgetChoice(intent.id);
+        attemptId.value = crypto.randomUUID();
+        paying.value = false;
+
+        if (intent.status === 'processing') {
+            returnNotice.value =
+                'Your bank is still processing the card check. Nothing was booked yet; please wait a minute and try again.';
+        } else {
+            cardError.value =
+                'Your bank did not approve the card. Nothing was booked and you were not charged. Please try another card.';
+        }
+
+        return;
+    }
+
+    // The card is held. Resume with the learner and subject the parent chose, when they are still known here.
+    heldIntentId.value = intent.id;
+
+    const chosen = recallChoice(intent.id);
+    const knownLearner = props.learners.find(
+        (row) => row.id === chosen?.learner,
+    );
+
+    forgetChoice(intent.id);
+
+    if (
+        chosen &&
+        knownLearner &&
+        props.subjects.some((row) => key(row) === chosen.subject)
+    ) {
+        learnerId.value = knownLearner.id;
+        choiceLocked.value = true;
+        // The learner watcher re-derives the subject; set the remembered one after it has run.
+        await nextTick();
+        subject.value = chosen.subject;
+        returnNotice.value = 'Your card was approved. Finishing your booking…';
+        post(intent.id);
+
+        return;
+    }
+
+    paying.value = false;
+    returnNotice.value =
+        'Your card was approved. Choose the learner and subject, then press Confirm and pay to finish. You will not be charged twice.';
+}
+
+onMounted(() => {
+    void resumeAfterRedirect();
+});
+
 // Stripe: the browser only places a hold on the card (3-D Secure if the bank asks); the server takes the money
 // inside the booking, so a refused slot or a changed price never charges anyone.
 async function pay() {
-    if (!stripe || !elements || !learner.value || paying.value) {
+    if (!stripe || !learner.value || paying.value) {
         return;
     }
 
@@ -193,6 +345,12 @@ async function pay() {
     // The card is already held and only the server's answer was missing: submit the same hold again.
     if (heldIntentId.value !== null) {
         post(heldIntentId.value);
+
+        return;
+    }
+
+    if (!elements) {
+        paying.value = false;
 
         return;
     }
@@ -227,6 +385,12 @@ async function pay() {
         return;
     }
 
+    // The page may leave for the bank and come back: remember what this payment is for.
+    rememberChoice(intent.body.payment_intent_id, {
+        learner: Number(learnerId.value),
+        subject: subject.value,
+    });
+
     const confirmed = await stripe.confirmPayment({
         elements,
         clientSecret: intent.body.client_secret,
@@ -247,6 +411,8 @@ async function pay() {
     }
 
     heldIntentId.value = confirmed.paymentIntent.id;
+    choiceLocked.value = true;
+    forgetChoice(confirmed.paymentIntent.id);
     post(heldIntentId.value);
 }
 
@@ -311,7 +477,8 @@ function submit() {
                 <select
                     id="learner_id"
                     v-model="learnerId"
-                    class="border-input rounded-md border p-2 text-sm"
+                    class="border-input rounded-md border p-2 text-sm disabled:opacity-60"
+                    :disabled="locked"
                     required
                 >
                     <option value="" disabled>Select</option>
@@ -330,7 +497,8 @@ function submit() {
                 <select
                     id="subject"
                     v-model="subject"
-                    class="border-input rounded-md border p-2 text-sm"
+                    class="border-input rounded-md border p-2 text-sm disabled:opacity-60"
+                    :disabled="locked"
                     required
                 >
                     <option value="" disabled>Select</option>
@@ -379,6 +547,15 @@ function submit() {
                 </p>
                 <InputError :message="cardError ?? undefined" />
             </div>
+
+            <p
+                v-if="returnNotice"
+                class="rounded-md border p-3 text-sm"
+                data-testid="return-notice"
+                role="status"
+            >
+                {{ returnNotice }}
+            </p>
 
             <p
                 v-if="slot_available && cancel_notice"
