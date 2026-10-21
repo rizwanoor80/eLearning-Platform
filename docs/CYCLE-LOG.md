@@ -8495,3 +8495,12 @@ Fixed on `a2007ce`: (1) `startsLikeFormula` now treats anything other than `0` a
 
 ### 2026-10-21 — VERIFICATION (24e merged, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". Rule met at head `a2007ce47da9101039a850ab50a2d304aff69ae7`. PR #80 squash-merged -> `main` `f039d43168b807f850dccc83d61aa6d7c6f3d516`. 24e adds no migration. Rehearsal deploy and R213 follow once CI on that commit is green.
+
+### 2026-10-21 — VERIFICATION (24e rehearsal, R213, CC)
+Main `f039d43` CI green on PostgreSQL 16 and 18; `rehearsal` fast-forwarded to it. `GET /ops/status` on rehearsal: `app.git_sha` matched `f039d43`; `migrations.pending` 0; `horizon.status` running; `queues.failed_jobs` 0; `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0; `/`, `/login`, `/tutors`, `/terms` all 200. R213 passed.
+
+### 2026-10-21 — START (24f, R264, CC)
+Branch `cp/24f-test-hygiene` from `main` `f039d43`. Scope: collision-proof `CurriculumFactory` and `YearGroupFactory`; the 23g test gaps (lifetime proved independently of the buckets, earnings nav visibility, the null `payout_problem` path, lessons moved by the real actions). Advisor minimum 0. Tests only plus two factories; no app code, no migration.
+
+### 2026-10-21 — VERIFICATION (24f gates on `ca83fa4`, CC)
+`vendor/bin/pest`: **3295 passed / 23819 assertions** (previous baseline 3289 / 23747; no test removed). `ledger:verify` OK. Pint, PHPStan 0 errors, RTL grep passed. No JS or Vue file changed, so no `npm run build` change. Branch pushed as `cp/24f-test-hygiene`.
