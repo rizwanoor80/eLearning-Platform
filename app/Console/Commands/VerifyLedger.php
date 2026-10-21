@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Ledger\LedgerService;
+use App\Support\Payments\UnheldCaptures;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 
@@ -19,7 +20,7 @@ class VerifyLedger extends Command
      * against a real database (trustutor-rehearsal after a deploy, production
      * nightly from CP5).
      */
-    public function handle(LedgerService $ledger): int
+    public function handle(LedgerService $ledger, UnheldCaptures $unheldCaptures): int
     {
         if (! Schema::hasTable('ledger_entries')) {
             $this->error('ledger_entries does not exist — migrate first.');
@@ -39,6 +40,12 @@ class VerifyLedger extends Command
             $this->error("Payment {$row['payment_id']} on lesson {$row['lesson_id']} is {$row['status']} with no matching ledger hold (invariant #1).");
         }
 
+        $unheld = $unheldCaptures();
+
+        foreach ($unheld as $row) {
+            $this->error("Payment {$row['payment_id']} on lesson {$row['lesson_id']} is {$row['status']} for {$row['amount']} fils but the ledger holds {$row['held']} fils for it (invariant #1).");
+        }
+
         $payouts = $ledger->unbalancedPayouts();
 
         foreach ($payouts as $row) {
@@ -51,7 +58,7 @@ class VerifyLedger extends Command
             $this->error("Ledger entry {$id} belongs to neither a lesson nor a payout (invariant #1).");
         }
 
-        if ($unbalanced->isEmpty() && $stranded->isEmpty() && $payouts->isEmpty() && $stray->isEmpty()) {
+        if ($unbalanced->isEmpty() && $stranded->isEmpty() && $unheld->isEmpty() && $payouts->isEmpty() && $stray->isEmpty()) {
             $this->info('Ledger OK: every lesson and every payout sums to zero.');
 
             return self::SUCCESS;

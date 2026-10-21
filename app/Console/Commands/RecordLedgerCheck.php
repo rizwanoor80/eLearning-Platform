@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Ledger\LedgerService;
 use App\Services\Ops\OpsStatusReport;
+use App\Support\Payments\UnheldCaptures;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * R193: the ledger line of `/ops/status` is *read* from the cache this command writes, never computed
  * in a request. Runs the same reads `ledger:verify` runs (`LedgerService::unbalancedLessons()`, `strandedPayments()` and, since 23h,
- * `unbalancedPayouts()` and `strayEntries()`, which turn the verdict to `fail` without a count of its own) and stores the verdict, the two counts and the time. It records a failing
+ * `unbalancedPayouts()` and `strayEntries()`, and since 25b `UnheldCaptures`, which turn the verdict to `fail` without a count of its own) and stores the verdict, the two counts and the time. It records a failing
  * ledger as `fail` and still exits 0 — the check ran; `ledger:verify` stays the gate that exits 1.
  * Read-only on the database; a second run just overwrites the entry.
  */
@@ -21,7 +22,7 @@ class RecordLedgerCheck extends Command
 
     protected $description = 'Record the ledger zero-sum check for /ops/status (read-only, writes one cache entry)';
 
-    public function handle(LedgerService $ledger): int
+    public function handle(LedgerService $ledger, UnheldCaptures $unheldCaptures): int
     {
         if (! Schema::hasTable('ledger_entries')) {
             $this->store('fail', null, null);
@@ -32,7 +33,7 @@ class RecordLedgerCheck extends Command
 
         $unbalanced = $ledger->unbalancedLessons()->count();
         $stranded = $ledger->strandedPayments()->count();
-        $result = $unbalanced === 0 && $stranded === 0 && $ledger->unbalancedPayouts()->isEmpty() && $ledger->strayEntries()->isEmpty() ? 'ok' : 'fail';
+        $result = $unbalanced === 0 && $stranded === 0 && $unheldCaptures()->isEmpty() && $ledger->unbalancedPayouts()->isEmpty() && $ledger->strayEntries()->isEmpty() ? 'ok' : 'fail';
 
         $this->store($result, $unbalanced, $stranded);
         $this->info("Ledger check recorded: {$result} ({$unbalanced} unbalanced lessons, {$stranded} stranded payments).");

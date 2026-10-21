@@ -13,14 +13,15 @@ use Illuminate\Support\Facades\DB;
 /**
  * 24b (R260): lists the gateway's refunds for a payment, takes the ones the platform did not make (a refund the
  * platform made carries its idempotency key as metadata, and has a row with that key or id) and records each as an
- * `external` row. Never writes the ledger. Safe to run twice: `(payment_id, gateway_refund_id)` is unique.
+ * `external` row. A `requested` row (the platform's own, or an external one recorded while Stripe reported it `pending`)
+ * is settled by what the gateway lists now (25b, R267). Never writes the ledger. Safe to run twice: `(payment_id, gateway_refund_id)` is unique.
  *
  * The gateway is asked with no lock held; the rows are inserted under the payment's lock, so a refund the platform
  * is finishing at the same moment (`MakeGatewayRefund` locks the payment too) is never taken for someone else's.
  */
 class RecordExternalRefunds
 {
-    public function __construct(private readonly PaymentGatewayManager $gateways) {}
+    public function __construct(private readonly PaymentGatewayManager $gateways, private readonly SettleGatewayRefund $settle) {}
 
     /**
      * @return int|null how many new external refunds were recorded; null when the driver cannot list its refunds
@@ -38,21 +39,36 @@ class RecordExternalRefunds
         return DB::transaction(function () use ($payment, $listed): int {
             Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
-            $ownIds = PaymentRefund::query()->where('payment_id', $payment->id)->whereNotNull('gateway_refund_id')->pluck('gateway_refund_id')->all();
-            $ownKeys = PaymentRefund::query()->where('payment_id', $payment->id)->whereNotNull('idempotency_key')->pluck('idempotency_key')->all();
+            $rows = PaymentRefund::query()->where('payment_id', $payment->id)->get();
             $recorded = 0;
 
             foreach ($listed as $refund) {
-                if (in_array($refund['status'], ['failed', 'canceled'], true) || $refund['amount'] <= 0) {
+                if ($refund['amount'] <= 0) {
                     continue;
                 }
 
-                if (in_array($refund['id'], $ownIds, true) || ($refund['idempotency_key'] !== null && in_array($refund['idempotency_key'], $ownKeys, true))) {
+                // A refund the platform (or an earlier reconcile) already has a row for: the gateway's word on it
+                // settles a `requested` row (25b), and fills in an id the row was waiting for.
+                $known = $rows->first(fn (PaymentRefund $row) => $row->gateway_refund_id === $refund['id']
+                    || ($refund['idempotency_key'] !== null && $row->idempotency_key === $refund['idempotency_key']));
+
+                if ($known !== null) {
+                    if ($known->status === PaymentRefundStatus::Requested) {
+                        ($this->settle)($known, $refund['status'], $refund['id']);
+                    }
+
+                    continue;
+                }
+
+                if (in_array($refund['status'], ['failed', 'canceled'], true)) {
                     continue;
                 }
 
                 $at = now()->setTimestamp($refund['created'] > 0 ? $refund['created'] : now()->getTimestamp());
+                $done = $refund['status'] === 'succeeded';
 
+                // A refund Stripe reports `pending` is not money returned yet: it is recorded `requested` and settled
+                // by a later reconcile or `refund.updated` (25b, R267).
                 $recorded += DB::table('payment_refunds')->insertOrIgnore([
                     'payment_id' => $payment->id,
                     'ledger_entry_id' => null,
@@ -62,9 +78,9 @@ class RecordExternalRefunds
                     'amount' => $refund['amount'],
                     'gateway_refund_id' => $refund['id'],
                     'gateway_status' => mb_substr($refund['status'], 0, 32),
-                    'status' => PaymentRefundStatus::Succeeded->value,
+                    'status' => ($done ? PaymentRefundStatus::Succeeded : PaymentRefundStatus::Requested)->value,
                     'requested_at' => $at,
-                    'completed_at' => $at,
+                    'completed_at' => $done ? $at : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);

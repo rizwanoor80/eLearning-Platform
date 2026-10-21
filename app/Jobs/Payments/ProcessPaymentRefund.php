@@ -3,7 +3,6 @@
 namespace App\Jobs\Payments;
 
 use App\Actions\Payments\MakeGatewayRefund;
-use App\Enums\PaymentRefundKind;
 use App\Enums\PaymentRefundStatus;
 use App\Events\Payments\PaymentNeedsAttention;
 use App\Models\PaymentRefund;
@@ -42,9 +41,8 @@ class ProcessPaymentRefund implements ShouldQueue
             return;
         }
 
-        if ($makeRefund($row) && $row->kind === PaymentRefundKind::Unverified) {
-            PaymentNeedsAttention::dispatch($row->payment, PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED);
-        }
+        // `UNVERIFIED_CAPTURE_REFUNDED` is raised by `SettleGatewayRefund` when the refund succeeds (25b).
+        $makeRefund($row);
     }
 
     public function failed(Throwable $e): void

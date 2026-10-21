@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PaymentRefundStatus;
 use App\Enums\PaymentStatus;
 use App\Events\Payments\OrphanCaptureDetected;
 use App\Events\Payments\PaymentNeedsAttention;
@@ -325,12 +326,24 @@ it('mails the admins an orphan alert that names the reference and amount and no 
 
 it('does not check for a refund at the gateway when the platform made one itself for an unverified capture', function () {
     $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured]);
-    PaymentRefund::factory()->requested()->create(['payment_id' => $unheld->id, 'idempotency_key' => 'unverified-pi_test_unheld', 'amount' => 10000]);
+    PaymentRefund::factory()->create(['payment_id' => $unheld->id, 'idempotency_key' => 'unverified-pi_test_unheld', 'amount' => 10000]);
 
     postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
 
     expect($unheld->fresh()->refunded_amount->toFils())->toBe(10000);
     Bus::assertNotDispatched(ReconcileGatewayRefunds::class);
+});
+
+it('does not take the platform\'s own refund for money returned while the gateway still reports it pending, and re-reads it', function () {
+    $unheld = Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_unheld', 'amount' => 10000, 'status' => PaymentStatus::Captured]);
+    $row = PaymentRefund::factory()->requested()->create(['payment_id' => $unheld->id, 'idempotency_key' => 'unverified-pi_test_unheld', 'amount' => 10000]);
+
+    postStripe(stripeEvent('charge.refunded', refundedCharge(10000, 'pi_test_unheld')))->assertJson(['status' => 'received']);
+
+    expect($unheld->fresh()->refunded_amount)->toBeNull()
+        ->and($unheld->fresh()->status)->toBe(PaymentStatus::Captured)
+        ->and($row->fresh()->status)->toBe(PaymentRefundStatus::Requested);
+    Bus::assertDispatchedTimes(ReconcileGatewayRefunds::class, 1);
 });
 
 it('still checks for a refund at the gateway when the platform\'s own unverified refund was refused', function () {
