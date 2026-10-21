@@ -89,7 +89,7 @@ it('audits the names of changed credentials and never a value', function () {
 it('refuses the live mode selection with a notification while the owner-only flag is off', function () {
     Livewire::actingAs($this->admin)
         ->test(EditPaymentGateway::class, ['record' => $this->stripe->getRouteKey()])
-        ->fillForm(['mode' => PaymentGatewayMode::Live->value])
+        ->fillForm(['mode' => PaymentGatewayMode::Live->value, 'mode_switch_confirmed' => true])
         ->call('save')
         ->assertNotified('Not saved');
 
@@ -100,7 +100,7 @@ it('refuses the live mode selection with a notification while the owner-only fla
 it('clears a typed secret from component state when the save is refused', function () {
     $component = Livewire::actingAs($this->admin)
         ->test(EditPaymentGateway::class, ['record' => $this->stripe->getRouteKey()])
-        ->fillForm(['mode' => PaymentGatewayMode::Live->value, 'secret_secret_key' => 'sk_test_refused_probe'])
+        ->fillForm(['mode' => PaymentGatewayMode::Live->value, 'mode_switch_confirmed' => true, 'secret_secret_key' => 'sk_test_refused_probe'])
         ->call('save')
         ->assertNotified('Not saved');
 

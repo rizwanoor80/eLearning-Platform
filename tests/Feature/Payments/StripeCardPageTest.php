@@ -100,7 +100,7 @@ it('creates a customer and an off-session card SetupIntent that carry only our a
     $setup = $this->http->requestsTo('POST /v1/setup_intents')[0];
 
     expect($customer['params'])->toBe(['metadata' => ['account_user_id' => (string) $this->parent->id]])
-        ->and($this->http->idempotencyKeyOf($customer))->toBe('customer-account-'.$this->parent->id)
+        ->and($this->http->idempotencyKeyOf($customer))->toBe('test:testing:customer-account-'.$this->parent->id)
         ->and($setup['params']['customer'])->toBe('cus_test_1')
         ->and($setup['params']['usage'])->toBe('off_session')
         ->and($setup['params']['payment_method_types'])->toBe(['card'])

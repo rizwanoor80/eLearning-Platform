@@ -19,5 +19,7 @@ class LessonChargeFailed
     public function __construct(
         public readonly Lesson $lesson,
         public readonly CarbonImmutable $retryAt,
+        /** R266: the saved card was made in the other payment mode, so the parent has to add it again. */
+        public readonly bool $cardNeedsReplacing = false,
     ) {}
 }

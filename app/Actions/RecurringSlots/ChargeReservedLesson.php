@@ -22,6 +22,7 @@ use App\Models\TutorProfile;
 use App\Services\Ledger\LedgerService;
 use App\Services\Lessons\LessonStateMachine;
 use App\Services\Payments\PaymentGateway;
+use App\Services\Payments\StripePaymentGateway;
 use App\Support\Facades\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,12 @@ use RuntimeException;
  */
 class ChargeReservedLesson
 {
+    /** The failure reason for a card that was saved in the other Stripe mode (R266). */
+    public const CARD_OTHER_MODE = 'card_other_mode';
+
+    /** The failure reason for a pending attempt that was begun in the other Stripe mode (R266). */
+    public const GATEWAY_MODE_CHANGED = 'gateway_mode_changed';
+
     public function __construct(private readonly PauseRecurringSlot $pause) {}
 
     public function __invoke(int $lessonId, ?PaymentGateway $gateway): ChargeOutcome
@@ -83,6 +90,22 @@ class ChargeReservedLesson
         $lesson = Lesson::query()->findOrFail($lessonId);
         $method = $methodId === null ? null : PaymentMethod::query()->find($methodId);
 
+        // R266: the mode is the one of the driver that makes the call, not of whatever row is active now, so a
+        // switch in the middle of a run cannot send a reference to the other account.
+        $mode = StripePaymentGateway::modeOf($gateway);
+
+        // A pending attempt stamped in another mode (it began before a switch) is never continued: it could pick
+        // up a card of this mode and charge it onto a row of the other.
+        if ($mode !== null && Payment::query()->whereKey($paymentId)->first()?->gatewayMode() !== $mode) {
+            return $this->fail($lessonId, $paymentId, $attempt, null, self::GATEWAY_MODE_CHANGED);
+        }
+
+        // A card saved in the other Stripe mode is told apart so the parent is asked to add it again. The card is
+        // not marked as declined: it did nothing wrong, and switching back makes it usable again.
+        if ($method !== null && $mode !== null && $method->savedInOtherMode($mode)) {
+            return $this->fail($lessonId, $paymentId, $attempt, null, self::CARD_OTHER_MODE);
+        }
+
         if ($method === null || ! $method->isUsable(allowRemoved: $resumed)) {
             return $this->fail($lessonId, $paymentId, $attempt, null, 'no_usable_card');
         }
@@ -90,7 +113,7 @@ class ChargeReservedLesson
         try {
             $result = $gateway->chargeSavedCard($lesson, $lesson->price, $method, self::idempotencyKey($lessonId, $attempt));
         } catch (PaymentCaptureException $e) {
-            return $this->fail($lessonId, $paymentId, $attempt, $method, $e->getMessage());
+            return $this->fail($lessonId, $paymentId, $attempt, $e->getMessage() === StripePaymentGateway::OTHER_MODE_REASON ? null : $method, $e->getMessage());
         }
 
         return $this->succeed($lessonId, $paymentId, $attempt, $method, $result->gatewayRef, $result->rawResponse);
@@ -202,6 +225,7 @@ class ChargeReservedLesson
                     'payer_user_id' => $account,
                     'payment_method_id' => $method?->id,
                     'gateway' => $gateway->driver(),
+                    'gateway_mode' => StripePaymentGateway::modeOf($gateway),
                     'amount' => $lesson->price,
                     'status' => PaymentStatus::Pending,
                 ]);
@@ -325,7 +349,7 @@ class ChargeReservedLesson
             if ($retryAt !== null) {
                 $lesson->forceFill(['charge_attempts' => $attempt, 'next_charge_at' => $retryAt])->save();
 
-                DB::afterCommit(fn () => LessonChargeFailed::dispatch($lesson, $retryAt));
+                DB::afterCommit(fn () => LessonChargeFailed::dispatch($lesson, $retryAt, $reason === self::CARD_OTHER_MODE));
 
                 return ChargeOutcome::RetryScheduled;
             }

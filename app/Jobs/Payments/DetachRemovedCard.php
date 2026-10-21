@@ -45,6 +45,14 @@ class DetachRemovedCard implements ShouldQueue
             return;
         }
 
+        // R266: a token made in the other Stripe mode does not exist in the account this key belongs to, so it
+        // is never sent there. It is left for the owner's switch-day clean-up (`payments:mode-readiness`).
+        if ($stripe->row()?->mode !== $card->gatewayMode()) {
+            Log::info('A removed Stripe card was left attached: it belongs to the other payment mode.', ['payment_method_id' => $card->id]);
+
+            return;
+        }
+
         try {
             $stripe->client()->paymentMethods->detach($card->gateway_token);
         } catch (ApiErrorException $e) {

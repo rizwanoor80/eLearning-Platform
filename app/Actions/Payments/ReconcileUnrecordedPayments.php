@@ -90,6 +90,11 @@ class ReconcileUnrecordedPayments
             return false;
         }
 
+        // R266: an intent made in the other Stripe mode does not exist on this account; asking would fail every hour.
+        if ($payment->gatewayMode() !== $gateway->mode()) {
+            return false;
+        }
+
         if ($this->retryIsYoung($payment, $intentId)) {
             return false;
         }

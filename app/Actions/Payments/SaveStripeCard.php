@@ -9,6 +9,7 @@ use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Services\Payments\NoActivePaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use App\Services\Payments\StripePaymentGateway;
 use App\Support\Payments\ActiveStripe;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -36,17 +37,22 @@ class SaveStripeCard
     public function __invoke(User $account, string $setupIntentId): PaymentMethod
     {
         $row = $this->stripe->row() ?? throw new NoActivePaymentGateway('Stripe is not the active payment gateway.');
-        $saved = $this->gateways->forRow($row)->saveCard($account, $setupIntentId);
+        $gateway = $this->gateways->forRow($row);
+        $saved = $gateway->saveCard($account, $setupIntentId);
 
         // The live row is locked, so a removal that commits first leaves this to create a new row instead of
         // writing the new token onto the removed one.
-        [$method, $previousToken] = DB::transaction(function () use ($account, $saved): array {
+        $mode = StripePaymentGateway::modeOf($gateway) ?? $row->mode;
+
+        [$method, $previousToken] = DB::transaction(function () use ($account, $saved, $mode): array {
             $live = PaymentMethod::query()->live()->where('account_user_id', $account->id)->lockForUpdate()->first();
-            $previousToken = $live?->gateway === 'stripe' ? $live->gateway_token : null;
+            // R266: only a previous token made in this mode is detached; the other mode's does not exist here.
+            $previousToken = $live?->gateway === 'stripe' && $live->gatewayMode() === $mode ? $live->gateway_token : null;
             $attributes = [
                 'gateway' => 'stripe',
                 'gateway_customer_ref' => $saved->gatewayCustomerRef,
                 'gateway_token' => $saved->gatewayToken,
+                'gateway_mode' => $mode,
                 'brand' => $saved->brand,
                 'last4' => $saved->last4,
                 'exp_month' => $saved->expMonth,

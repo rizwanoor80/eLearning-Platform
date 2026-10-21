@@ -63,6 +63,6 @@ class SendWeeklyChargeMails implements ShouldQueue
     {
         $parent = $event->lesson->learner->account;
 
-        Mail::to($parent)->send(new WeeklyLessonChargeFailedMail($event->lesson, $parent, $event->retryAt));
+        Mail::to($parent)->send(new WeeklyLessonChargeFailedMail($event->lesson, $parent, $event->retryAt, $event->cardNeedsReplacing));
     }
 }

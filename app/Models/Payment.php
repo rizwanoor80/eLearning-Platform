@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentGatewayMode;
 use App\Enums\PaymentStatus;
 use App\Support\Money;
 use Database\Factories\PaymentFactory;
@@ -23,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $payment_method_id
  * @property string $gateway
  * @property string|null $gateway_ref
+ * @property PaymentGatewayMode|null $gateway_mode
  * @property Money $amount
  * @property string $currency
  * @property PaymentStatus $status
@@ -48,8 +50,18 @@ class Payment extends Model
             'amount' => Money::class,
             'refunded_amount' => Money::class,
             'status' => PaymentStatus::class,
+            'gateway_mode' => PaymentGatewayMode::class,
             'raw_response' => 'array',
         ];
+    }
+
+    /**
+     * The Stripe mode this payment's PaymentIntent exists in (R266). A Stripe payment made before the column
+     * existed was against the test account, so no value means `test`; another gateway has no mode.
+     */
+    public function gatewayMode(): ?PaymentGatewayMode
+    {
+        return $this->gateway === 'stripe' ? ($this->gateway_mode ?? PaymentGatewayMode::Test) : null;
     }
 
     /**

@@ -20,7 +20,7 @@ class WeeklyLessonChargeFailedMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels, UsesSettingsSender;
 
-    public function __construct(public Lesson $lesson, public User $recipient, public CarbonImmutable $retryAt) {}
+    public function __construct(public Lesson $lesson, public User $recipient, public CarbonImmutable $retryAt, public bool $cardNeedsReplacing = false) {}
 
     public function envelope(): Envelope
     {

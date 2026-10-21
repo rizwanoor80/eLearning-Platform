@@ -14,6 +14,7 @@ use App\Services\Scheduling\SlotCalculator;
 use App\Services\Tutors\TutorRateBands;
 use App\Support\Lessons\LessonQuote;
 use App\Support\Payments\ActiveStripe;
+use App\Support\Payments\StripeIdempotency;
 use Carbon\CarbonImmutable;
 
 /**
@@ -81,7 +82,7 @@ class CreateCheckoutIntent
         }
 
         $options = isset($data['attempt_id']) && $data['attempt_id'] !== ''
-            ? ['idempotency_key' => 'checkout-'.hash('sha256', implode('|', [$user->id, $data['attempt_id'], $learner->id, $tutor->id, $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT), $price->toFils()]))]
+            ? ['idempotency_key' => StripeIdempotency::key($this->stripe->row()->mode, 'checkout-'.hash('sha256', implode('|', [$user->id, $data['attempt_id'], $learner->id, $tutor->id, $startsAt->utc()->format(StripePaymentGateway::STARTS_AT_FORMAT), $price->toFils()])))]
             : [];
 
         $intent = $this->stripe->client()->paymentIntents->create([

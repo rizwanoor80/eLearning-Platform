@@ -181,7 +181,7 @@ it('stores a saved card as a token, brand, last four and expiry only, one per ac
     $columns = Schema::getColumnListing('payment_methods');
 
     expect($columns)->toEqualCanonicalizing([
-        'id', 'account_user_id', 'gateway', 'gateway_customer_ref', 'gateway_token', 'brand', 'last4', 'exp_month', 'exp_year',
+        'id', 'account_user_id', 'gateway', 'gateway_customer_ref', 'gateway_token', 'gateway_mode', 'brand', 'last4', 'exp_month', 'exp_year',
         'status', 'last_failed_at', 'removed_at', 'created_at', 'updated_at',
     ]);
 
