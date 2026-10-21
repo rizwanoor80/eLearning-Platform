@@ -4,6 +4,7 @@ use App\Actions\Payments\RemoveSavedCard;
 use App\Actions\Payments\SaveStripeCard;
 use App\Actions\Payments\SaveTestCard;
 use App\Actions\RecurringSlots\ChargeReservedLesson;
+use App\Enums\CurriculumCode;
 use App\Enums\LessonStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\RecurringSlotStatus;
@@ -12,6 +13,7 @@ use App\Exceptions\CardRemovalException;
 use App\Jobs\Payments\DetachRemovedCard;
 use App\Mail\Payments\WeeklyLessonChargeFailedMail;
 use App\Models\AuditLog;
+use App\Models\Curriculum;
 use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\Payment;
@@ -48,13 +50,16 @@ function crStripeCard(User $account, string $token = 'pm_old_1'): PaymentMethod
     return PaymentMethod::factory()->create(['account_user_id' => $account->id, 'gateway' => 'stripe', 'gateway_customer_ref' => 'cus_1', 'gateway_token' => $token]);
 }
 
-function crSlot(User $parent): RecurringSlot
+function crSlot(User $parent, ?TutorProfile $tutor = null, int $weekday = 2): RecurringSlot
 {
-    $learner = Learner::factory()->create(['account_user_id' => $parent->id]);
+    // The slot factory's own found-or-created GCSE row: a random curriculum can collide with it on `code`.
+    $gcse = Curriculum::query()->firstOrCreate(['code' => CurriculumCode::Gcse], ['name' => CurriculumCode::Gcse->value, 'sort' => 0]);
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $gcse->id]);
 
     return RecurringSlot::factory()->create([
         'learner_id' => $learner->id,
-        'tutor_profile_id' => TutorProfile::factory()->bookable()->create()->id,
+        'tutor_profile_id' => ($tutor ?? TutorProfile::factory()->bookable()->create())->id,
+        'weekday' => $weekday,
         'timezone' => 'UTC',
         'starts_on' => '2026-09-14',
         'generated_until' => '2026-09-13',
@@ -128,8 +133,10 @@ it('asks for confirmation while a weekly slot is active, and removes on yes', fu
 
 it('does not ask for confirmation for a paused or ended slot', function () {
     $card = PaymentMethod::factory()->create(['account_user_id' => $this->parent->id]);
-    crSlot($this->parent)->update(['status' => RecurringSlotStatus::Paused]);
-    crSlot($this->parent)->update(['status' => RecurringSlotStatus::Ended]);
+    // One tutor for both slots: two bookable tutors each draw a curriculum code and can collide on it.
+    $tutor = TutorProfile::factory()->bookable()->create();
+    crSlot($this->parent, $tutor, 2)->update(['status' => RecurringSlotStatus::Paused]);
+    crSlot($this->parent, $tutor, 3)->update(['status' => RecurringSlotStatus::Ended]);
 
     $this->actingAs($this->parent)->delete(route('payment-methods.destroy'))->assertSessionHasNoErrors();
 
