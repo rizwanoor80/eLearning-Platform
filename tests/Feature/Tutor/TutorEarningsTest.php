@@ -1,10 +1,18 @@
 <?php
 
+use App\Actions\Lessons\AutoReleaseLesson;
+use App\Actions\Lessons\CancelLesson;
+use App\Actions\Lessons\OpenDispute;
+use App\Actions\Lessons\ResolveDispute;
 use App\Actions\Lessons\SettleSuspendedLesson;
+use App\Enums\CurriculumCode;
+use App\Enums\DisputeReason;
 use App\Enums\LessonStatus;
 use App\Enums\TutorProfileStatus;
 use App\Models\AuditLog;
+use App\Models\Curriculum;
 use App\Models\Dispute;
+use App\Models\Learner;
 use App\Models\Lesson;
 use App\Models\TutorProfile;
 use App\Models\User;
@@ -383,4 +391,159 @@ it('shows a tutor the date released money becomes available', function () {
 
     $this->actingAs($tutor->user)->get('/tutor/earnings')->assertInertia(fn (Assert $page) => $page
         ->where('buckets.pending_available_on', now()->addHours(47)->setTimezone($tutor->user->timezone)->format('j M Y')));
+});
+
+// --- 24f (R264): the 23g test gaps -------------------------------------------------------------------------------
+
+it('works out lifetime earnings from the ledger alone, against hand-counted amounts, whatever status the lessons are in', function () {
+    $tutor = ernTutor();
+    $ledger = app(LedgerService::class);
+    $lifetime = fn () => app(TutorEarnings::class)->lifetime($tutor)->toFils();
+
+    expect($lifetime())->toBe(0);
+
+    // Held only: the whole price is in escrow, so the tutor's AED 75.00 share counts.
+    $held = ernLesson($tutor, LessonStatus::Confirmed);
+    expect($lifetime())->toBe(7500);
+
+    // Released to the tutor: the share moves from escrow to the tutor account and is still counted once.
+    $ledger->release($held);
+    expect($lifetime())->toBe(7500);
+
+    // Refunded to the parent: nothing is earned.
+    $refunded = ernLesson($tutor, LessonStatus::Confirmed);
+    expect($lifetime())->toBe(15000);
+    $ledger->refund($refunded);
+    expect($lifetime())->toBe(7500);
+
+    // Settled 25/75 from escrow: the tutor earns 75 percent of AED 75.00.
+    $settled = ernLesson($tutor, LessonStatus::Completed);
+    $ledger->settle($settled, Dispute::factory()->for($settled)->create(), 25, 75);
+    expect($lifetime())->toBe(7500 + 5625);
+
+    // Released, then settled 50/50: the reversal leaves the tutor with half of AED 75.00.
+    $reversed = ernLesson($tutor, LessonStatus::Completed);
+    $ledger->release($reversed);
+    expect($lifetime())->toBe(7500 + 5625 + 7500);
+    $ledger->settle($reversed, Dispute::factory()->for($reversed)->create(), 50, 50);
+    expect($lifetime())->toBe(7500 + 5625 + 3750);
+
+    // Another tutor's money never counts, and no status was ever set.
+    $other = ernTutor();
+    $ledger->release(ernLesson($other, LessonStatus::Completed));
+    expect($lifetime())->toBe(16875)
+        ->and(app(TutorEarnings::class)->lifetime($other)->toFils())->toBe(7500)
+        ->and($ledger->unbalancedLessons())->toBeEmpty();
+});
+
+/**
+ * A lesson between a fresh parent and the tutor, held in escrow, that ended `$endedMinutesAgo` minutes ago (or starts in
+ * `$startsInMinutes` when that is given), ready for the real actions to move.
+ *
+ * @return array{lesson: Lesson, parent: User}
+ */
+function ernActionLesson(TutorProfile $tutor, LessonStatus $status, int $endedMinutesAgo = 120, ?int $startsInMinutes = null): array
+{
+
+    $parent = User::factory()->create();
+    // One shared curriculum: the factory draws a new code per call, and there are only five.
+    $curriculum = Curriculum::query()->firstOrCreate(['code' => CurriculumCode::Gcse], ['name' => CurriculumCode::Gcse->value, 'sort' => 0]);
+    $learner = Learner::factory()->create(['account_user_id' => $parent->id, 'curriculum_id' => $curriculum->id]);
+    $start = $startsInMinutes === null
+        ? now()->subMinutes($endedMinutesAgo + 60)
+        : now()->addMinutes($startsInMinutes);
+
+    $lesson = Lesson::factory()->withStatus($status)->startingAt($start)->create([
+        'tutor_profile_id' => $tutor->id,
+        'learner_id' => $learner->id,
+        'completed_at' => $status === LessonStatus::Completed ? $start->copy()->addHour() : null,
+    ]);
+    app(LedgerService::class)->hold($lesson);
+
+    return ['lesson' => $lesson->fresh(), 'parent' => $parent];
+}
+
+it('moves money through the buckets as the real actions run, with no status written by hand', function () {
+    $this->freezeTime();
+    $tutor = ernTutor();
+    $admin = User::factory()->admin()->create();
+    $ledger = app(LedgerService::class);
+
+    // 1. Auto-released after its dispute window closed: available.
+    ['lesson' => $quiet] = ernActionLesson($tutor, LessonStatus::Completed, endedMinutesAgo: 49 * 60);
+    expect(ernBuckets($tutor)['pending'])->toBe(7500);
+    app(AutoReleaseLesson::class)($quiet);
+    expect($quiet->fresh()->status)->toBe(LessonStatus::CompletedReported)
+        ->and(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 7500, 'processing' => 0, 'paid' => 0]);
+
+    // 2. Disputed by the parent before release: on hold; the admin settles 40/60: the tutor is paid AED 45.00.
+    ['lesson' => $contested, 'parent' => $parent] = ernActionLesson($tutor, LessonStatus::Completed, endedMinutesAgo: 120);
+    $dispute = app(OpenDispute::class)($parent, $contested, DisputeReason::Quality, 'It did not go well.');
+    expect($contested->fresh()->status)->toBe(LessonStatus::Disputed)
+        ->and(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 7500, 'available' => 7500, 'processing' => 0, 'paid' => 0]);
+    app(ResolveDispute::class)($admin, $dispute, 40, 60, 'Split.');
+    expect($contested->fresh()->status)->toBe(LessonStatus::Settled)
+        ->and(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 7500 + 4500, 'processing' => 0, 'paid' => 0]);
+
+    // 3. Released inside its window (pending), disputed after release (on hold, counted once), settled 50/50: AED 37.50 stays.
+    ['lesson' => $released, 'parent' => $releasedParent] = ernActionLesson($tutor, LessonStatus::Completed, endedMinutesAgo: 180);
+    app(AutoReleaseLesson::class)($released);
+    expect(ernBuckets($tutor)['pending'])->toBe(7500);
+    $secondDispute = app(OpenDispute::class)($releasedParent, $released, DisputeReason::Quality, 'It did not go well either.');
+    expect(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 7500, 'available' => 12000, 'processing' => 0, 'paid' => 0]);
+    app(ResolveDispute::class)($admin, $secondDispute, 50, 50, 'Half.');
+    expect(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 12000 + 3750, 'processing' => 0, 'paid' => 0]);
+
+    // 4. Cancelled by the parent well before the lesson: refunded, nothing earned.
+    ['lesson' => $early, 'parent' => $earlyParent] = ernActionLesson($tutor, LessonStatus::Confirmed, startsInMinutes: 10 * 24 * 60);
+    expect(ernBuckets($tutor)['pending'])->toBe(7500);
+    app(CancelLesson::class)($earlyParent, $early);
+    expect($early->fresh()->status)->toBe(LessonStatus::Refunded)
+        ->and(ernBuckets($tutor))->toBe(['pending' => 0, 'on_hold' => 0, 'available' => 15750, 'processing' => 0, 'paid' => 0]);
+
+    // 5. Cancelled by the parent inside the cancellation window: released to the tutor, inside its dispute window.
+    ['lesson' => $late, 'parent' => $lateParent] = ernActionLesson($tutor, LessonStatus::Confirmed, startsInMinutes: 30);
+    app(CancelLesson::class)($lateParent, $late);
+    expect($late->fresh()->status)->toBe(LessonStatus::CompletedReported)
+        ->and(ernBuckets($tutor))->toBe(['pending' => 7500, 'on_hold' => 0, 'available' => 15750, 'processing' => 0, 'paid' => 0]);
+
+    // Lifetime, hand-counted: 7500 + 4500 + 3750 + 0 + 7500.
+    expect(app(TutorEarnings::class)->lifetime($tutor)->toFils())->toBe(23250);
+    ernAssertSumsToLifetime($tutor);
+    expect($ledger->unbalancedLessons())->toBeEmpty();
+});
+
+it('gives the page a null payout problem for a tutor who can be paid', function () {
+    $tutor = TutorProfile::factory()->approved()->create([
+        'user_id' => User::factory()->tutor(),
+        'country' => 'AE',
+        'payout_method' => 'bank_transfer',
+        'bank_name' => 'Example Bank',
+        'bank_account_name' => 'Example Tutor',
+        'bank_iban' => 'AE070331234567890123456',
+    ]);
+
+    expect($tutor->payoutMethodProblem())->toBeNull();
+
+    $this->actingAs($tutor->user)->get('/tutor/earnings')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('tutor/Earnings')->where('payout_problem', null));
+});
+
+it('shows the earnings link only to a tutor: the shared flag, and both nav components read it', function () {
+    $tutor = ernTutor()->user;
+    $admin = User::factory()->admin()->create();
+    $parent = User::factory()->create();
+
+    foreach ([[$tutor, true], [$parent, false], [$admin, false]] as [$user, $expected]) {
+        $this->actingAs($user)->get(route('profile.edit'))
+            ->assertInertia(fn (Assert $page) => $page->where('auth.is_tutor', $expected));
+    }
+
+    // There is no JS test runner: this keeps the two components from dropping the condition or the link.
+    foreach (['resources/js/components/AppSidebar.vue' => 'page.props.auth.is_tutor', 'resources/js/components/AppHeader.vue' => 'auth.value.is_tutor'] as $file => $condition) {
+        $source = file_get_contents(base_path($file));
+
+        expect($source)->toContain("...({$condition} ? [{ title: 'Earnings', href: '/tutor/earnings'");
+    }
 });
