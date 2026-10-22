@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\AccountDeletionController;
 use App\Http\Controllers\Settings\DisplayNameController;
 use App\Http\Controllers\Settings\PayoutController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -14,6 +15,13 @@ Route::middleware(['auth', 'throttle:account-writes'])->group(function () {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+});
+
+// R273: asking for account deletion files a request for an admin and erases nothing, so there is no password
+// confirmation here (RequirePassword only remembers a GET to return to; this is a POST from the profile page). Not
+// `verified`: an account that never verified its email can still ask.
+Route::middleware(['auth', 'throttle:account-writes'])->group(function () {
+    Route::post('settings/account-deletion', [AccountDeletionController::class, 'store'])->name('account-deletion.store');
 });
 
 Route::middleware(['auth', 'verified', 'can:access-tutor-area', 'throttle:display-name'])->group(function () {

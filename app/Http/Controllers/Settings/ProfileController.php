@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Enums\AccountDeletionRequestStatus;
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\AccountDeletionRequest;
 use App\Models\TutorProfile;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
@@ -13,8 +16,11 @@ use Inertia\Response;
 
 /**
  * No self-service `destroy()`: R54 makes account deletion an admin-only,
- * audited action (`App\Actions\Admin\AnonymizeUser`) for both parents and
- * tutors, never something a signed-in user does to their own row.
+ * audited action (`App\Actions\Account\EraseAccount`, which runs
+ * `App\Actions\Admin\AnonymizeUser`) for both parents and tutors, never
+ * something a signed-in user does to their own row. R273: a parent or tutor can
+ * only ask for it (`AccountDeletionController`); this page shows the state of
+ * that request.
  */
 class ProfileController extends Controller
 {
@@ -27,7 +33,33 @@ class ProfileController extends Controller
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
             'tutorDisplayName' => $this->tutorDisplayName($request),
+            'accountDeletion' => $this->accountDeletion($request),
         ]);
+    }
+
+    /**
+     * R273: the state of this account's latest deletion request, for its owner only. Null for an admin (admins
+     * disable, not delete) so the section does not render. A declined request shows the admin's note until a new
+     * request is filed; a declined one does not stop the next.
+     *
+     * @return array{status: string|null, requested_at: string|null, handled_at: string|null, note: string|null}|null
+     */
+    private function accountDeletion(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if ($user->role === Role::Admin) {
+            return null;
+        }
+
+        $latest = AccountDeletionRequest::query()->where('user_id', $user->id)->latest('id')->first();
+
+        return [
+            'status' => $latest?->status->value,
+            'requested_at' => $latest?->requested_at->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
+            'handled_at' => $latest?->handled_at?->setTimezone($user->timezone)->format('D, j M Y, g:i A'),
+            'note' => $latest?->status === AccountDeletionRequestStatus::Declined ? $latest->admin_note : null,
+        ];
     }
 
     /**
