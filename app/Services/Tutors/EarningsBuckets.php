@@ -28,4 +28,21 @@ final readonly class EarningsBuckets
     {
         return $this->pending->add($this->onHold)->add($this->available)->add($this->processing)->add($this->paidToDate);
     }
+
+    /**
+     * R268: what the platform still holds for the tutor or owes them — every bucket except paid to date, each counted
+     * only when it is above zero. An overpaid tutor's negative `available` does not cancel a pending lesson's money.
+     */
+    public function owed(): Money
+    {
+        $owed = Money::zero();
+
+        foreach ([$this->pending, $this->onHold, $this->available, $this->processing] as $bucket) {
+            if ($bucket->compare(Money::zero()) > 0) {
+                $owed = $owed->add($bucket);
+            }
+        }
+
+        return $owed;
+    }
 }
