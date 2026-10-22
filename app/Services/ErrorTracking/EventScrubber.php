@@ -21,7 +21,7 @@ final class EventScrubber
 {
     public const REDACTED = '[redacted]';
 
-    private const SENSITIVE_KEY = '/(password|passwd|passphrase|passcode|pwd|secret|token|authorization|cookie|credential|signature|session|csrf|xsrf|card|cvc|cvv|cvn|iban|bank|routing|swift|sort_?code|account_?(number|no)|api_?key|private_?key|recovery|email|phone|body|dsn|last4|(^|_)(key|pw|otp|pin|jwt|bic|mfa|acct)(_|$))/';
+    private const SENSITIVE_KEY = '/(password|passwd|passphrase|passcode|pwd|secret|token|authorization|cookie|credential|signature|session|csrf|xsrf|card|cvc|cvv|cvn|iban|bank|routing|swift|sort_?code|account_?(number|no)|api_?key|private_?key|recovery|email|phone|body|dsn|last4|surname|birth|dob|(first|last|full|given|family|learner|child|parent|tutor|student|display)_?name|(^|_)(key|pw|otp|pin|jwt|bic|mfa|acct)(_|$)|(^|_)(message|content|notes?|address)$)/';
 
     private const BEARER = '/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i';
 
@@ -37,12 +37,19 @@ final class EventScrubber
         // Never the body or the cookies, whatever their keys.
         unset($request['data'], $request['cookies']);
 
+        // Query values are free text (Filament's `?search=` holds a name or an email), so every value goes, not only sensitive keys.
         if (isset($request['url']) && is_string($request['url'])) {
-            $request['url'] = self::string($request['url']);
+            $request['url'] = self::url($request['url']);
         }
 
         if (isset($request['query_string']) && is_string($request['query_string'])) {
-            $request['query_string'] = self::string($request['query_string']);
+            $request['query_string'] = substr(self::url('?'.$request['query_string']), 1);
+        }
+
+        foreach (is_array($request['headers'] ?? null) ? $request['headers'] : [] as $name => $values) {
+            if (strtolower((string) $name) === 'referer') {
+                $request['headers'][$name] = is_array($values) ? array_map(fn ($v) => is_string($v) ? self::url($v) : $v, $values) : (is_string($values) ? self::url($values) : $values);
+            }
         }
 
         $event->setRequest(self::array($request));
@@ -58,8 +65,16 @@ final class EventScrubber
             $event->setMessage(self::string($event->getMessage()), self::array($event->getMessageParams()), $event->getMessageFormatted() === null ? null : self::string($event->getMessageFormatted()));
         }
 
+        // A wrapper (Blade's ViewException, a `'Failed: '.$e->getMessage()`) copies the inner message, so one opaque
+        // exception anywhere in the chain, or SQL text in any value, redacts every value in the chain.
+        $opaque = false;
+
         foreach ($event->getExceptions() as $exception) {
-            $exception->setValue(self::exceptionValue($exception->getType(), $exception->getValue()));
+            $opaque = $opaque || self::isOpaque($exception->getType(), $exception->getValue());
+        }
+
+        foreach ($event->getExceptions() as $exception) {
+            $exception->setValue($opaque ? self::REDACTED : self::string($exception->getValue()));
 
             // Arguments recorded per call (when `zend.exception_ignore_args` is 0) can hold tokens and passwords.
             foreach ($exception->getStacktrace()?->getFrames() ?? [] as $frame) {
@@ -94,32 +109,45 @@ final class EventScrubber
     {
         $masked = preg_replace(self::BEARER, '$1 '.self::REDACTED, $value) ?? self::REDACTED;
 
+        // Email addresses, bare JWTs and credentials in a URL's userinfo.
+        $masked = preg_replace(['/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/', '/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/'], self::REDACTED, $masked) ?? self::REDACTED;
+        $masked = preg_replace('#([a-z][a-z0-9+.-]*://)[^/\s:@]*:[^/\s@]*@#i', '$1'.self::REDACTED.'@', $masked) ?? self::REDACTED;
+
+        // `password: x` and the like.
+        $masked = preg_replace('/\b(password|passwd|secret|token|api[_-]?key)\s*:\s*[^\s,;]+/i', '$1: '.self::REDACTED, $masked) ?? self::REDACTED;
+
         // Header lines (`Authorization: …`, `X-Api-Key: …`, `Cookie: …`) lose everything after the name.
         $masked = preg_replace('/\b(proxy-authorization|authorization|set-cookie|cookie|x-[a-z-]*(?:key|token|secret))\s*:[^\r\n]*/i', '$1: '.self::REDACTED, $masked) ?? self::REDACTED;
 
         // Provider secret keys, and anything shaped like a card number.
-        $masked = preg_replace(['/\b[sr]k_(?:live|test)_[A-Za-z0-9]+/', '/(?<![\w.])(?:\d[ -]?){13,19}(?!\d)/'], self::REDACTED, $masked) ?? self::REDACTED;
+        $masked = preg_replace(['/\b(?:[sr]k_(?:live|test)|whsec)_[A-Za-z0-9]+/', '/(?<![\w.])(?:\d[ -]?){13,19}(?!\d)/'], self::REDACTED, $masked) ?? self::REDACTED;
 
         // The token in a password-reset link path.
         $masked = preg_replace('#(reset-password/)[^/?\#\s]+#i', '$1'.self::REDACTED, $masked) ?? self::REDACTED;
 
         // JSON pairs: "password":"…" keeps the key and loses the value.
-        $masked = preg_replace_callback('/"([^"\\\\]+)"(\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/', fn (array $m): string => self::isSensitiveKey($m[1]) ? '"'.$m[1].'"'.$m[2].'"'.self::REDACTED.'"' : $m[0], $masked) ?? self::REDACTED;
+        $masked = preg_replace_callback('/"([^"\\\\]+)"(\s*:\s*)"(?:[^"\\\\]++|\\\\.)*+"/', fn (array $m): string => self::isSensitiveKey($m[1]) ? '"'.$m[1].'"'.$m[2].'"'.self::REDACTED.'"' : $m[0], $masked) ?? self::REDACTED;
 
         // A `key=value` pair anywhere (query string, `--token=abc`, `password=x`) whose key is sensitive keeps the key and loses the value.
         return preg_replace_callback('/(?<![A-Za-z0-9_.%\[\]-])([A-Za-z0-9_.%\[\]-]+)=([^&;#\s"\']*)/', fn (array $m): string => self::isSensitiveKey(urldecode($m[1])) ? $m[1].'='.self::REDACTED : $m[0], $masked) ?? self::REDACTED;
     }
 
-    /** A message that can hold user data is replaced by its class; any other is masked like every other string. */
-    private static function exceptionValue(string $type, string $message): string
+    /** Every value in a URL's query string goes, keeping only the parameter names. */
+    public static function url(string $value): string
+    {
+        return preg_replace('/([?&;])([^=&;#\s]+)=([^&;#\s]*)/', '$1$2='.self::REDACTED, self::string($value)) ?? self::REDACTED;
+    }
+
+    /** True for an exception class whose message carries user data, or a message that shows SQL. */
+    private static function isOpaque(string $type, string $message): bool
     {
         foreach (self::OPAQUE_EXCEPTIONS as $opaque) {
             if (is_a($type, $opaque, true)) {
-                return self::REDACTED;
+                return true;
             }
         }
 
-        return self::string($message);
+        return preg_match('/SQLSTATE|\(Connection: |\bSQL: /', $message) === 1;
     }
 
     /**

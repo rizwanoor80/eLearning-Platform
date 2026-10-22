@@ -4,6 +4,7 @@ use App\Services\ErrorTracking\ErrorTrackingDsn;
 use App\Services\ErrorTracking\EventScrubber;
 use App\Services\Ops\Preflight;
 use Illuminate\Database\QueryException;
+use Illuminate\View\ViewException;
 use Sentry\Breadcrumb;
 use Sentry\ClientBuilder;
 use Sentry\Event;
@@ -128,12 +129,13 @@ it('classifies sensitive keys', function (string $key) {
     'api_key', 'apiKey', 'API-KEY', 'private_key', 'stripe_secret', 'webhook_secret', 'clientSecret', 'access_token', 'remember_token',
     'bearerToken', 'key', 'signature', 'session_id', 'card_number', 'cardNumber', 'cvc', 'cvv', 'iban', 'bank_account_number',
     'routing_number', 'swift_code', 'sort_code', 'payment_token', 'credentials', 'PHP_AUTH_PW', 'two_factor_recovery_codes', 'otp', 'pin',
-    'passcode', 'mfa_code', 'jwt', 'dsn', 'bic', 'email', 'phone', 'body',
+    'passcode', 'mfa_code', 'jwt', 'dsn', 'bic', 'email', 'phone', 'body', 'learner_name', 'first_name', 'displayName', 'message', 'content',
+    'note', 'address', 'dob',
 ]);
 
 it('leaves ordinary keys alone', function (string $key) {
     expect(EventScrubber::isSensitiveKey($key))->toBeFalse();
-})->with(['url', 'method', 'user_agent', 'lesson_id', 'status', 'amount_fils', 'message', 'monkey', 'accept', 'content-type', 'host', 'shipping', 'spinner', 'opinion']);
+})->with(['url', 'method', 'user_agent', 'lesson_id', 'status', 'amount_fils', 'monkey', 'accept', 'content-type', 'host', 'shipping', 'spinner', 'opinion', 'route_name', 'class']);
 
 it('masks bearer credentials and sensitive query values inside strings', function () {
     expect(EventScrubber::string('Gateway rejected Bearer abc.DEF-123_xyz== again'))
@@ -152,6 +154,11 @@ it('masks secrets that appear anywhere in a message', function (string $input, s
     'header line' => ['Authorization: sk_live_ABCDEFSECRET', 'ABCDEFSECRET'],
     'provider key' => ['used sk_live_ABCDEFSECRET to charge', 'ABCDEFSECRET'],
     'card number' => ['declined 4242 4242 4242 4242 today', '4242 4242'],
+    'email address' => ['Mail to aisha.khan@example.test failed', 'aisha.khan'],
+    'jwt' => ['got eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SIGSECRET1 back', 'SIGSECRET1'],
+    'url userinfo' => ['connect redis://:pw0SECRET@cache:6379 failed', 'pw0SECRET'],
+    'colon pair' => ['rejected password: hunter2SECRET today', 'hunter2SECRET'],
+    'webhook secret' => ['bad whsec_ABCDEFSECRET sig', 'ABCDEFSECRET'],
     'reset link' => ['GET https://x.test/reset-password/TOKENSECRET123?email=a', 'TOKENSECRET123'],
 ]);
 
@@ -226,7 +233,7 @@ it('scrubs a captured event end to end', function () {
         ->and($sent->getRequest()['method'])->toBe('POST')
         ->and($sent->getRequest()['headers']['User-Agent'])->toBe(['Pest'])
         ->and($sent->getRequest()['headers']['Authorization'])->toBe(EventScrubber::REDACTED)
-        ->and($sent->getRequest()['query_string'])->toBe('token=[redacted]&lesson=4')
+        ->and($sent->getRequest()['query_string'])->toBe('token=[redacted]&lesson=[redacted]')
         ->and($sent->getExtra()['lesson_id'])->toBe(7)
         ->and($sent->getExtra()['nested'])->toBe(['access_token' => EventScrubber::REDACTED, 'ok' => 'fine'])
         ->and($sent->getTags())->toBe(['webhook_secret' => EventScrubber::REDACTED, 'route' => 'pay.show'])
@@ -271,4 +278,51 @@ it('is what ops:preflight reads for the DSN check', function () {
 
     config(['error-tracking.dsn' => FAKE_DSN]);
     expect($find()->passed())->toBeTrue()->and(json_encode($find()))->not->toContain('ingest.invalid');
+});
+
+it('redacts a wrapper exception that copies the message of a database error', function () {
+    [$client, $transport] = recordingClient();
+
+    $inner = new QueryException('pgsql', 'insert into messages (body) values (?)', ['my daughter Aisha 0501234567'], new PDOException('x'));
+    $client->captureException(new ViewException($inner->getMessage().' (View: admin.blade.php)', 0, 1, 'f', 1, $inner));
+
+    $values = array_map(fn ($e) => $e->getValue(), $transport->events[0]->getExceptions());
+
+    expect(json_encode($values))->not->toContain('Aisha')->not->toContain('0501234567')
+        ->and(array_unique($values))->toBe([EventScrubber::REDACTED]);
+});
+
+it('redacts a wrapper whose own message shows SQL, even without a database exception in the chain', function () {
+    [$client, $transport] = recordingClient();
+
+    $client->captureException(new RuntimeException('Failed: (Connection: pgsql, SQL: select * from users where name = Aisha)'));
+
+    expect($transport->events[0]->getExceptions()[0]->getValue())->toBe(EventScrubber::REDACTED);
+});
+
+it('keeps only the names of query parameters in the url, query string and referer', function () {
+    [$client, $transport] = recordingClient();
+
+    $event = Event::createEvent();
+    $event->setRequest([
+        'url' => 'https://rehearsal.example/admin/learners?search=aisha%40example.test&page=2',
+        'query_string' => 'search=aisha%40example.test&page=2',
+        'headers' => ['Referer' => ['https://rehearsal.example/admin/learners?search=Aisha+Khan'], 'Host' => ['rehearsal.example']],
+    ]);
+
+    $client->captureEvent($event);
+
+    $request = $transport->events[0]->getRequest();
+
+    expect(json_encode($request))->not->toContain('aisha')->not->toContain('Aisha')
+        ->and($request['url'])->toBe('https://rehearsal.example/admin/learners?search=[redacted]&page=[redacted]')
+        ->and($request['query_string'])->toBe('search=[redacted]&page=[redacted]')
+        ->and($request['headers']['Referer'])->toBe(['https://rehearsal.example/admin/learners?search=[redacted]'])
+        ->and($request['headers']['Host'])->toBe(['rehearsal.example']);
+});
+
+it('keeps a long quoted value from wiping the whole message', function () {
+    $long = '{"note":"'.str_repeat('a', 60000).'"} tail';
+
+    expect(EventScrubber::string($long))->toEndWith('tail');
 });
