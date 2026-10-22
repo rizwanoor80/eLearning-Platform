@@ -8621,3 +8621,15 @@ Fixed on `098967c`: (6) a definite "no" releases the caller's own hold through t
 
 ### 2026-10-22 — VERIFICATION (25d merged and on rehearsal, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #85 squash-merged -> `main` `3df85ae9509264f64d51c9adbf9066336785c91c` after fix round 1 (1 of cap 2); CI on the merged commit green on PostgreSQL 16 and 18. Deploy authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228. Pushed `3df85ae` to `rehearsal`; `GET /ops/status` polled every 15 s showed it landed on the 3rd poll (R272). R213: `app.git_sha` `3df85ae9`, `migrations.pending` 0 (25d adds no migration), `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` all 200.
+
+### 2026-10-22 — START (25e, PR #86, CC)
+Branch `cp/25e-end-to-end` from `main` `0e655ce`; R270; advisor minimum 0. One feature test, `tests/Feature/EndToEnd/ParentToPaidTutorTest.php`, on the fake gateway; CP8 acceptance line in docs/CHECKPOINTS.md ticked. No production code, no migration.
+
+### 2026-10-22 — DECISION (25e, CC)
+No frozen file touched (`LessonStateMachine.php`, `LedgerService.php`, `app/Services/Payments/*`, the ledger migration are not in the diff). Fixtures synthetic only (`parent@example.test`, "Test Parent", `BANK-REF-E2E`). The test calls three kinds of entry point: routes (register, learners, book, lessons, report, payment method, weekly slot, earnings page), artisan jobs (`recurring:generate`, `recurring:charge`, `lessons:settle-ended`, `ledger:verify`) and, for attendance and the payout batch, the actions directly (`RecordAttendance`, `GeneratePayoutBatch`, `MarkPayoutLinePaid`). No status or ledger row is written directly.
+
+### 2026-10-22 — VERIFICATION (25e gates on `2be5441`, CC)
+Pest **3388 passed / 24467 assertions** (baseline after 25d 3387), the new test alone 1 test / 106 assertions; `ledger:verify` OK, Pint, PHPStan 0, `npm run build`, RTL green. `git log origin/main..HEAD`: `2be5441`. `ledger:verify` exit 0 asserted after booking, teaching, report, charge, payout and mark-paid.
+
+### 2026-10-22 — REVIEW (25e round 1, PR #86, fresh subagent)
+Verdict: **0 High / 0 Medium / 0 Low; 4 PASS, 2 PASS WITH NOTE, 0 FAIL.** Numbered verdicts: (1) PASS WITH NOTE nothing is faked or short-circuited on the money path, but attendance and the payout batch/mark-paid are action calls, not the join route or the Filament UI; (2) PASS no vacuous assertions; (3) PASS WITH NOTE step 9 asserts `paid_to_date == 0` but not that `pending` equals the earned amount, mail is faked but not asserted, idempotency is checked by count only; (4) PASS no clock or data fragility; (5) PASS invariants and synthetic fixtures; (6) PASS the CHECKPOINTS line is accurate (it omits "mark paid" and the final parent-side ledger check). Notes disclosed unfixed: test-only, none authorised as a fix round beyond R270.
