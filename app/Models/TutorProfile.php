@@ -68,6 +68,14 @@ class TutorProfile extends Model
     use HasFactory;
 
     /**
+     * R268: every column that holds the tutor's bank details; `AnonymizeUser` and `ClearAnonymisedTutorBankDetails`
+     * clear exactly these.
+     *
+     * @var list<string>
+     */
+    public const BANK_FIELDS = ['bank_name', 'bank_account_name', 'bank_iban', 'bank_swift', 'bank_verified_at'];
+
+    /**
      * A pending display name is not shown to anyone until an admin approves it (R195, ADR-027), so a stray
      * `toArray()` or Inertia prop built from the model must not carry it. The two readers that may see it, the
      * tutor's own Settings page and the admin queue, read the attribute explicitly.

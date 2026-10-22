@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Payments;
 
+use App\Events\Payments\RemovedCardNotDetached;
 use App\Models\PaymentMethod;
 use App\Services\Payments\NoActivePaymentGateway;
 use App\Support\Payments\ActiveStripe;
@@ -10,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Stripe\Exception\ApiErrorException;
@@ -76,5 +78,10 @@ class DetachRemovedCard implements ShouldQueue
             'error' => $e::class,
             'unconfigured' => $e instanceof NoActivePaymentGateway,
         ]);
+
+        // 25c (R268): an admin is told, once a day per card, not only the log.
+        if (Cache::add("removed-card-detach-alert:{$this->paymentMethodId}", true, now()->addDay())) {
+            RemovedCardNotDetached::dispatch($this->paymentMethodId);
+        }
     }
 }

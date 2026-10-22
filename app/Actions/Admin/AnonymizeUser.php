@@ -14,6 +14,7 @@ use App\Models\Lesson;
 use App\Models\MatchRequest;
 use App\Models\TutorProfile;
 use App\Models\User;
+use App\Services\Tutors\TutorEarnings;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -46,6 +47,7 @@ class AnonymizeUser
         private RecordAuditLog $recordAuditLog,
         private SuspendTutor $suspendTutor,
         private CloseMatchRequest $closeMatchRequest,
+        private TutorEarnings $earnings,
     ) {}
 
     public function __invoke(User $actor, User $target): void
@@ -100,8 +102,10 @@ class AnonymizeUser
             // An unconditional UPDATE, not a dirty-checked save: a read of the profile here is not locked, and an
             // approval committing between that read and a save would leave the in-memory name null, issue no
             // UPDATE, and let the anonymised tutor keep the approved name.
+            $bankDetails = null;
+
             if ($profile !== null) {
-                TutorProfile::query()->whereKey($profile->getKey())->update([
+                $values = [
                     'display_name' => null,
                     'display_name_requested' => null,
                     'display_name_requested_at' => null,
@@ -109,7 +113,21 @@ class AnonymizeUser
                     'payout_method' => null,
                     'payout_email' => null,
                     'payout_details_changed_at' => null,
-                ]);
+                ];
+
+                // R268: the bank details go too, unless the tutor is still owed money: then they stay, for the admin's
+                // manual transfer, until `ClearAnonymisedTutorBankDetails` records that decision. Decided on the
+                // locked profile, so a lesson settling at the same moment cannot slip between the read and the write.
+                $lockedProfile = TutorProfile::query()->whereKey($profile->getKey())->lockForUpdate()->firstOrFail();
+
+                if ($this->earnings->buckets($lockedProfile)->owed()->isZero()) {
+                    $values += array_fill_keys(TutorProfile::BANK_FIELDS, null);
+                    $bankDetails = 'cleared';
+                } else {
+                    $bankDetails = 'kept_money_owed';
+                }
+
+                TutorProfile::query()->whereKey($profile->getKey())->update($values);
             }
 
             MatchRequest::query()
@@ -124,6 +142,7 @@ class AnonymizeUser
                 'status' => 'anonymized',
                 'name' => $locked->name,
                 'email' => $locked->email,
+                'bank_details' => $bankDetails,
             ]);
         });
     }

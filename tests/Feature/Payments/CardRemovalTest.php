@@ -9,8 +9,11 @@ use App\Enums\LessonStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\RecurringSlotStatus;
 use App\Enums\TestCard;
+use App\Events\Payments\RemovedCardNotDetached;
 use App\Exceptions\CardRemovalException;
 use App\Jobs\Payments\DetachRemovedCard;
+use App\Listeners\Payments\SendAdminRemovedCardMail;
+use App\Mail\Admin\AdminRemovedCardMail;
 use App\Mail\Payments\WeeklyLessonChargeFailedMail;
 use App\Models\AuditLog;
 use App\Models\Curriculum;
@@ -27,6 +30,7 @@ use App\Services\Payments\PaymentGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\Payments\FakeStripeHttp;
@@ -322,4 +326,34 @@ it('resumes a pending charge with the card it began with even though that card w
     expect($outcome->name)->toBe('Charged')
         ->and($payment->fresh()->status)->toBe(PaymentStatus::Captured)
         ->and($lesson->fresh()->status)->toBe(LessonStatus::Confirmed);
+});
+
+it('tells the admins once a day, with the card id only, when a removed card could not be detached for good', function () {
+    Mail::fake();
+    Event::fake([RemovedCardNotDetached::class]);
+    $card = crStripeCard($this->parent);
+    $card->update(['removed_at' => now()]);
+
+    (new DetachRemovedCard($card->id))->failed(new RuntimeException('boom'));
+    (new DetachRemovedCard($card->id))->failed(new RuntimeException('boom'));
+
+    Event::assertDispatchedTimes(RemovedCardNotDetached::class, 1);
+    Event::assertDispatched(RemovedCardNotDetached::class, fn ($e) => $e->paymentMethodId === $card->id);
+});
+
+it('mails the admins a message that names the card id and nothing about the parent', function () {
+    Mail::fake();
+    $admin = User::factory()->admin()->create();
+    $card = crStripeCard($this->parent);
+
+    (new SendAdminRemovedCardMail)->handle(new RemovedCardNotDetached($card->id));
+
+    Mail::assertQueued(AdminRemovedCardMail::class, function (AdminRemovedCardMail $mail) use ($card, $admin) {
+        $html = $mail->render();
+
+        return $mail->hasTo($admin->email)
+            && str_contains($html, "card {$card->id}")
+            && ! str_contains($html, $this->parent->email)
+            && ! str_contains($html, 'pm_old_1');
+    });
 });

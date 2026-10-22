@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TutorProfiles\Pages;
 
+use App\Actions\Admin\ClearAnonymisedTutorBankDetails;
 use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\ApproveTutor;
 use App\Actions\Tutor\ReinstateTutor;
@@ -15,10 +16,12 @@ use App\Enums\TutorProfileStatus;
 use App\Enums\TutorReviewSection;
 use App\Exceptions\TutorApprovalBlockedException;
 use App\Exceptions\TutorStatusTransitionException;
+use App\Exceptions\UserDeletionException;
 use App\Filament\Resources\TutorProfiles\TutorProfileResource;
 use App\Models\Curriculum;
 use App\Models\Subject;
 use App\Models\TutorProfile;
+use App\Services\Tutors\TutorEarnings;
 use App\Support\Money;
 use App\Support\YearGroups\YearGroupOptions;
 use Closure;
@@ -175,6 +178,33 @@ class ViewTutorProfile extends ViewRecord
                         : Notification::make()->title('Subjects updated')->success()->send();
                 })),
 
+            Action::make('clearBankDetails')
+                ->label('Delete kept bank details')
+                ->color('danger')
+                ->visible(fn (TutorProfile $record) => ClearAnonymisedTutorBankDetails::applies($record))
+                ->requiresConfirmation()
+                ->modalHeading('Delete this anonymised tutor’s bank details?')
+                ->modalDescription(function (TutorProfile $record): string {
+                    $owed = app(TutorEarnings::class)->buckets($record)->owed();
+
+                    return 'The account was deleted but its bank details are still stored'
+                        .($owed->isZero()
+                            ? ' (nothing is owed; they pre-date automatic clearing).'
+                            : ' because money was still owed ('.$owed->format().').')
+                        .' Deleting them is permanent: make any manual transfer first, then record the decision here.';
+                })
+                ->schema([
+                    Textarea::make('note')
+                        ->label('Decision')
+                        ->helperText('For example “paid by hand on 2026-11-02, reference in the finance sheet”. Never paste account details.')
+                        ->maxLength(1000)
+                        ->required(),
+                ])
+                ->action($this->guarded(function (TutorProfile $record, array $data) {
+                    app(ClearAnonymisedTutorBankDetails::class)(auth()->user(), $record, $data['note']);
+                    Notification::make()->title('Bank details deleted')->success()->send();
+                })),
+
             Action::make('editRate')
                 ->label('Edit rate')
                 ->color('gray')
@@ -286,7 +316,7 @@ class ViewTutorProfile extends ViewRecord
         return function (TutorProfile $record, array $data = []) use ($callback) {
             try {
                 $callback($record, $data);
-            } catch (TutorApprovalBlockedException|TutorStatusTransitionException $e) {
+            } catch (TutorApprovalBlockedException|TutorStatusTransitionException|UserDeletionException $e) {
                 Notification::make()->title('Not allowed')->body($e->getMessage())->danger()->send();
             } catch (ValidationException $e) {
                 Notification::make()->title('Not allowed')->body(collect($e->errors())->flatten()->first())->danger()->send();
