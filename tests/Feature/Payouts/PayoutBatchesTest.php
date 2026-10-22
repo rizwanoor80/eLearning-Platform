@@ -491,8 +491,11 @@ it('lists only the lines still to pay, and writes values exactly as stored', fun
 it('refuses to write a file for a pending line that carries a formula-leading value, naming the line', function () {
     $tutor = pbTutor();
     $line = pbLine($tutor);
-    // A line made before the input rule existed: forced in below the model's guard.
+    // A line made before the input rule existed: forced in below the model's guard, and below the R274 trigger that otherwise
+    // refuses any rewrite of a line's details.
+    DB::unprepared('ALTER TABLE payout_batch_lines DISABLE TRIGGER payout_batch_lines_details_only_erase');
     DB::table('payout_batch_lines')->where('id', $line->id)->update(['details' => Crypt::encryptString(json_encode(['account_name' => '=HYPERLINK("http://x")', 'iban' => 'GB00X', 'swift' => null, 'bank_name' => null]))]);
+    DB::unprepared('ALTER TABLE payout_batch_lines ENABLE TRIGGER payout_batch_lines_details_only_erase');
     $line = $line->fresh();
     $export = app(ExportPayoutBatchCsv::class);
 

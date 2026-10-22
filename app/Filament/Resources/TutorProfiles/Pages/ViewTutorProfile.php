@@ -191,7 +191,7 @@ class ViewTutorProfile extends ViewRecord
                         .($owed->isZero()
                             ? ' (nothing is owed; they pre-date automatic clearing).'
                             : ' because money was still owed ('.$owed->format().').')
-                        .' Deleting them is permanent: make any manual transfer first, then record the decision here.';
+                        .' Deleting them is permanent, and it also erases the account details copied onto this tutor’s payout lines: make any manual transfer first, then record the decision here.';
                 })
                 ->schema([
                     Textarea::make('note')

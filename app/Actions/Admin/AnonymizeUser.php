@@ -3,10 +3,12 @@
 namespace App\Actions\Admin;
 
 use App\Actions\Match\CloseMatchRequest;
+use App\Actions\Payouts\ErasePayoutLineDetails;
 use App\Actions\RecordAuditLog;
 use App\Actions\Tutor\SuspendTutor;
 use App\Enums\LessonStatus;
 use App\Enums\MatchRequestStatus;
+use App\Enums\PayoutLineStatus;
 use App\Enums\Role;
 use App\Enums\TutorProfileStatus;
 use App\Exceptions\UserDeletionException;
@@ -33,6 +35,9 @@ use Illuminate\Support\Str;
  * still-open match request, closed here so `SuggestTutors` can never later
  * mail the tombstoned address.
  *
+ * R274: a tutor's paid payout lines lose their encrypted `details` copy here (all lines when nothing is owed); the amount,
+ * method, currency, reference and paid date stay (`ErasePayoutLineDetails`).
+ *
  * Admin action, audited; enforced here because no `UserPolicy` exists yet.
  *
  * Lock order (R225(b)): the target's `users` row `FOR UPDATE` first, then any `tutor_profiles` row.
@@ -48,6 +53,7 @@ class AnonymizeUser
         private SuspendTutor $suspendTutor,
         private CloseMatchRequest $closeMatchRequest,
         private TutorEarnings $earnings,
+        private ErasePayoutLineDetails $erasePayoutLineDetails,
     ) {}
 
     public function __invoke(User $actor, User $target): void
@@ -103,6 +109,7 @@ class AnonymizeUser
             // approval committing between that read and a save would leave the in-memory name null, issue no
             // UPDATE, and let the anonymised tutor keep the approved name.
             $bankDetails = null;
+            $payoutLinesErased = null;
 
             if ($profile !== null) {
                 $values = [
@@ -123,9 +130,17 @@ class AnonymizeUser
                 if ($this->earnings->buckets($lockedProfile)->owed()->isZero()) {
                     $values += array_fill_keys(TutorProfile::BANK_FIELDS, null);
                     $bankDetails = 'cleared';
+                    // R274: nothing is owed, so no line is awaiting payment (a pending line's money is `processing`, part of
+                    // `owed`): every line's frozen details copy goes with the account.
+                    $erase = PayoutLineStatus::cases();
                 } else {
                     $bankDetails = 'kept_money_owed';
+                    // R274: a paid line's copy has no use and goes now; unpaid lines keep theirs, for the admin's manual
+                    // transfer, until `ClearAnonymisedTutorBankDetails` records that decision.
+                    $erase = [PayoutLineStatus::Paid];
                 }
+
+                $payoutLinesErased = ($this->erasePayoutLineDetails)($lockedProfile, $erase);
 
                 TutorProfile::query()->whereKey($profile->getKey())->update($values);
             }
@@ -143,6 +158,7 @@ class AnonymizeUser
                 'name' => $locked->name,
                 'email' => $locked->email,
                 'bank_details' => $bankDetails,
+                'payout_lines_erased' => $payoutLinesErased,
             ]);
         });
     }

@@ -26,6 +26,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * stored: a bank would read an added `'` as part of the name, so a value that a spreadsheet would run as a formula
  * (`=`, `+`, `-`, `@`) is refused when it is typed (R263). A pending line that still carries one (made before that rule)
  * stops the file with a `PayoutException` naming the line references; the admin marks those lines failed and generates again.
+ * R274: a pending line whose details were erased (its tutor's account was erased and the admin then recorded the decision)
+ * stops the file with a `PayoutException` naming the references; it is never skipped silently, because a skipped line would
+ * be money the admin believes is in the file. The admin marks those lines failed.
  * The caller must be an active admin, checked here first.
  */
 class ExportPayoutBatchCsv
@@ -72,6 +75,15 @@ class ExportPayoutBatchCsv
      */
     public function csv(PayoutMethodCode $method, array $lines): string
     {
+        $erased = array_map(
+            fn (PayoutBatchLine $line) => $line->reference,
+            array_values(array_filter($lines, fn (PayoutBatchLine $line) => $line->details === null)),
+        );
+
+        if ($erased !== []) {
+            throw new PayoutException('These lines can no longer be paid from a file because their account details were erased with the tutor\'s account: '.implode(', ', $erased).'. Mark them failed.');
+        }
+
         $unsafe = [];
 
         foreach ($lines as $line) {

@@ -36,7 +36,7 @@ class EraseAccountAction
                 $user = $resolveUser($record);
 
                 return 'You are about to erase '.$user->name.' ('.$user->email.'), a '.($user->role === Role::Tutor ? 'tutor' : 'parent').'. '
-                    .'ERASED: name, email, phone, password, two-factor and passkeys, signed-in sessions; for a tutor also the display name and payout details, and the bank details unless the tutor is still owed money (they stay until that is settled). Open match requests are closed and an approved tutor is suspended. '
+                    .'ERASED: name, email, phone, password, two-factor and passkeys, signed-in sessions; for a tutor also the display name and payout details, and the bank details unless the tutor is still owed money (they stay until that is settled); the account details copied onto paid payout lines are erased too (all lines when nothing is owed), while the amounts, references and dates stay. Open match requests are closed and an approved tutor is suspended. '
                     .'KEPT: lessons, payments, the ledger and learners, without the person\'s name, because financial history must outlive the account. '
                     .'Refused while any lesson is still open. This cannot be undone.';
             })

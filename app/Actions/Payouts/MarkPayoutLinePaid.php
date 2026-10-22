@@ -24,11 +24,16 @@ use Illuminate\Support\Facades\DB;
  * negative amount against what the tutor earns next. `GeneratePayoutBatch` only includes money past its dispute window,
  * so a line made by it does not normally go negative.
  *
+ * R274: when the tutor's account has already been erased (money was still owed, so their payout details were kept for this
+ * transfer), the line's details copy is erased as soon as it is paid. The owner is a plain read, not a lock: `users` is
+ * locked before the profile (R225(b)), and `AnonymizeUser` waits on the profile lock held here, so it either runs before
+ * this and the read sees the erasure, or after and its own erasure sees the paid line.
+ *
  * Lock order: the tutor's profile row, then the line.
  */
 class MarkPayoutLinePaid
 {
-    public function __construct(private LedgerService $ledger, private TutorEarnings $earnings, private RecordAuditLog $recordAuditLog) {}
+    public function __construct(private LedgerService $ledger, private TutorEarnings $earnings, private RecordAuditLog $recordAuditLog, private ErasePayoutLineDetails $erasePayoutLineDetails) {}
 
     /**
      * @throws PayoutException
@@ -60,10 +65,14 @@ class MarkPayoutLinePaid
                 'resolved_by_user_id' => $admin->id,
             ]);
 
+            $detailsErased = User::withTrashed()->whereKey($profile->user_id)->first()?->trashed() === true
+                && ($this->erasePayoutLineDetails)($profile, [PayoutLineStatus::Paid]) > 0;
+
             ($this->recordAuditLog)($admin, 'payout_line.paid', $locked, ['status' => PayoutLineStatus::Pending->value], [
                 'status' => PayoutLineStatus::Paid->value,
                 'reference' => $locked->reference,
                 'amount_fils' => $locked->amount->toFils(),
+                'details_erased' => $detailsErased,
                 'tutor_available_after_fils' => $this->earnings->buckets($profile)->available->toFils(),
             ]);
         });
