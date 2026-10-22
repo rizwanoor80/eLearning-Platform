@@ -72,6 +72,10 @@ class ReleaseOrphanedPendingPayment
         $payment = Payment::query()->with('lesson')->findOrFail($payment->id);
         $this->assertEligible($payment);
 
+        if (! in_array($payment->gateway, ['stripe', 'fake'], true)) {
+            throw new OrphanedPaymentException('This payment belongs to a gateway that cannot be looked up here.');
+        }
+
         $outcome = $payment->gateway === 'stripe' ? $this->askStripe($payment) : null;
 
         $captured = DB::transaction(function () use ($admin, $payment, $note, $outcome): ?Payment {
@@ -180,8 +184,10 @@ class ReleaseOrphanedPendingPayment
                     || (($meta['kind'] ?? null) === self::KIND_RECURRING
                         && (string) ($meta['lesson_id'] ?? '') === (string) $payment->lesson_id
                         && (string) ($meta['attempt'] ?? '') === (string) $payment->attempt_no)) {
-                    $found = $candidate;
-                    break;
+                    // Stripe lists newest first; a newer cancelled intent must not hide an older one that holds money.
+                    if ($found === null || self::weight($candidate) > self::weight($found)) {
+                        $found = $candidate;
+                    }
                 }
             }
         } catch (InvalidRequestException $e) {
@@ -203,6 +209,16 @@ class ReleaseOrphanedPendingPayment
             PaymentIntent::STATUS_SUCCEEDED => $found,
             PaymentIntent::STATUS_PROCESSING, PaymentIntent::STATUS_REQUIRES_CAPTURE => throw new OrphanedPaymentException('Stripe says this payment is still in progress. Try again later.'),
             default => null,
+        };
+    }
+
+    /** How much an intent matters to the decision: money taken, then money held or in flight, then nothing. */
+    private static function weight(PaymentIntent $intent): int
+    {
+        return match ($intent->status) {
+            PaymentIntent::STATUS_SUCCEEDED => 3,
+            PaymentIntent::STATUS_PROCESSING, PaymentIntent::STATUS_REQUIRES_CAPTURE => 2,
+            default => 1,
         };
     }
 }

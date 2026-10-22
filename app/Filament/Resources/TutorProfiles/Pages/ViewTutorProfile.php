@@ -184,12 +184,20 @@ class ViewTutorProfile extends ViewRecord
                 ->visible(fn (TutorProfile $record) => ClearAnonymisedTutorBankDetails::applies($record))
                 ->requiresConfirmation()
                 ->modalHeading('Delete this anonymised tutor’s bank details?')
-                ->modalDescription(fn (TutorProfile $record): string => 'The account was deleted but its bank details were kept because money was still owed ('
-                    .app(TutorEarnings::class)->buckets($record)->owed()->format().'). Deleting them is permanent: make any manual transfer first, then record the decision here.')
+                ->modalDescription(function (TutorProfile $record): string {
+                    $owed = app(TutorEarnings::class)->buckets($record)->owed();
+
+                    return 'The account was deleted but its bank details are still stored'
+                        .($owed->isZero()
+                            ? ' (nothing is owed; they pre-date automatic clearing).'
+                            : ' because money was still owed ('.$owed->format().').')
+                        .' Deleting them is permanent: make any manual transfer first, then record the decision here.';
+                })
                 ->schema([
                     Textarea::make('note')
                         ->label('Decision')
                         ->helperText('For example “paid by hand on 2026-11-02, reference in the finance sheet”. Never paste account details.')
+                        ->maxLength(1000)
                         ->required(),
                 ])
                 ->action($this->guarded(function (TutorProfile $record, array $data) {

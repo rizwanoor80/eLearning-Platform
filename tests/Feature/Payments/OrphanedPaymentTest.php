@@ -131,6 +131,25 @@ it('ignores an intent that belongs to another lesson or attempt', function () {
         ->and($payment->fresh()->gateway_ref)->toBeNull();
 });
 
+it('does not let a newer cancelled intent hide an older one that took the money', function () {
+    Event::fake([UnverifiedCaptureNeedsRefund::class]);
+    ['payment' => $payment, 'lesson' => $lesson] = opOrphan();
+    $this->http->reply('GET /v1/payment_intents', opIntentList([
+        opIntent('canceled', $lesson->id, ['id' => 'pi_newer']),
+        opIntent('succeeded', $lesson->id, ['id' => 'pi_older']),
+    ]));
+
+    expect(app(ReleaseOrphanedPendingPayment::class)($this->admin, $payment, 'x'))->toBe('refund_started')
+        ->and($payment->fresh()->gateway_ref)->toBe('pi_older');
+});
+
+it('refuses a gateway it does not know how to look up', function () {
+    ['payment' => $payment] = opOrphan(gateway: 'someday');
+
+    expect(fn () => app(ReleaseOrphanedPendingPayment::class)($this->admin, $payment, 'x'))->toThrow(OrphanedPaymentException::class, 'cannot be looked up')
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Pending);
+});
+
 it('closes a pending payment of the fake gateway without asking Stripe', function () {
     ['payment' => $payment] = opOrphan(gateway: 'fake');
 
