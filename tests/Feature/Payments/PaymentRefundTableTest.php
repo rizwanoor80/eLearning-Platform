@@ -178,6 +178,17 @@ it('alerts admins when the reconcile job gives up', function () {
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
 });
 
+it('still tells admins when the payment shows no refunded amount yet, so an out-of-order webhook is not lost (R277)', function (?int $refunded) {
+    Event::fake([PaymentNeedsAttention::class]);
+    PaymentGatewayAccount::factory()->fake()->active()->create();
+    $payment = prPayment(['gateway' => 'fake', 'refunded_amount' => $refunded]);
+
+    dispatch_sync(new ReconcileGatewayRefunds($payment->id));
+    (new ReconcileGatewayRefunds($payment->id))->failed(new RuntimeException('gateway down'));
+
+    Event::assertDispatchedTimes(PaymentNeedsAttention::class, 2);
+})->with([[null], [0]]);
+
 it('re-queues a refused ledger refund as a new attempt with its own key, audits it, and sends it on the queue', function () {
     Bus::fake([ProcessPaymentRefund::class]);
     $payment = prPayment();
@@ -339,7 +350,7 @@ it('alerts admins when the process job gives up', function () {
 
     (new ProcessPaymentRefund($row->id))->failed(new RuntimeException('down'));
 
-    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
 });
 
 it('shows the admin page to an active admin only, and offers Re-queue on a refused refund only', function () {

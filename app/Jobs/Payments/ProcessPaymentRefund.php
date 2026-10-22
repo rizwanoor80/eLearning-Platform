@@ -47,10 +47,10 @@ class ProcessPaymentRefund implements ShouldQueue
 
     public function failed(Throwable $e): void
     {
-        $payment = PaymentRefund::query()->with('payment')->find($this->refundId)?->payment;
+        $row = PaymentRefund::query()->with('payment')->find($this->refundId);
 
-        if ($payment !== null) {
-            PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUND_FAILED);
+        if ($row !== null) {
+            PaymentNeedsAttention::dispatch($row->payment, PaymentNeedsAttention::refundFailedFor($row->kind));
         }
     }
 }

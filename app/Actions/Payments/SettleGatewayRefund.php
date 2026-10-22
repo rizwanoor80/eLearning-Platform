@@ -48,7 +48,7 @@ class SettleGatewayRefund
             if ($fresh->status !== PaymentRefundStatus::Requested) {
                 // Stripe can fail a refund it reported succeeded: the row is not reverted, admins are told.
                 if ($fresh->status === PaymentRefundStatus::Succeeded && in_array($gatewayStatus, self::FAILED, true)) {
-                    $alerts[] = PaymentNeedsAttention::REFUND_FAILED;
+                    $alerts[] = PaymentNeedsAttention::refundFailedFor($fresh->kind);
                 }
 
                 return $fresh->status;
@@ -74,7 +74,7 @@ class SettleGatewayRefund
                     'failure_reason' => 'refund_'.$gatewayStatus,
                     'completed_at' => now(),
                 ]);
-                $alerts[] = PaymentNeedsAttention::REFUND_FAILED;
+                $alerts[] = PaymentNeedsAttention::refundFailedFor($fresh->kind);
 
                 return PaymentRefundStatus::Failed;
             }

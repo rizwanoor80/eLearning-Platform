@@ -77,7 +77,7 @@ class RetryGatewayRefunds extends Command
                 report($e);
 
                 if (Cache::add("refund-sweep-alert:{$payment->id}", true, now()->addDay())) {
-                    PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUND_FAILED);
+                    PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
                 }
             }
         });
@@ -116,6 +116,11 @@ class RetryGatewayRefunds extends Command
             }
 
             foreach ($refund->owed($lesson) as $entry) {
+                // R277: an entry whose refund the gateway holds pending is listed once, below, with its gateway status.
+                if (PaymentRefund::query()->where('ledger_entry_id', $entry->id)->where('status', PaymentRefundStatus::Requested->value)->whereNotNull('gateway_refund_id')->exists()) {
+                    continue;
+                }
+
                 $rows[] = [$lesson->id, $payment->id, $entry->id, $entry->amount, 'not yet confirmed'];
             }
         });
@@ -182,7 +187,7 @@ class RetryGatewayRefunds extends Command
             ->orderBy('id')
             ->each(function (PaymentRefund $row): void {
                 if (Cache::add("refund-stuck-alert:{$row->id}", true, now()->addDay())) {
-                    PaymentNeedsAttention::dispatch($row->payment, PaymentNeedsAttention::REFUND_FAILED);
+                    PaymentNeedsAttention::dispatch($row->payment, PaymentNeedsAttention::REFUND_STUCK);
                 }
             });
     }

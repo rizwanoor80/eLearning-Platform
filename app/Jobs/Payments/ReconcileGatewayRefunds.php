@@ -48,13 +48,8 @@ class ReconcileGatewayRefunds implements ShouldQueue
         $recorded = $record($payment);
 
         // A driver that cannot list its refunds cannot tell whose they are: say so, as the webhook always did.
-        if ($recorded === null) {
-            PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
-
-            return;
-        }
-
-        if ($recorded > 0) {
+        // Otherwise only a refund recorded just now is news. (R277: the mail does not state an amount it cannot back.)
+        if ($recorded === null || $recorded > 0) {
             PaymentNeedsAttention::dispatch($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
         }
     }

@@ -48,7 +48,7 @@ class MakeGatewayRefund
 
             // Told once: a webhook that already failed the row through `SettleGatewayRefund` has raised the alert.
             if ($failed === 1) {
-                PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::REFUND_FAILED);
+                PaymentNeedsAttention::dispatch($payment->fresh() ?? $payment, PaymentNeedsAttention::refundFailedFor($row->kind));
             }
 
             return false;
