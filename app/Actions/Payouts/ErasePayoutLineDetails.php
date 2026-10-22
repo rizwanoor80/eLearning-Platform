@@ -13,7 +13,8 @@ use LogicException;
  * reference, external reference and paid date stay (who was paid what, when, and the bank's reference); nothing here
  * deletes a line. Idempotent: a line already erased is not touched, and the count returned is the lines erased now.
  *
- * The caller holds the tutor's profile row `FOR UPDATE` (passed in, so it cannot be forgotten) inside a transaction:
+ * The caller holds the tutor's profile row `FOR UPDATE` inside a transaction (the action can only check the transaction; passing the
+ * locked model documents the requirement, and every caller locks it first):
  * `MarkPayoutLinePaid` takes the same lock before it marks a line paid, so a payment recorded while an erasure runs is
  * either seen by the erasure or sees the erased account and erases its own copy. A query-builder UPDATE on purpose:
  * the model refuses any change to `details`, and the database trigger refuses anything but setting it to null.

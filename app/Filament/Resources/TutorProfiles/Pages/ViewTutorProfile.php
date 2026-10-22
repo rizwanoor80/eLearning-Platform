@@ -179,15 +179,17 @@ class ViewTutorProfile extends ViewRecord
                 })),
 
             Action::make('clearBankDetails')
-                ->label('Delete kept bank details')
+                ->label('Delete kept payout details')
                 ->color('danger')
                 ->visible(fn (TutorProfile $record) => ClearAnonymisedTutorBankDetails::applies($record))
                 ->requiresConfirmation()
-                ->modalHeading('Delete this anonymised tutor’s bank details?')
+                ->modalHeading('Delete this anonymised tutor’s payout details?')
                 ->modalDescription(function (TutorProfile $record): string {
                     $owed = app(TutorEarnings::class)->buckets($record)->owed();
+                    $bankKept = collect(TutorProfile::BANK_FIELDS)->contains(fn (string $field) => $record->getAttribute($field) !== null);
+                    $what = $bankKept ? 'its bank details are still stored' : 'account details are still stored on its payout lines';
 
-                    return 'The account was deleted but its bank details are still stored'
+                    return 'The account was deleted but '.$what
                         .($owed->isZero()
                             ? ' (nothing is owed; they pre-date automatic clearing).'
                             : ' because money was still owed ('.$owed->format().').')
@@ -202,7 +204,7 @@ class ViewTutorProfile extends ViewRecord
                 ])
                 ->action($this->guarded(function (TutorProfile $record, array $data) {
                     app(ClearAnonymisedTutorBankDetails::class)(auth()->user(), $record, $data['note']);
-                    Notification::make()->title('Bank details deleted')->success()->send();
+                    Notification::make()->title('Payout details deleted')->success()->send();
                 })),
 
             Action::make('editRate')

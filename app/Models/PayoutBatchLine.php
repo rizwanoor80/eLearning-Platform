@@ -17,7 +17,8 @@ use LogicException;
  * as they were when the batch was generated (encrypted, hidden from serialisation): `account_name`, `iban`, `swift`
  * and `bank_name` for a bank transfer, `email` for every other method. Only `GeneratePayoutBatch` creates a line and only
  * `MarkPayoutLinePaid` / `MarkPayoutLineFailed` change its status; the ledger's `payout` entries point at it by id.
- * R274: when the tutor is erased `details` is set to null by `ErasePayoutLineDetails` (the only writer) and nothing else on the line changes.
+ * R274: when the tutor is erased `details` is set to null by `ErasePayoutLineDetails` (the only writer), stamped in `details_erased_at`; no other business column of the line changes.
+ * The database refuses any other change to `details`, so a later key-rotation job would have to lift that trigger on purpose.
  *
  * @property int $id
  * @property int $payout_batch_id

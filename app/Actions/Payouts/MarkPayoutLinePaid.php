@@ -65,8 +65,12 @@ class MarkPayoutLinePaid
                 'resolved_by_user_id' => $admin->id,
             ]);
 
-            $detailsErased = User::withTrashed()->whereKey($profile->user_id)->first()?->trashed() === true
-                && ($this->erasePayoutLineDetails)($profile, [PayoutLineStatus::Paid]) > 0;
+            if (User::withTrashed()->whereKey($profile->user_id)->first()?->trashed() === true) {
+                ($this->erasePayoutLineDetails)($profile, [PayoutLineStatus::Paid]);
+            }
+
+            // True also when an admin had already erased this pending line's copy (the transfer was made by hand).
+            $detailsErased = PayoutBatchLine::query()->whereKey($locked->getKey())->whereNull('details')->exists();
 
             ($this->recordAuditLog)($admin, 'payout_line.paid', $locked, ['status' => PayoutLineStatus::Pending->value], [
                 'status' => PayoutLineStatus::Paid->value,

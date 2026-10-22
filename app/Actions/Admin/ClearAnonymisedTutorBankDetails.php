@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  * note, the amount still owed in fils and which fields held a value, never a value.
  *
  * R274: it also erases the encrypted details copy on every one of the tutor's payout lines (pending and failed ones
- * included; a pending line can then no longer be exported, so an admin marks it failed). That covers a tutor paid by
+ * included; a pending line can then no longer be exported, so an admin marks it paid if the transfer was made by hand, failed if not). That covers a tutor paid by
  * email, who holds no bank fields at all but whose lines still carry the email copy. Amounts, references and paid
  * dates stay; no line is deleted.
  *

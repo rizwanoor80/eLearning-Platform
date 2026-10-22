@@ -28,7 +28,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * stops the file with a `PayoutException` naming the line references; the admin marks those lines failed and generates again.
  * R274: a pending line whose details were erased (its tutor's account was erased and the admin then recorded the decision)
  * stops the file with a `PayoutException` naming the references; it is never skipped silently, because a skipped line would
- * be money the admin believes is in the file. The admin marks those lines failed.
+ * be money the admin believes is in the file. The admin marks a line paid (the transfer was made by hand) or failed (it was not).
  * The caller must be an active admin, checked here first.
  */
 class ExportPayoutBatchCsv
@@ -81,7 +81,7 @@ class ExportPayoutBatchCsv
         );
 
         if ($erased !== []) {
-            throw new PayoutException('These lines can no longer be paid from a file because their account details were erased with the tutor\'s account: '.implode(', ', $erased).'. Mark them failed.');
+            throw new PayoutException('These lines can no longer be paid from a file because their account details were erased with the tutor\'s account: '.implode(', ', $erased).'. If the transfer was sent by hand, mark the line paid with its reference; otherwise mark it failed.');
         }
 
         $unsafe = [];

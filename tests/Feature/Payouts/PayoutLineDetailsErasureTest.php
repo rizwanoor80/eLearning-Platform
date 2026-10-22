@@ -11,6 +11,7 @@ use App\Enums\LessonStatus;
 use App\Enums\PayoutLineStatus;
 use App\Enums\PayoutMethodCode;
 use App\Exceptions\PayoutException;
+use App\Filament\Resources\TutorProfiles\Pages\ViewTutorProfile;
 use App\Models\AuditLog;
 use App\Models\Lesson;
 use App\Models\PayoutBatchLine;
@@ -19,6 +20,7 @@ use App\Models\User;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Livewire\Livewire;
 
 /**
  * 26b (R274): a tutor's payout lines lose their encrypted `details` copy with the account; nothing else on a line changes
@@ -285,4 +287,36 @@ it('lets the database refuse anything but erasing the details', function () {
     // Other columns still change as before.
     DB::table('payout_batch_lines')->where('id', $line->id)->update(['status' => 'failed', 'failure_reason' => 'x', 'failed_at' => now()]);
     expect(PayoutBatchLine::query()->find($line->id)->status)->toBe(PayoutLineStatus::Failed);
+});
+
+it('records a line paid by hand after the admin erased its copy, and says the copy is erased', function () {
+    $admin = User::factory()->admin()->create();
+    $tutor = pldTutor(lessons: 3);
+    $line = app(GeneratePayoutBatch::class)($admin)->batch->lines()->sole();
+    app(AnonymizeUser::class)($admin, $tutor->user);
+    app(ClearAnonymisedTutorBankDetails::class)($admin, $tutor->fresh(), 'Paying by hand.');
+
+    app(MarkPayoutLinePaid::class)($admin, $line->fresh(), 'HAND-REF-1');
+
+    expect(PayoutBatchLine::query()->find($line->id)->status)->toBe(PayoutLineStatus::Paid)
+        ->and(AuditLog::query()->where('action', 'payout_line.paid')->sole()->after['details_erased'])->toBeTrue();
+});
+
+it('offers the decision for an email-paid tutor with wording about payout details, not bank details', function () {
+    $admin = User::factory()->admin()->create();
+    $tutor = pldTutor(lessons: 3, profile: [
+        'payout_method' => 'wise', 'payout_email' => 'wise.tutor@example.test',
+        'bank_name' => null, 'bank_account_name' => null, 'bank_iban' => null, 'bank_swift' => null, 'bank_verified_at' => null,
+    ]);
+    pldLine($tutor, PayoutLineStatus::Pending, ['payout_method' => PayoutMethodCode::Wise->value, 'details' => ['email' => 'wise.tutor@example.test']]);
+    app(AnonymizeUser::class)($admin, $tutor->user);
+
+    $page = Livewire::actingAs($admin)->test(ViewTutorProfile::class, ['record' => $tutor->getRouteKey()])
+        ->assertActionVisible('clearBankDetails');
+
+    $action = collect($page->instance()->getCachedHeaderActions())->first(fn ($candidate) => $candidate->getName() === 'clearBankDetails');
+    $description = (string) $action->getModalDescription();
+
+    expect($description)->toContain('account details are still stored on its payout lines')
+        ->not->toContain('its bank details are still stored');
 });
