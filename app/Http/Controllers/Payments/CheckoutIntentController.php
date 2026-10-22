@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Payments;
 
+use App\Actions\Payments\ConfirmCheckoutHold;
 use App\Actions\Payments\CreateCheckoutIntent;
 use App\Exceptions\BookingException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Lessons\StoreLessonBookingRequest;
+use App\Http\Requests\Payments\ConfirmCheckoutHoldRequest;
 use App\Http\Requests\Payments\CreateCheckoutIntentRequest;
 use App\Models\User;
 use App\Services\Payments\NoActivePaymentGateway;
@@ -45,5 +47,22 @@ class CheckoutIntentController extends Controller
         }
 
         return response()->json(['payment_intent_id' => $intent['id'], 'client_secret' => $intent['client_secret']]);
+    }
+
+    /**
+     * R269: does a hold really exist for this intent, this parent and the price quoted now? Read-only.
+     */
+    public function confirm(ConfirmCheckoutHoldRequest $request, ActiveStripe $stripe, ConfirmCheckoutHold $confirm): JsonResponse
+    {
+        abort_unless($stripe->isActive(), 404);
+
+        /** @var User $user */
+        $user = $request->user();
+        /** @var array{payment_intent_id: string, tutor_id: int, starts_at: string} $data */
+        $data = $request->validated();
+
+        $learnerId = $confirm($user, $data['payment_intent_id'], (int) $data['tutor_id'], $data['starts_at']);
+
+        return response()->json($learnerId === null ? ['confirmed' => false] : ['confirmed' => true, 'learner_id' => $learnerId]);
     }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import type {
     Stripe,
     StripeElements,
@@ -253,21 +253,22 @@ const stripeReturn =
         ? null
         : readStripeReturn(window.location.search);
 
+// R269: the client secret and intent id leave the address bar and the history entry before anything else runs.
+// Inertia keeps the page's url in its own history state, so both the browser entry and Inertia's page url are
+// rewritten here, in setup, with no network request.
+if (stripeReturn) {
+    const clean = withoutStripeReturn(new URL(window.location.href));
+
+    window.history.replaceState(window.history.state, '', clean);
+    router.replace({ url: clean, preserveState: true, preserveScroll: true });
+}
+
 async function resumeAfterRedirect() {
     if (!stripeReturn || !props.stripe) {
         return;
     }
 
     paying.value = true;
-
-    // Inertia writes its own history entry for this page a moment after mount (and would put the full URL back);
-    // clean the address only once that has happened, so a reload does not replay the return.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    window.history.replaceState(
-        window.history.state,
-        '',
-        withoutStripeReturn(new URL(window.location.href)),
-    );
 
     const client = await loadStripeOnce(props.stripe.publishable_key);
 
@@ -323,6 +324,35 @@ async function resumeAfterRedirect() {
             cardError.value =
                 'Your bank did not approve the card. Nothing was booked and you were not charged. Please try another card.';
         }
+
+        return;
+    }
+
+    // The browser's word is not enough: the page says the card was approved only when the server confirms a hold
+    // for this intent, this parent, this tutor and slot, and the quoted price.
+    let confirmedHold: Awaited<
+        ReturnType<typeof postJson<{ confirmed: boolean }>>
+    > | null = null;
+
+    try {
+        confirmedHold = await postJson<{ confirmed: boolean }>(
+            '/payments/checkout-intent/confirm',
+            {
+                payment_intent_id: intent.id,
+                tutor_id: props.tutor.id,
+                starts_at: props.starts_at,
+            },
+        );
+    } catch {
+        // Treated like a hold the server did not confirm, below.
+    }
+
+    if (!confirmedHold?.ok || !confirmedHold.body.confirmed) {
+        forgetChoice(intent.id);
+        attemptId.value = crypto.randomUUID();
+        paying.value = false;
+        returnNotice.value =
+            'We could not confirm your payment for this lesson. Nothing was booked and you were not charged. Please start the payment again.';
 
         return;
     }
@@ -448,6 +478,8 @@ async function startPayment(
         confirmed.error ||
         confirmed.paymentIntent?.status !== 'requires_capture'
     ) {
+        // Declined in the page: the remembered choice belongs to a payment that will not be resumed.
+        forgetChoice(intent.body.payment_intent_id);
         cardError.value =
             confirmed.error?.message ??
             'Your card could not be authorised. Please try another card.';
