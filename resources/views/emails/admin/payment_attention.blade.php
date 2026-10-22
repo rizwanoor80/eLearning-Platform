@@ -28,7 +28,7 @@
         <p>
             A refund on payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}) was accepted by the payment gateway more than
             {{ \App\Console\Commands\RetryGatewayRefunds::STUCK_HOURS }} hours ago and is still pending there, so the money has not
-            reached the card. It is the gateway's to finish. If the platform made this refund the ledger has already returned the money and the hourly sweep asks again with the same key; otherwise nothing has been changed on the lesson or in the ledger.
+            reached the card. It is the gateway's to finish. If the platform requested this refund, the hourly sweep asks again with the same key. This alert changes nothing on the lesson or in the ledger.
         </p>
     @elseif ($reason === \App\Events\Payments\PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED)
         <p>
