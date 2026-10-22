@@ -8582,3 +8582,24 @@ Cause recorded, replacing "cause unknown" in the 2026-10-21 VERIFICATION (25a re
 
 ### 2026-10-22 — VERIFICATION (25b rehearsal deploy and R213, CC)
 Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213 (deploy is `git push origin <merged sha>:refs/heads/rehearsal`); R272 (fast-forward `rehearsal` to the latest green `main` carrying 25b). CI run 39627593382 on `b4775f4` completed `success`. `git push origin b4775f4c9f234de599656b7ac43dab4bdbf08611:refs/heads/rehearsal`: `d20d3cf..b4775f4`, fast-forward. `/ops/status` polled every 15 s: `app.git_sha` `b4775f4c` at the second poll (about 16 s after the push, inside the 3-minute R272 limit). R213: `migrations.pending` 0 (25b adds none), `horizon.status` running, `queues.failed_jobs` 0, scheduler ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0; `/`, `/login`, `/tutors`, `/terms` all 200. Production untouched. Step 2b done; resuming at 25c.
+
+### 2026-10-22 — START (25c, R268, CC)
+Branch `cp/25c-privacy-cleanup` from `main` `818a7ee`. Advisor minimum 1. Resume cap 12, 0 used.
+
+### 2026-10-22 — ADVISOR (25c, CC)
+Model that answered: Claude Opus 5.5 (`claude-opus-5-5`). Adopted design: the orphan release only reads Stripe (list of intents by customer, created time and metadata key); a succeeded intent goes to the existing `UnverifiedCaptureNeedsRefund` path, no money held closes the row `failed` (`orphan_released`), processing, requires_capture or an unreachable Stripe is refused, and nothing is ever charged again. Bank fields: cleared on anonymising when `EarningsBuckets::owed()` (positive buckets only, paid-to-date excluded) is zero; otherwise kept until an admin records the decision.
+
+### 2026-10-22 — DECISION (25c, CC)
+No frozen file touched: the diff does not include `LessonStateMachine.php`, `LedgerService.php`, `app/Services/Payments/*` or the ledger migration. Lock order for `AnonymizeUser` is `users` row then `tutor_profiles` row (R225). Audit rows carry names, ids and amounts only, never a bank value, a card token or a customer ref.
+
+### 2026-10-22 — VERIFICATION (25c gates on `b4bd63b`, CC)
+Pest **3364 passed / 24125 assertions** (baseline after 25b 3338), `ledger:verify` OK, Pint, PHPStan 0, RTL green. CI run 39771979409 green on PostgreSQL 16 and 18. `git log origin/main..HEAD`: `b4bd63b`, `7edbc85`, `c2bd703`, `65383a6`. 25c adds no migration.
+
+### 2026-10-22 — REVIEW (25c round 1, PR #84, fresh subagent)
+Verdict: **0 High / 0 Medium / 2 Low**. Numbered verdicts: (1) PASS WITH NOTE `AnonymizeUser` keep/clear (a comment overclaims lesson-settlement locking; harmless); (2) PASS WITH NOTE `owed()` can over-report processing money when `available` is negative, which errs towards keeping the details; (3) PASS WITH NOTE `payout_batch_lines.details` holds an encrypted frozen copy of bank details for every tutor ever paid by bank transfer, outside R268's scope; (4) FAIL (Low) tutors anonymised before R268 still hold bank fields and the modal wording was false for them; (5) PASS WITH NOTE the note textarea had no length limit; (6) PASS WITH NOTE removed-card alert; (7) PASS it never charges again; (8) FAIL (Low) first-match `break` could let a newer cancelled intent hide an older succeeded one; (9) PASS WITH NOTE other "mark failed" paths (unknown drivers failed open); (10) PASS captured path; (11) PASS WITH NOTE lock order payment then lesson, reverse of `ChargeReservedLesson::fail()`, reachable only on a live attempt which the 30-minute floor excludes; (12) PASS no leakage; (13) PASS authorisation; (14) PASS WITH NOTE test gaps (escrow-pending/on-hold/processing/overpaid keep cases, Filament actions); (15) PASS invariants and frozen files.
+
+### 2026-10-22 — DECISION (25c fix round 1, 1 of cap 2, CC)
+Fixed on `b4bd63b`: (8) every matching intent is scanned and succeeded beats processing/requires_capture beats the rest; (9b) a gateway other than `stripe` or `fake` is refused; (4) the modal says the details are still stored and, when nothing is owed, that they pre-date automatic clearing; (5) `maxLength(1000)`. Two tests added. Not fixed, disclosed: (1), (2), (3), (11), (14) test gaps. Item (3) goes to STATUS Deferred for an owner ruling.
+
+### 2026-10-22 — VERIFICATION (25c merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #84 squash-merged -> `main` `64227efce8c97c55a282f1490866e4d62dde88fc`; CI on the PR head green on PostgreSQL 16 and 18.
