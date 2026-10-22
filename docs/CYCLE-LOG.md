@@ -8699,3 +8699,40 @@ Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges withou
 
 ### 2026-10-22 — VERIFICATION (26b on rehearsal, CC)
 Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228; R280 for the `payout_batch_lines` migration. Pushed `8fa8b91` to `rehearsal`. R213: `app.git_sha` `8fa8b91`, `migrations.pending` 0 (the new migration ran), `horizon.status` running, `queues.failed_jobs` 0, `scheduler.status` ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` 200; `/ops/status` without the token 404. R279 reading: `mail.from_name` = `trusTutor Team` (Owner action 5 stays OPEN). No account was erased on rehearsal.
+
+
+### 2026-10-22 — START (26c, CC)
+Branch `cp/26c-preflight-seeding` from `origin/main` `8bcde65`; R275; advisor minimum 1. `php artisan ops:preflight`: a read-only go-live gate, one PASS or FAIL line per check, never a value, exit 1 on any FAIL. Built as `App\Services\Ops\Preflight` (returns `PreflightResult` rows that have no field for a value) with a thin command that only formats them. Plus a test that `DatabaseSeeder` under `APP_ENV=production` creates only reference data and the one admin.
+
+### 2026-10-22 — ADVISOR (26c, CC)
+Model that answered: Claude Opus 5.5 (`claude-opus-5-5`, per the subagent transcript). Quoted line: "the check results must have nowhere to put a value, and every check must fail closed." Advisor consultations this cycle so far: 3. Taken: a result DTO with name, status and a fixed note; each check in try/catch with only the exception class logged; an unreadable check prints `FAIL (unreadable)` and counts as a failure; the scheduler FAILs when the pulse is absent or stale; trusted proxies PASS only for `REMOTE_ADDR` or valid IP/CIDR entries (empty, `*`, `**` and typos FAIL); ledger checked by the exit code of `ledger:verify` with its output dropped; no driver resolved, no `storage:link`, no cache write. Adapted: the advisor suggested treating `.invalid` as a demo domain; erased accounts carry `@tombstone.invalid` (`AnonymizeUser`), so `.invalid` is deliberately left off the list.
+
+### 2026-10-22 — VERIFICATION (26c gates, CC)
+Pest **3488 passed / 24882 assertions** at `954f3b2`, then **3514 / 24913** at `4fbfd1a` (fix round 1); Pint, PHPStan 0, `types:check`, `npm run build`, RTL and `ledger:verify` green. No frozen file touched.
+
+### 2026-10-22 — REVIEW (26c round 1, PR #89, fresh subagent, Claude Opus 5.5)
+Verdict: **0 High / 3 Medium / 7 Low**, all fixed in `4fbfd1a` (fix round 1 of cap 2). Accepted notes (PASS WITH NOTE): `Artisan::call('ledger:verify')` is nested inside the preflight command; trusted proxies PASS on `REMOTE_ADDR`, which only holds if the origin is reachable through the load balancer alone; the `.test`-suffix demo rule makes the seeded `admin@project-elearning.test` fail on production unless `ADMIN_EMAIL` is real (intended); the preflight fails by design on local and rehearsal, and its DSN check fails until the owner supplies a DSN.
+
+### 2026-10-22 — VERIFICATION (26c merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #89 squash-merged -> `main` `866169d`.
+
+### 2026-10-22 — NOTE (26c merged-main CI flake, CC)
+CI on `866169d` failed on PostgreSQL 18 only (PG16 passed): `ReceiptTest` matched `/vat/i` against a faker name ("Salvatore"). Pre-existing, not caused by 26c. Fixed in the 26d branch (match `\bvat\b` over keys and values). Because `866169d` was never green on both jobs, it was not pushed to `rehearsal`; the 26c code deploys with the next green `main` (26d), disclosed in STATUS §6.
+
+### 2026-10-22 — START (26d, PR #90, CC)
+Branch `cp/26d-error-tracking` from `origin/main` `866169d`; R276; advisor minimum 0.
+
+### 2026-10-22 — DECISION (26d, CC)
+Sentry (`sentry/sentry-laravel ^4.29`), not Flare: Flare was the fallback only if Sentry lacked a git source for the cloud install (ADR-028); every Sentry package locked here has one (`ComposerLockPortabilityTest` passes). Inert without a DSN, and `ErrorTrackingDsn::resolve` returns null for a blank DSN or for `local` and `testing`; `config/sentry.php` sets `spotlight` false and ignores `SENTRY_*` variables. `EventScrubber` is the `before_send`: request bodies, cookies and the user are dropped; URLs, query strings and Referer lose every query value; keys naming secrets, cards, banks, names, emails, phones, messages and addresses are replaced; secrets inside messages are masked; SQL, PDO and mailer exception messages, and any chain that contains one, are redacted whole; stack-frame vars are emptied; breadcrumbs from logs are off. Tracing, profiling, logs and metrics are off.
+
+### 2026-10-22 — VERIFICATION (26d gates, CC)
+Pest **3569 / 25004** (first push), **3597 / 25051** (fix round 1, `c4068aa`), **3615 / 25081** (fix round 2, `8ca7f26`); Pint, PHPStan 0, `types:check`, RTL, `npm run build` and `ledger:verify` ("Ledger OK: every lesson and every payout sums to zero.") green. New: `ErrorTrackingTest`; `ReceiptTest` flake fix. `git log origin/main..HEAD` at the end: `8ca7f26`, `c4068aa`, `3c43322`. No frozen file touched; `docs/cloud/ENVIRONMENT.md` and `.claude/settings.json` untouched.
+
+### 2026-10-22 — REVIEW (26d round 1, PR #90, fresh subagent, Claude Opus 5.5)
+Verdict: **FAIL: 1 High, 2 Medium** (exception messages and frame vars unscrubbed, a spotlight switch via `SENTRY_SPOTLIGHT`, the DSN gate readable from `SENTRY_DSN`). All fixed in `c4068aa` (fix round 1 of cap 2).
+
+### 2026-10-22 — REVIEW (26d round 2, PR #90, fresh subagent, Claude Opus 5.5)
+Verdict: **FAIL: 2 Medium, Lows** (opaque-exception chains, query-string and Referer values). Fixed in `8ca7f26` (fix round 2 of cap 2); the cap is reached, no third review. Confirmed fixed by the reviewer: exception messages, frame vars, the spotlight switch, the DSN gate, `config:cache` safety. Accepted Lows, disclosed in STATUS §6: 13+ digit numbers and timestamps are over-masked; `verify-email/{id}/{hash}` is not masked in the URL path; silent environments are a denylist (`local`, `testing`), not an allowlist; event-level stacktrace vars are not cleared (that stacktrace is off by default); contexts added by integrations are scrubbed by key only.
+
+### 2026-10-22 — VERIFICATION (26d merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking" — no open Medium+ after the fix loop (cap 2 used), CI green on PostgreSQL 16 and 18 on head `8ca7f26`, expected files only. PR #90 squash-merged -> `main` `e69ef53ef86de282f3e4c7145c1cd9e7e9814988`.
