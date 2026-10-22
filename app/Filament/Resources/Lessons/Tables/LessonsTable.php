@@ -6,12 +6,14 @@ use App\Actions\Lessons\ForceCancelLesson;
 use App\Actions\Lessons\ForceCompleteLesson;
 use App\Actions\Lessons\MarkProviderFailure;
 use App\Actions\Lessons\OpenSuspensionDispute;
+use App\Actions\Payments\ReleaseOrphanedPendingPayment;
 use App\Enums\DisputeReason;
 use App\Enums\LessonStatus;
 use App\Exceptions\AttendanceException;
 use App\Exceptions\DisputeException;
 use App\Exceptions\LedgerException;
 use App\Exceptions\LessonTransitionException;
+use App\Exceptions\OrphanedPaymentException;
 use App\Models\Lesson;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -34,6 +36,7 @@ class LessonsTable
                 TextColumn::make('status')->badge()->formatStateUsing(fn (LessonStatus $state): string => str_replace('_', ' ', ucfirst($state->value))),
                 TextColumn::make('room_provider')->label('Room')->placeholder('—'),
             ])
+            ->modifyQueryUsing(fn ($query) => $query->with('payment'))
             ->defaultSort('starts_at', 'desc')
             ->filters([
                 SelectFilter::make('status')->options(collect(LessonStatus::cases())->mapWithKeys(fn (LessonStatus $s): array => [$s->value => str_replace('_', ' ', ucfirst($s->value))])->all()),
@@ -98,6 +101,26 @@ class LessonsTable
                         }
 
                         Notification::make()->success()->title('Lesson force-completed')->send();
+                    }),
+                Action::make('releaseOrphanedPayment')
+                    ->label('Release stuck charge')
+                    ->color('warning')
+                    ->visible(fn (Lesson $record): bool => ReleaseOrphanedPendingPayment::looksOrphaned($record->payment, $record->status))
+                    ->requiresConfirmation()
+                    ->modalDescription('A weekly charge was started for this lesson but never finished, and the lesson is no longer reserved. This looks the charge up at the payment gateway (it never charges again). If money was taken it is refunded to the parent\'s card automatically; if not, the charge is closed as failed. This also lets the parent remove their saved card. It cannot be undone.')
+                    ->schema([
+                        Textarea::make('note')->label('Note (kept in the audit log)')->required()->maxLength(1000),
+                    ])
+                    ->action(function (Lesson $record, array $data): void {
+                        try {
+                            $outcome = app(ReleaseOrphanedPendingPayment::class)(auth()->user(), $record->payment, (string) $data['note']);
+                        } catch (OrphanedPaymentException $e) {
+                            Notification::make()->danger()->title('Not released')->body($e->getMessage())->send();
+
+                            return;
+                        }
+
+                        Notification::make()->success()->title($outcome === 'refund_started' ? 'Money had been taken: the refund to the parent\'s card has started' : 'The charge was closed; no money was taken')->send();
                     }),
                 Action::make('openSuspensionDispute')
                     ->label('Open dispute')
