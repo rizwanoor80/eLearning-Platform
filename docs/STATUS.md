@@ -1,4 +1,4 @@
-# STATUS — cycle 25 r2 — programme "live switch ready" — END (halt), 2026-10-22
+# STATUS — cycle 26 r1 — programme "erasure and production readiness" — step 1 done, starting 26a, 2026-10-22
 Tests: **3388 passed / 24467 assertions** on `main` `ccd3fdf` (baseline at START of cycle 25: 3295 / 23820) · Advisor: **3 times** (25a, 25b, 25c; all Claude Opus 5.5) · Review: 25a 0 High / 1 Medium / 3 Low, 25b 0 High / 2 Medium / several Low, 25c 0 High / 0 Medium / 2 Low (both FAIL Low fixed), 25d 0 High / 1 Medium / 1 Low (both fixed), 25e 0 High / 0 Medium / 0 Low (4 PASS, 2 PASS WITH NOTE); every Medium fixed within the cap of 2 · Resume cap 12, 0 used · Context size not measured (cloud session), 2 compactions this run
 
 ## §1 Git state
@@ -25,6 +25,7 @@ START: done. 25a (R266, R271): merged, on rehearsal (after the owner's manual Fo
 END of programme "live switch ready": the queue (25a to 25e) is finished and the plan makes END a halt. Handoff for a new session: **done** everything above; **next** only the owner's actions in §7 (nothing further is authorised for CC); **ruled out** any gateway switch to live, any production deploy, any key handling, any frozen-file change.
 
 ## §6 Mismatches
+- **Cycle 26 START correction (R279):** the cycle 25 END text said Owner action 5 was "closed on evidence"; no `mail.from_name` reading was recorded in cycle 25 and the 2026-10-22 reading is `trusTutor Team`. It is open. That was my error in the cycle 25 END write.
 - Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/25*` branches, which were used.
 - R266 says a card from the other mode is "marked unusable"; it is computed on read from `gateway_mode` instead (no data change on a switch back).
 - 25a, not built: `env` metadata on intents; ignoring other-environment events in `CheckOrphanCapture` (pre-existing); the setup intent has no idempotency key (pre-existing); the re-add mail has no wording for the final-attempt cancellation and two race paths.
@@ -48,9 +49,19 @@ Still open and not the code's to close:
 **Owner action 20 (carried; before any live switch):** in the Stripe dashboard subscribe the live webhook endpoint to `refund.updated` (and optionally `charge.refund.updated`) alongside the existing events; replace the keys and the webhook signing secret together. Reply `update` when done.
 **Owner action 23 (decision, Recommended option 1):** the bank-copy ruling above. 1. (Recommended) clear `payout_batch_lines.details` when a paid tutor is anonymised; reason: the copy has no use once the line is paid. 2. Keep for accounting retention and name it in the privacy notice. Reply `update — 1` or `update — 2`.
 **Switch-day steps (owner, in order; none are CC's):** (1) D-04 settled with counsel and `trustutor-production` authorised and deployed through a rehearsal pass (R210/R213); (2) Postmark wired (R120); (3) in Admin → Payment gateways enter the live keys and the live webhook signing secret together, with the webhook subscribed to all events including `refund.updated` (Owner action 20); (4) `payments:mode-readiness --target=live` shows no blocker; (5) deploy with no recurring attempts in flight; (6) switch the Stripe row to `live`; (7) make one small real booking with your own card, confirm capture, the ledger hold and the receipt, then refund it by hand from the platform and confirm the refund settles (`ledger:verify` green before and after); (8) only then open to parents.
-Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/STATUS.md` §7): Owner actions 2, 3, 4, 6 to 12; Owner action 16 (the 3-D Secure check on rehearsal; needs Stripe test keys entered in Admin → Payment gateways first); Owner action 5 is closed on evidence. Nothing here needs the owner to paste any output.
+Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/STATUS.md` §7): Owner actions 2, 3, 4, 6 to 12; Owner action 16 (the 3-D Secure check on rehearsal; needs Stripe test keys entered in Admin → Payment gateways first); Owner action 5 is OPEN (R279: rehearsal `mail.from_name` read `trusTutor Team` on 2026-10-22; closed only by a recorded `TrusTutor Team` reading). Nothing here needs the owner to paste any output.
 
 ## §8 Programme board
+**Cycle 26 r1 — "erasure and production readiness"** (resume cap 12, 0 used) — in progress
+| Sub-cycle | Branch | PR | Review | State |
+|---|---|---|---|---|
+| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | — | — | starting |
+| 26b payout-copy erasure (R274) | `cp/26b-payout-copy-erasure` | — | — | not started |
+| 26c ops:preflight + seeding (R275) | `cp/26c-preflight-seeding` | — | — | not started |
+| 26d error tracking (R276) | `cp/26d-error-tracking` | — | — | not started |
+| 26e runbook + leftovers (R277) | `cp/26e-runbook-and-leftovers` | — | — | not started |
+
+**Cycle 25 r2 (closed) — "live switch ready":** 25a to 25e merged (PRs #82 to #86); last `ccd3fdf`.
 **Cycle 25 r2 — "live switch ready"** (resume cap 12, 0 used) — END
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
