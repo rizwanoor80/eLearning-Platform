@@ -8603,3 +8603,6 @@ Fixed on `b4bd63b`: (8) every matching intent is scanned and succeeded beats pro
 
 ### 2026-10-22 — VERIFICATION (25c merged, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #84 squash-merged -> `main` `64227efce8c97c55a282f1490866e4d62dde88fc`; CI on the PR head green on PostgreSQL 16 and 18.
+
+### 2026-10-22 — VERIFICATION (25c on rehearsal, CC)
+Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228 (`git push origin <merged sha>:refs/heads/rehearsal`; CI run 39772475178 green on `64227ef`). Pushed `64227efce8c97c55a282f1490866e4d62dde88fc` to `rehearsal`; `GET /ops/status` polled every 15 s showed it landed on the 3rd poll (R272, inside 3 minutes). R213: `app.git_sha` `64227efc`, `migrations.pending` 0 (25c adds no migration), `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` all 200.
