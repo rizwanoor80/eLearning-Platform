@@ -8678,3 +8678,24 @@ Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges withou
 
 ### 2026-10-22 — VERIFICATION (26a on rehearsal, CC)
 Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228; R280 for the `account_deletion_requests` migration. CI on `d081000` green on PostgreSQL 16 and 18. Pushed `d08100041b4b02ce6c6cee6eb655d597019cc716` to `rehearsal` (`ccd3fdf..d081000`); it landed on the 2nd 15 s poll. R213: `app.git_sha` `d0810004`, `migrations.pending` 0 (the new migration ran), `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` all 200; `/ops/status` without the token 404. R279 reading: `mail.from_name` = `trusTutor Team` (Owner action 5 stays OPEN). No account was erased on rehearsal.
+
+### 2026-10-22 — START (26b, PR #88, CC)
+Branch `cp/26b-payout-copy-erasure` from `origin/main` `34d6954`; R274, R280; advisor minimum 1. `AnonymizeUser` now also erases the frozen `details` copy on the tutor's `payout_batch_lines`: paid lines at erasure, every line when nothing is owed; unpaid lines keep their copy until the admin's R268 decision (`ClearAnonymisedTutorBankDetails`). Amount, method, currency, `external_reference`, `paid_at` and the line reference stay. Nothing deletes a payout line.
+
+### 2026-10-22 — ADVISOR (26b, CC)
+Model that answered: Claude Opus 5.5. Quoted line: "Make `details` nullable, but drop the CHECK you proposed." Advisor consultations this cycle so far: 2.
+
+### 2026-10-22 — DECISION (26b, CC)
+`payout_batch_lines.details` becomes nullable with a new `details_erased_at` column, a CHECK that the two agree (`details IS NULL` exactly when `details_erased_at` is set), and a BEFORE UPDATE trigger that allows `details` to change only to null. No "pending needs details" CHECK (an admin decision may erase a pending line's copy). Erasure goes through one action, `ErasePayoutLineDetails` (profile lock held, transaction required), called from `AnonymizeUser`, `ClearAnonymisedTutorBankDetails` and `MarkPayoutLinePaid` (a line paid after the account was erased is erased as it is paid). `ExportPayoutBatchCsv` refuses a batch containing an erased line and names the references. No `down()` on the migration (forward-only, CLAUDE.md). The migration is dated after 26a's, as the 26a REVIEW required. Frozen files untouched.
+
+### 2026-10-22 — VERIFICATION (26b gates on `8420070`, CC)
+Pest **3434 passed / 24776 assertions** (baseline after 26a 3421); Pint, PHPStan 0, `types:check`, `npm run build`, RTL and `ledger:verify` green. New: `PayoutLineDetailsErasureTest` (13), one existing `PayoutBatchesTest` case adjusted to lift the new trigger around its raw legacy-data update. `git log origin/main..HEAD`: `8420070` (fix round 1), `d0f5822`. Debug note: the Filament modal is not in the page HTML after `mountAction`, so the wording test reads the action's `getModalDescription()` instead.
+
+### 2026-10-22 — REVIEW (26b round 1, PR #88, fresh subagent, Claude Opus 5.5)
+Verdict: **0 High / 0 Medium / Lows only**. Race with `MarkPayoutLinePaid` confirmed safe (profile lock held there; `AnonymizeUser` waits on it; either order ends with the paid line erased). Fixed in `8420070` (fix round 1 of cap 2): the `PayoutBatchLine` and action docblocks now state exactly what is guaranteed; a line paid by hand after the admin erased its copy is recorded and audited (`details_erased` true); the export message tells the admin to mark such a line paid with its reference or failed; the admin action and its notification say "payout details" for an email-paid tutor with nothing in the bank fields. Not fixed, disclosed: no `down()`; failed lines keep their copy while money is owed; no backfill of pre-26b paid lines of already-anonymised tutors (rehearsal only; none on production, which does not exist yet).
+
+### 2026-10-22 — VERIFICATION (26b merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". CI on the PR head `8420070` green on PostgreSQL 16 and 18. PR #88 squash-merged -> `main` `8fa8b91c1863afb2c0999e1f42791848c6519976`; CI on the merge commit green on both jobs.
+
+### 2026-10-22 — VERIFICATION (26b on rehearsal, CC)
+Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228; R280 for the `payout_batch_lines` migration. Pushed `8fa8b91` to `rehearsal`. R213: `app.git_sha` `8fa8b91`, `migrations.pending` 0 (the new migration ran), `horizon.status` running, `queues.failed_jobs` 0, `scheduler.status` ok, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` 200; `/ops/status` without the token 404. R279 reading: `mail.from_name` = `trusTutor Team` (Owner action 5 stays OPEN). No account was erased on rehearsal.
