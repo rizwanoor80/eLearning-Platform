@@ -1,12 +1,12 @@
-# STATUS — cycle 26 r1 — programme "erasure and production readiness" — 26a merged (deploy pending), 26b next, 2026-10-22
+# STATUS — cycle 26 r1 — programme "erasure and production readiness" — 26a done, 26b next, 2026-10-22
 Tests: **3421 passed / 24698 assertions** on `main` `d081000` (baseline at START of cycle 26: 3388 / 24467) · Advisor: **1 time** this cycle (26a, Claude Opus 5.5) · Review: 26a 0 High / 0 Medium / Lows only (fixed in fix round 1 of cap 2) · Resume cap 12, 0 used · Context size not measured (cloud session), 1 compaction this run
 
 ## §1 Git state
 - `main` = `d081000` (26a, PR #87 squash) plus, on top, the docs-only commit carrying this file and the CYCLE-LOG 26a entries (`[skip ci]`). Cycle 25 chain: `d20d3cf` 25a, `b4775f4` 25b, `64227ef` 25c, `3df85ae` 25d, `ccd3fdf` 25e.
-- `rehearsal` ref = `ccd3fdf` until the 26a deploy below is recorded. No production deploy. No branch deleted.
+- `rehearsal` ref = `d081000`; the server runs it (`/ops/status` `app.git_sha` `d0810004`, R213 green, `mail.from_name` still `trusTutor Team`). No production deploy. No branch deleted.
 
 ## §2 Step map
-START: done. 26a (R273, R280): merged `d081000`, deploy to rehearsal and R213 next. 26b to 26e: not started. END: not reached.
+START: done. 26a (R273, R280): merged `d081000`, on rehearsal, R213 green. 26b to 26e: not started. END: not reached.
 
 ## §3 What changed
 **Cycle 26 so far — 26a (R273):** an admin can erase an account from Admin → Accounts (a read-only list of non-admin users with an "Erase account" action; the modal names the account and lists what is erased and kept) or from the new queue Admin → Account deletion requests (Erase, or Decline with a required note that is mailed). Parents and tutors get a "Delete your account" section in Settings that only files a request (one open at a time, acknowledged by mail to their own address). Erasure runs `AnonymizeUser` unchanged in its rules; a refusal rolls everything back and leaves the request open. New table `account_deletion_requests` (partial unique index: one open request per user). Audit rows hold ids, role and status only.
@@ -60,7 +60,7 @@ Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/S
 **Cycle 26 r1 — "erasure and production readiness"** (resume cap 12, 0 used) — in progress
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | #87 | Opus 5.5 round 1: 0 High, 0 Medium, Lows; fix round 1 | merged `d081000`; rehearsal deploy and R213 next |
+| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | #87 | Opus 5.5 round 1: 0 High, 0 Medium, Lows; fix round 1 | done; merged `d081000`, rehearsal R213 green |
 | 26b payout-copy erasure (R274) | `cp/26b-payout-copy-erasure` | — | — | not started |
 | 26c ops:preflight + seeding (R275) | `cp/26c-preflight-seeding` | — | — | not started |
 | 26d error tracking (R276) | `cp/26d-error-tracking` | — | — | not started |

@@ -8675,3 +8675,6 @@ A mail transport exception, or the `log` mailer, can write a recipient address o
 
 ### 2026-10-22 — VERIFICATION (26a merged, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #87 squash-merged -> `main` `d08100041b4b02ce6c6cee6eb655d597019cc716`; CI on the PR head green on PostgreSQL 16 and 18. Fix round 1 of cap 2 (Lows only).
+
+### 2026-10-22 — VERIFICATION (26a on rehearsal, CC)
+Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228; R280 for the `account_deletion_requests` migration. CI on `d081000` green on PostgreSQL 16 and 18. Pushed `d08100041b4b02ce6c6cee6eb655d597019cc716` to `rehearsal` (`ccd3fdf..d081000`); it landed on the 2nd 15 s poll. R213: `app.git_sha` `d0810004`, `migrations.pending` 0 (the new migration ran), `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0. `/`, `/login`, `/tutors`, `/terms` all 200; `/ops/status` without the token 404. R279 reading: `mail.from_name` = `trusTutor Team` (Owner action 5 stays OPEN). No account was erased on rehearsal.
