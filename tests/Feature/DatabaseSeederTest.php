@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\YearGroup;
 use App\Support\Money;
 use Database\Seeders\AdminUserSeeder;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoRecurringSlotSeeder;
 use Illuminate\Support\Facades\DB;
 
@@ -108,4 +109,27 @@ it('seeds one demo weekly slot with a fake card, once, when the demo seeder is c
         ->and($slot->status)->toBe(RecurringSlotStatus::Active)
         ->and($slot->learner->account_user_id)->toBe(PaymentMethod::query()->sole()->account_user_id)
         ->and($slot->price->toFils())->toBe($slot->tutorProfile->hourly_rate->toFils());
+});
+
+it('seeds only reference data and the one admin under APP_ENV=production (R275)', function () {
+    $this->app['env'] = 'production';
+
+    // Not `$this->seed()`: `db:seed` asks for confirmation in production, and the seeder is what is under test.
+    (new DatabaseSeeder)->setContainer(app())->run();
+
+    $admin = User::query()->sole();
+
+    expect($admin->email)->toBe('admin@project-elearning.test')
+        ->and($admin->role)->toBe(Role::Admin)
+        ->and(Curriculum::query()->count())->toBe(5)
+        ->and(Subject::query()->count())->toBe(25)
+        ->and(PriceBand::query()->count())->toBe(9)
+        // Nobody who could book, teach or pay: no demo parent, tutor, learner, card or weekly slot.
+        ->and(DB::table('tutor_profiles')->count())->toBe(0)
+        ->and(DB::table('learners')->count())->toBe(0)
+        ->and(PaymentMethod::query()->count())->toBe(0)
+        ->and(RecurringSlot::query()->count())->toBe(0)
+        ->and(DB::table('lessons')->count())->toBe(0)
+        // The preflight's own demo-account rule agrees.
+        ->and(User::query()->where('email', 'like', '%@example.%')->count())->toBe(0);
 });
