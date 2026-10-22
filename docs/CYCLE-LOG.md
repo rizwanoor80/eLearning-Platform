@@ -8736,3 +8736,30 @@ Verdict: **FAIL: 2 Medium, Lows** (opaque-exception chains, query-string and Ref
 
 ### 2026-10-22 — VERIFICATION (26d merged, CC)
 Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking" — no open Medium+ after the fix loop (cap 2 used), CI green on PostgreSQL 16 and 18 on head `8ca7f26`, expected files only. PR #90 squash-merged -> `main` `e69ef53ef86de282f3e4c7145c1cd9e7e9814988`.
+
+### 2026-10-22 — VERIFICATION (26c and 26d on rehearsal, CC)
+Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228. `866169d` (26c) was never CI-green on PostgreSQL 18 (the `ReceiptTest` flake, see NOTE above), so it was not pushed on its own; the 26c code reached `rehearsal` with 26d's `e69ef53`. No migration in 26c or 26d. R213 on `e69ef53`: green (git_sha matched, `migrations.pending` 0, Horizon running, `queues.failed_jobs` 0, ledger ok, 0 unbalanced, 0 stranded, `/`, `/login`, `/tutors`, `/terms` 200, unauthenticated `/ops/status` 404). `mail.from_name` read `trusTutor Team` (R279: Owner action 5 stays OPEN).
+
+### 2026-10-22 — START (26e, PR #91, CC)
+Branch `cp/26e-runbook-and-leftovers` from `origin/main` `e69ef53`; R277; advisor minimum 0. Part 1: `docs/runbooks/production.md` (Forge site, environment variable names only, deploy script, Horizon, scheduler, backups and a restore drill, `ops:preflight`, switch-day steps verbatim). Part 2: the 25b wording leftovers (a REFUND_FAILED reason per refund kind, `ReconcileGatewayRefunds::failed()`, no duplicate lines in `payments:retry-refunds --list` or `ledger:verify`). No migration, no frozen file.
+
+### 2026-10-22 — VERIFICATION (26e gates, CC)
+On `afb8d20`: Pint, PHPStan 0 errors, `types:check`, RTL, Pest **3631 passed / 25122 assertions**, `ledger:verify` ("Ledger OK: every lesson and every payout sums to zero."), `npm run build` green. `git log origin/main..HEAD`: `afb8d20` fix loop 2, `495cefb` fix loop 1, `90ec229` the cycle. PR #91 touches 14 files; none is a frozen file; no migration.
+
+### 2026-10-22 — REVIEW (26e round 1, PR #91, fresh subagent, Claude Opus 5.5)
+Verdict: **FAIL: 6 Medium, 0 High.** (1) `ReconcileGatewayRefunds::tell()`'s new `refunded_amount > 0` guard could lose the REFUNDED_AT_GATEWAY alert when `refund.updated` arrives before `charge.refunded`; (2) that guard applied in one place only; (3) runbook section 1 step 5 and line 47 on `TRUSTED_PROXIES` contradicted `Preflight.php`; (4) runbook line 50 named the wrong setting; (5) runbook lines 53 and 131 left identity documents unbacked-up on object storage; (6) the restore drill (lines 133 to 137) was unsafe. Quoted: "The new `refunded_amount > 0` guard can lose the REFUNDED_AT_GATEWAY alert for good." Also 4 Low notes (the `/horizon` wording, the `onOneServer()` claim, the Postmark stream-id variable, mail wording). All fixed in `495cefb` (fix round 1 of cap 2).
+
+### 2026-10-22 — REVIEW (26e round 2, PR #91, fresh subagent, Claude Opus 5.5)
+Verdict: **PASS WITH NOTE, no High or Medium, 2 new Low** (the REFUND_STUCK mail claimed a ledger refund for an Unverified-kind refund, `payment_attention.blade.php:31`; the restore drill's `video_providers.is_active = false` did not disable the Daily credentials, `production.md:139`). Quoted: "All six round-1 Medium findings are fixed." Both Lows fixed in `afb8d20` (fix round 2 of cap 2); the cap is reached, no third review. Accepted Lows, disclosed in STATUS §6.
+
+### 2026-10-22 — VERIFICATION (26e merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking" — no open Medium+ after the fix loop (cap 2 used), CI green on PostgreSQL 16 and 18 on head `afb8d20`, expected files only. PR #91 squash-merged -> `main` `1a21f84a13d48cecee84951ae8618abb3085a67c`. CI on the merged `1a21f84`: PostgreSQL 16 success, PostgreSQL 18 success.
+
+### 2026-10-22 — VERIFICATION (26e on rehearsal, CC)
+Authorisation quoted: R111 "CC deploys trustutor-rehearsal itself — owner ruling 2026-09-26, standing, rehearsal only"; R213/R228. No migration in 26e, so R280 does not apply. Pushed `1a21f84` to `rehearsal`. R213: `app.git_sha` `1a21f84a13d48cecee84951ae8618abb3085a67c`, `migrations.pending` 0, `horizon.status` running, `queues.failed_jobs` 0, `scheduler.status` ok, `ledger.result` ok, `ledger.unbalanced_lessons` 0, `ledger.stranded_payments` 0; `/`, `/login`, `/tutors`, `/terms` 200; unauthenticated `/ops/status` 404. `mail.from_name` read `trusTutor Team` (R279: Owner action 5 stays OPEN).
+
+### 2026-10-22 — HANDOFF (cycle 26 END, CC)
+Context size not measured (cloud session); compactions this run: more than one (exact count not recorded). Done: 26a to 26e merged and on rehearsal. Next: only the owner's actions in STATUS §7. Ruled out: any gateway switch to live, any server creation or production deploy, any key or DSN handling, any frozen-file change.
+
+### 2026-10-22 — END (cycle 26 r1, CC)
+Programme "erasure and production readiness" finished: 26a (#87 `d081000`), 26b (#88 `8fa8b91`), 26c (#89 `866169d`), 26d (#90 `e69ef53`), 26e (#91 `1a21f84`); `main` and `rehearsal` both at `1a21f84` plus the docs-only commits. Tests **3631 passed / 25122 assertions** (baseline at START 3388 / 24467); `ledger:verify` green. Resume cap 12, 0 used. No frozen file touched; no migration beyond the two R280 authorised; no gateway row switched to live; no key, token or DSN entered, read or logged. **Advisor consultations this cycle: 3** (26a, 26b, 26c; Claude Opus 5.5). Reviews: 26a and 26b Lows only; 26c 0 High / 3 Medium / 7 Low then fixed; 26d FAIL (1 High, 2 Medium) then FAIL (2 Medium) then fixed at the cap; 26e FAIL (6 Medium) then PASS WITH NOTE. Halt: yes, the plan makes END a halt (Owner actions in STATUS §7).

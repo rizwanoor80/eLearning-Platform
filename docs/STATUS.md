@@ -1,83 +1,73 @@
-# STATUS — cycle 26 r1 — programme "erasure and production readiness" — 26a, 26b done, 26c next, 2026-10-22
-Tests: **3434 passed / 24776 assertions** on `main` `8fa8b91` (baseline at START of cycle 26: 3388 / 24467) · Advisor: **2 times** this cycle (26a and 26b, Claude Opus 5.5) · Review: 26a and 26b 0 High / 0 Medium / Lows only (each fixed in fix round 1 of cap 2) · Resume cap 12, 0 used · Context size not measured (cloud session), 1 compaction this run
+# STATUS — cycle 26 r1 — programme "erasure and production readiness" — END, 26a to 26e done, 2026-10-22
+Tests: **3631 passed / 25122 assertions** on `main` `1a21f84` (baseline at START of cycle 26: 3388 / 24467) · Advisor: **3 times** this cycle (26a, 26b, 26c; Claude Opus 5.5) · Review: 26a, 26b Lows only; 26c 0 High / 3 Medium / 7 Low; 26d FAIL (1 High, 2 Medium) then FAIL (2 Medium), fixed at the cap; 26e FAIL (6 Medium) then PASS WITH NOTE (2 Low); all fixed inside the loop (cap 2) · Resume cap 12, 0 used · Context size not measured (cloud session), more than one compaction this run
 
 ## §1 Git state
-- `main` = `8fa8b91` (26b, PR #88 squash; 26a is `d081000`) plus, on top, the docs-only commit carrying this file and the CYCLE-LOG 26b entries (`[skip ci]`). Cycle 25 chain: `d20d3cf` 25a, `b4775f4` 25b, `64227ef` 25c, `3df85ae` 25d, `ccd3fdf` 25e.
-- `rehearsal` ref = `8fa8b91`; the server runs it (`/ops/status` `app.git_sha` `8fa8b91`, `migrations.pending` 0, R213 green, `mail.from_name` still `trusTutor Team`). No production deploy. No branch deleted.
+- `main` = `1a21f84` (26e, PR #91 squash) plus, on top, the docs-only commit carrying this file and the CYCLE-LOG entries (`[skip ci]`). Cycle 26 chain: `d081000` 26a, `8fa8b91` 26b, `866169d` 26c, `e69ef53` 26d, `1a21f84` 26e.
+- `rehearsal` ref = `1a21f84`; the server runs it (`/ops/status` `app.git_sha` `1a21f84`, `migrations.pending` 0, Horizon running, `queues.failed_jobs` 0, scheduler ok, ledger ok with 0 unbalanced and 0 stranded, `/`, `/login`, `/tutors`, `/terms` 200, unauthenticated `/ops/status` 404). **`mail.from_name` reads `trusTutor Team`** (R279). No production deploy. No branch deleted.
 
 ## §2 Step map
-START: done. 26a (R273, R280): merged `d081000`, on rehearsal, R213 green. 26b (R274, R280): merged `8fa8b91`, on rehearsal, R213 green. 26c to 26e: not started. END: not reached.
+START done. 26a (R273, R280) merged `d081000`. 26b (R274, R280) merged `8fa8b91`. 26c (R275) merged `866169d`. 26d (R276) merged `e69ef53`. 26e (R277) merged `1a21f84`. 26a and 26b were deployed to rehearsal one by one; 26c and 26d reached rehearsal together at `e69ef53` (see §6); 26e at `1a21f84`. END: reached, this file.
 
 ## §3 What changed
-**Cycle 26 so far — 26b (R274):** when an admin erases a tutor, the encrypted account-details copy on their payout lines is erased too: paid lines at once, every line when nothing is owed; unpaid lines keep their copy until the admin's decision ("Delete kept payout details" on the tutor page, which now covers the copies and works for email-paid tutors). A line paid after the account was erased is erased as it is paid. Amount, method, reference and dates stay; nothing is deleted. The database allows `details` to change only to empty (new `details_erased_at`, CHECK and trigger). The CSV export refuses an erased line and names it. This is Owner action 23's option 1, taken by the plan (R274).
-
-**26a (R273):** an admin can erase an account from Admin → Accounts (a read-only list of non-admin users with an "Erase account" action; the modal names the account and lists what is erased and kept) or from the new queue Admin → Account deletion requests (Erase, or Decline with a required note that is mailed). Parents and tutors get a "Delete your account" section in Settings that only files a request (one open at a time, acknowledged by mail to their own address). Erasure runs `AnonymizeUser` unchanged in its rules; a refusal rolls everything back and leaves the request open. New table `account_deletion_requests` (partial unique index: one open request per user). Audit rows hold ids, role and status only.
-
-Cycle 25 (kept below until END of cycle 26 rewrites it):
-- **25a test-to-live safety:** Stripe idempotency keys carry the mode and environment; every payment and saved card carries the `gateway_mode` of the driver that made the call (additive migration, backfill `test`); a card from the other mode is unusable (computed on read); webhooks compare `livemode` to the active row; `payments:mode-readiness` is read-only and lists what blocks a switch.
-- **25b refund truth:** a pending Stripe refund is recorded `requested` and settled only through `SettleGatewayRefund` (webhooks, reconcile, hourly sweep); `listRefunds` pages through every refund; a refund stuck over 72 h alerts admins; `ledger:verify` and the ops ledger check report a capture whose hold is missing or wrong.
-- **25c privacy clean-up:** `AnonymizeUser` clears a tutor's `bank_*` fields when nothing is owed and keeps them until an admin records the decision otherwise; `DetachRemovedCard`'s final failure raises a deduplicated admin alert; an admin action (`ReleaseOrphanedPendingPayment`) closes a pending weekly-charge attempt orphaned on a non-reserved lesson, reading Stripe only and never charging again.
-- **25d booking return:** the return page confirms the hold with the server (`POST /payments/checkout-intent/confirm`, read-only) before it says the card was approved; the client secret is scrubbed from the address bar and history; a definite "no" releases the parent's own hold.
-- **25e end-to-end test:** `tests/Feature/EndToEnd/ParentToPaidTutorTest.php` takes a parent from sign-up to a tutor under paid to date, with `ledger:verify` exit 0 after every money step.
-- Frozen files: only the named R267 edit to `StripePaymentGateway::refund()`/`listRefunds()` (25b, DECISION logged). `LessonStateMachine.php`, `LedgerService.php` and the ledger migration untouched. No gateway row switched to live; no key entered, read or logged; Stripe never called from CI or the sandbox.
+- **26a (R273):** admins erase an account from Admin → Accounts or the Account deletion requests queue; parents and tutors can only file a request from Settings. `AnonymizeUser` rules unchanged. New table `account_deletion_requests`.
+- **26b (R274):** erasing a tutor also erases the encrypted account-details copy on their payout lines (paid lines at once; unpaid ones after the admin's decision). The database allows `details` to change only to empty.
+- **26c (R275):** `php artisan ops:preflight`, a read-only go-live gate: one PASS or FAIL line per check, never a value, exit 1 on any FAIL. Plus a seeding test: `DatabaseSeeder` on production seeds no demo accounts.
+- **26d (R276):** error tracking with Sentry, inert without a DSN (and always off on `local` and `testing`). `EventScrubber` removes request bodies, cookies and the user, redacts sensitive keys and secrets, and drops exception messages that carry SQL or recipients. Tracing and Spotlight are off.
+- **26e (R277):** `docs/runbooks/production.md` (Forge site, environment variable names, deploy script, Horizon, scheduler, backups and a restore drill that nulls gateway and video credentials on the scratch database, `ops:preflight`, the switch-day steps verbatim). And the 25b wording leftovers: a REFUND_FAILED reason and mail per refund kind, a REFUND_STUCK reason, `ReconcileGatewayRefunds::failed()` raising REFUNDED_AT_GATEWAY, no duplicate lines in `payments:retry-refunds --list` or `ledger:verify`. No migration.
+- Frozen files: none touched in cycle 26. No gateway row switched to live; no key, token or DSN entered, read or logged.
 
 ## §4 Decisions and by whom
-- R224(2) merge without asking, taken for PRs #82 to #86 (VERIFICATION entries, each quoting it). R111/R213/R228/R272 rehearsal deploys for 25b to 25e.
-- 25a: stamp the mode from the driver that made the call (advisor); other-mode cards gated on read (CC). 25b: `charge.refunded` never settles a row (advisor); R267 frozen-path edit (CC). 25c: the orphan release only reads Stripe; bank fields cleared when `owed()` is zero (advisor, Opus 5.5). 25d, 25e: no advisor needed (minimum 0).
+- R224(2) merge without asking, taken for PRs #87 to #91 (VERIFICATION entries, each quoting it). R111/R213/R228 rehearsal deploys; R280 for the two rehearsal migrations (26a, 26b).
+- 26a: erasure on a separate read-only Accounts resource, not the Filament Users resource (advisor, DEVIATION logged). 26c: a result object with no field for a value; each check fails closed (advisor). 26d: Sentry, not Flare (every locked Sentry package has a git source, ADR-028).
 - Parked: nothing. Defaults taken: option 1 of every question; none were raised.
 
 ## §5 Why stopping
-END of programme "live switch ready": the queue (25a to 25e) is finished and the plan makes END a halt. Handoff for a new session: **done** everything above; **next** only the owner's actions in §7 (nothing further is authorised for CC); **ruled out** any gateway switch to live, any production deploy, any key handling, any frozen-file change.
+END of programme "erasure and production readiness": the queue (26a to 26e) is finished and the plan makes END a halt. Handoff for a new session: **done** everything in §3, on `main` and on rehearsal; **next** only the owner's actions in §7 (nothing further is authorised for CC); **ruled out** any gateway switch to live, creating or deploying `trustutor-production`, any key, token or DSN handling, any frozen-file change, any server command beyond the authorised rehearsal ones.
 
 ## §6 Mismatches
-- **Cycle 26 START correction (R279):** the cycle 25 END text said Owner action 5 was "closed on evidence"; no `mail.from_name` reading was recorded in cycle 25 and the 2026-10-22 reading is `trusTutor Team`. It is open. That was my error in the cycle 25 END write.
-- Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/25*` and `cp/26*` branches, which were used.
-- **26a plan–repo mismatch:** R273 names the Filament Users resource, which is admin-only with a create page; erasure is on a separate read-only `Accounts` resource plus the `AccountDeletionRequests` queue (advisor, DEVIATION logged). The request route has no `RequirePassword` (it stores an intended URL for GET only; the request erases nothing).
-- **26b, not fixed (Low):** the migration has no `down()` (forward-only); failed payout lines keep their copy while money is owed; no backfill of paid lines of tutors anonymised before 26b (rehearsal only; production does not exist); a later key-rotation job would have to lift the `details` trigger on purpose.
-- 26a, not fixed (Low): no withdraw option or password re-confirmation on a request; the route is not `verified`, so the acknowledgement can go to an unverified address; the R268 path is not exercised through `EraseAccount` in tests; the 1000-character note limit is enforced by the form only; mail transport exceptions or the `log` mailer could write the recipient or body to logs (production must not use `log`; 26c checks it); the 26a migration is dated 2026_10_23, so 26b's must be dated after it.
-- R266 says a card from the other mode is "marked unusable"; it is computed on read from `gateway_mode` instead (no data change on a switch back).
-- 25a, not built: `env` metadata on intents; ignoring other-environment events in `CheckOrphanCapture` (pre-existing); the setup intent has no idempotency key (pre-existing); the re-add mail has no wording for the final-attempt cancellation and two race paths.
-- 25b, not fixed: a pending dashboard refund still inflates `refunded_amount` through `charge.refunded` until reconcile records it; the REFUND_FAILED mail wording is wrong for the stuck-72 h, External and unverified cases and `ReconcileGatewayRefunds::failed()` raises REFUNDED_AT_GATEWAY too broadly; after a mode switch an other-mode payment's pending own refund can be marked Failed and `StripeModeReadiness` counts External rows as blockers; duplicate lines in `--list` and `ledger:verify`.
-- **Nothing in production code calls `AnonymizeUser`** (checked by grep over `app/` and `routes/` at END: only docblock mentions, other actions that guard against an anonymised account, and tests). R54 makes erasure admin-only, but no Filament action, command or route invokes it, so the 25c bank-field clearing cannot run in production until an admin entry point exists. Whether to build one (and whether a parent or tutor may request erasure) is a product question for the planner.
-- Deploy note for the switch: the idempotency-key format changed at the 25a deploy, so deploy with no recurring attempts in flight. The open-refunds count may include failed refunds.
-- 25c, 25d, 25e review notes not fixed: see Deferred.
+- **Deviation (26c):** `866169d` was never CI-green on PostgreSQL 18 (a `ReceiptTest` flake matching `/vat/i` against a faker name, pre-existing, fixed in 26d), so it was not pushed to rehearsal on its own. The 26c code reached rehearsal with `e69ef53`.
+- **Cycle 26 START correction (R279):** Owner action 5 is OPEN. The cycle 25 END text wrongly said it was closed; rehearsal `mail.from_name` reads `trusTutor Team`.
+- Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/26*` branches, which were used.
+- **26a plan–repo mismatch:** R273 names the Filament Users resource; erasure is on a separate Accounts resource plus the queue. 26a, not fixed (Low): no withdraw option or password re-confirmation on a request; the route is not `verified`; the 1000-character note limit is enforced by the form only.
+- **26b, not fixed (Low):** the migration has no `down()`; failed payout lines keep their copy while money is owed; no backfill of tutors anonymised before 26b (rehearsal only); a later key-rotation job would have to lift the `details` trigger on purpose.
+- **26c, accepted:** `Artisan::call('ledger:verify')` is nested inside the preflight command; the trusted-proxy `REMOTE_ADDR` pass holds only if the origin is reachable through the balancer alone; the `.test`-suffix demo rule makes the seeded admin fail the preflight on production unless `ADMIN_EMAIL` is real (intended); the preflight fails by design on local and rehearsal, and its DSN check fails until a DSN is supplied.
+- **26d, accepted:** 13 or more digit numbers and timestamps are over-masked; the `verify-email/{id}/{hash}` path is not masked; the silent environments are a denylist (`local`, `testing`); event-level stacktrace vars are not cleared; contexts added by integrations are scrubbed by key only.
+- **26e, accepted (Low):** `scheduler:ping` has no `onOneServer()` or `withoutOverlapping()` (stated in the runbook); `RequeueFailedRefund` and the sweep alert when `recorded > 0` (the mail is now honest); an External refund alert after a succeeded external row keeps the earlier `advance()` of `refunded_amount`; the deploy script in the runbook is "intended content" because the Forge script is not in the repo; `/horizon` is closed outside local, so opening it to named admins is a later code change; `from_address` in Admin → Settings also overrides `MAIL_FROM_ADDRESS`; no `ProcessPaymentRefund::failed` tests for the Ledger and External kinds.
+- Still true from earlier: R266 says another-mode cards are "marked unusable"; they are computed on read instead. 25a, 25b, 25c-e notes are under Deferred.
+- **Closed this cycle:** the 25b REFUND_FAILED wording, `ReconcileGatewayRefunds::failed()` breadth and the duplicate `--list` and `ledger:verify` lines (26e); `AnonymizeUser` now has an admin entry point (26a); the batch-line bank copies (26b).
 
 ## §7 Next step / Owner actions
-**Live-money readiness (rewritten from scratch against the code at END).**
-Closed in code, off the list: test-to-live customer refs, cards and idempotency keys (25a); refund truth, paging and the unverified-capture ledger check (25b); bank fields and card-detach alerts (25c, apart from the batch-line copies below); the false "approved" message and client secret in history (25d); the CP8 acceptance test (25e); capture robustness, card removal, payout hardening (cycle 24); gateway registry, Stripe driver, checkout, refunds, receipts, payout methods, payouts (cycle 23).
+**Live-money readiness (carried forward; ends at the runbook).**
+Closed in code: test-to-live safety (25a); refund truth and its wording (25b, 26e); privacy clean-up, an admin erasure entry point and the payout-copy erasure (25c, 26a, 26b); the booking return (25d); the CP8 end-to-end test (25e); the go-live gate `ops:preflight` (26c); error tracking, inert until a DSN exists (26d); the production runbook (26e).
 Still open and not the code's to close:
 1. **Counsel and tax (D-04):** the VAT line and tax invoice numbering on receipts (23e, R257).
-2. **Production:** `trustutor-production` is not authorised or built; nothing has run there.
+2. **Production:** `trustutor-production` is not authorised or built; nothing has run there. Build it by `docs/runbooks/production.md`.
 3. **Postmark (R120):** transactional mail still goes through SendPulse SMTP; email receipts wait on it.
-4. **Open code items that the owner may rule on:** the bank-copy ruling (Deferred, 25c item 3); `AnonymizeUser` has no admin entry point (§6), so erasure cannot be run at all yet; redirect-based 3-D Secure is not handled (cards only); a dispute raised after a transfer nets into the next batch by design.
-5. **The live switch itself and the first live money, by hand.**
+4. **Error tracking:** no Sentry account or DSN exists (Owner action 24).
+5. **The live switch itself and the first live money, by hand,** by the switch-day steps in runbook §8.
 
-**Owner action 21 (Recommended — nothing else is needed to close this programme):** to start the next cycle, `/clear` this session, ask the planner "where are we?" for the next PLAN.md, and reply `update` when it is on `main`. Reply `update` when done.
-**Owner action 22 (Recommended, before any live switch):** run `php artisan payments:mode-readiness --target=live` on rehearsal (read-only) and read its blockers list; reason: it is the code's own statement of what stands between test and live. Reply `update` with the blocker lines only, no keys.
+**Owner action 24 (Recommended; before production traffic):** create a Sentry account and project, then set `ERROR_TRACKING_DSN` in the production environment (Forge), never in the repo, never in chat. Reason: until then production errors are not seen anywhere but the log. Reply `update` when done.
+**Owner action 25 (Recommended; once production exists):** run `php artisan ops:preflight` on `trustutor-production` (read-only) and fix every FAIL line before the first real parent is let in; it is expected to fail on rehearsal and local. Reply `update` with the FAIL lines only, no values.
+**Owner action 22 (Recommended, before any live switch):** run `php artisan payments:mode-readiness --target=live` on rehearsal (read-only) and read its blockers list. Reply `update` with the blocker lines only, no keys.
 **Owner action 20 (carried; before any live switch):** in the Stripe dashboard subscribe the live webhook endpoint to `refund.updated` (and optionally `charge.refund.updated`) alongside the existing events; replace the keys and the webhook signing secret together. Reply `update` when done.
-**Owner action 23 (closed by R274 / 26b, option 1 built):** `payout_batch_lines.details` is erased with the tutor's account as described in §3.
-**Switch-day steps (owner, in order; none are CC's):** (1) D-04 settled with counsel and `trustutor-production` authorised and deployed through a rehearsal pass (R210/R213); (2) Postmark wired (R120); (3) in Admin → Payment gateways enter the live keys and the live webhook signing secret together, with the webhook subscribed to all events including `refund.updated` (Owner action 20); (4) `payments:mode-readiness --target=live` shows no blocker; (5) deploy with no recurring attempts in flight; (6) switch the Stripe row to `live`; (7) make one small real booking with your own card, confirm capture, the ledger hold and the receipt, then refund it by hand from the platform and confirm the refund settles (`ledger:verify` green before and after); (8) only then open to parents.
-Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/STATUS.md` §7): Owner actions 2, 3, 4, 6 to 12; Owner action 16 (the 3-D Secure check on rehearsal; needs Stripe test keys entered in Admin → Payment gateways first); Owner action 5 is OPEN (R279: rehearsal `mail.from_name` read `trusTutor Team` on 2026-10-22; closed only by a recorded `TrusTutor Team` reading). Nothing here needs the owner to paste any output.
+**Owner action 5 (OPEN, R279):** closed only by a recorded `TrusTutor Team` reading of `mail.from_name`; rehearsal reads `trusTutor Team`. Set the sender name in Admin → Settings → `from_name` on rehearsal, then reply `update` when done.
+**Owner action 21 (Recommended; to start the next cycle):** `/clear` this session, ask the planner "where are we?" for the next PLAN.md, and reply `update` when it is on `main`.
+**Switch-day steps (owner, in order; none are CC's)** are in `docs/runbooks/production.md` §8, verbatim: (1) D-04 settled with counsel and `trustutor-production` authorised and deployed through a rehearsal pass (R210/R213); (2) Postmark wired (R120); (3) live keys and live webhook signing secret entered together in Admin → Payment gateways, webhook subscribed to all events including `refund.updated`; (4) `payments:mode-readiness --target=live` shows no blocker; (5) deploy with no recurring attempts in flight; (6) switch the Stripe row to `live`; (7) one small real booking with your own card, confirm capture, ledger hold and receipt, refund it by hand and confirm it settles (`ledger:verify` green before and after); (8) only then open to parents.
+Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/STATUS.md` §7): Owner actions 2, 3, 4, 6 to 12; Owner action 16 (the 3-D Secure check on rehearsal; needs Stripe test keys entered in Admin → Payment gateways first). Owner action 23 is closed (R274). Nothing here needs the owner to paste any output.
+
+**Handoff for a clear (rule 13):** END with nothing further authorised, so a clear is offered: `/clear` this session, then reply `update — <answer>` (or just `update` once the planner has written the next PLAN.md).
 
 ## §8 Programme board
-**Cycle 26 r1 — "erasure and production readiness"** (resume cap 12, 0 used) — in progress
+**Cycle 26 r1 — "erasure and production readiness"** (resume cap 12, 0 used) — END
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | #87 | Opus 5.5 round 1: 0 High, 0 Medium, Lows; fix round 1 | done; merged `d081000`, rehearsal R213 green |
-| 26b payout-copy erasure (R274) | `cp/26b-payout-copy-erasure` | #88 | Opus 5.5 round 1: 0 High, 0 Medium, Lows; fix round 1 | done; merged `8fa8b91`, rehearsal R213 green |
-| 26c ops:preflight + seeding (R275) | `cp/26c-preflight-seeding` | — | — | not started |
-| 26d error tracking (R276) | `cp/26d-error-tracking` | — | — | not started |
-| 26e runbook + leftovers (R277) | `cp/26e-runbook-and-leftovers` | — | — | not started |
+| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | #87 | round 1: 0 High, 0 Medium, Lows; fix round 1 | done; merged `d081000`, rehearsal R213 green |
+| 26b payout-copy erasure (R274) | `cp/26b-payout-copy-erasure` | #88 | round 1: 0 High, 0 Medium, Lows; fix round 1 | done; merged `8fa8b91`, rehearsal R213 green |
+| 26c ops:preflight + seeding (R275) | `cp/26c-preflight-seeding` | #89 | round 1: 0 High, 3 Medium, 7 Low; fix round 1 | done; merged `866169d`, on rehearsal with 26d |
+| 26d error tracking (R276) | `cp/26d-error-tracking` | #90 | round 1 FAIL (1 High, 2 Medium); round 2 FAIL (2 Medium); fixed at the cap | done; merged `e69ef53`, rehearsal R213 green |
+| 26e runbook + leftovers (R277) | `cp/26e-runbook-and-leftovers` | #91 | round 1 FAIL (6 Medium); round 2 PASS WITH NOTE (2 Low); fixed at the cap | done; merged `1a21f84`, rehearsal R213 green |
 
-**Cycle 25 r2 — "live switch ready"** (resume cap 12, 0 used) — END
-| Sub-cycle | Branch | PR | Review | State |
-|---|---|---|---|---|
-| 25a test-to-live safety (R266, R271) | `cp/25a-test-to-live` | #82 | Opus 5.5 round 1: 0 High, 1 Medium, 3 Low; fix round 1 | done; merged `d20d3cf`, rehearsal R213 green |
-| 25b refund truth (R267) | `cp/25b-refund-truth` | #83 | Opus 5.5 round 1: 0 High, 2 Medium, Lows; fix round 1 | done; merged `b4775f4`, rehearsal R213 green |
-| 25c privacy clean-up (R268) | `cp/25c-privacy-cleanup` | #84 | round 1: 0 High, 0 Medium, 2 Low; fix round 1 | done; merged `64227ef`, rehearsal R213 green |
-| 25d booking return (R269) | `cp/25d-booking-return` | #85 | round 1: 0 High, 1 Medium, 1 Low; fix round 1 | done; merged `3df85ae`, rehearsal R213 green |
-| 25e CP8 end-to-end test (R270) | `cp/25e-end-to-end` | #86 | round 1: 0 High/Medium/Low, 2 PASS WITH NOTE | done; merged `ccd3fdf`, rehearsal R213 green |
-
+**Cycle 25 r2 (closed) — "live switch ready":** 25a to 25e merged (PRs #82 to #86); last `ccd3fdf`. See `git log` for `d20d3cf`, `b4775f4`, `64227ef`, `3df85ae`, `ccd3fdf`.
 **Cycle 24 r1 (closed) — "payments ready for live":** 24a to 24f merged (PRs #76 to #81); last `6c6b544`. Detail: `git show 1615eaf:docs/STATUS.md` §8.
 **Cycle 23 (closed):** 23a to 23h merged (PRs #68 to #75); last `01f5f34`. Detail: `git show 01f5f34:docs/STATUS.md` §8.
 
