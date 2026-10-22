@@ -2,9 +2,11 @@
 
 namespace App\Services\ErrorTracking;
 
+use Illuminate\Database\QueryException;
 use Sentry\Breadcrumb;
 use Sentry\Event;
 use Sentry\EventHint;
+use Symfony\Component\Mailer\Exception\ExceptionInterface;
 
 /**
  * R276: the last stop before anything is sent to the error tracker. The app's own data (card and bank details, tokens,
@@ -19,9 +21,12 @@ final class EventScrubber
 {
     public const REDACTED = '[redacted]';
 
-    private const SENSITIVE_KEY = '/(password|passwd|passphrase|pwd|secret|token|authorization|cookie|credential|signature|session|csrf|xsrf|card|cvc|cvv|cvn|iban|bank|routing|swift|sort_?code|account_?(number|no)|api_?key|private_?key|(^|_)key$)/';
+    private const SENSITIVE_KEY = '/(password|passwd|passphrase|passcode|pwd|secret|token|authorization|cookie|credential|signature|session|csrf|xsrf|card|cvc|cvv|cvn|iban|bank|routing|swift|sort_?code|account_?(number|no)|api_?key|private_?key|recovery|email|phone|body|dsn|last4|(^|_)(key|pw|otp|pin|jwt|bic|mfa|acct)(_|$))/';
 
     private const BEARER = '/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i';
+
+    /** Exceptions whose message carries user data: bound SQL values, DB error DETAIL lines, recipient addresses. */
+    private const OPAQUE_EXCEPTIONS = [\PDOException::class, QueryException::class, ExceptionInterface::class];
 
     private const DEPTH_LIMIT = 8;
 
@@ -54,7 +59,12 @@ final class EventScrubber
         }
 
         foreach ($event->getExceptions() as $exception) {
-            $exception->setValue(self::string($exception->getValue()));
+            $exception->setValue(self::exceptionValue($exception->getType(), $exception->getValue()));
+
+            // Arguments recorded per call (when `zend.exception_ignore_args` is 0) can hold tokens and passwords.
+            foreach ($exception->getStacktrace()?->getFrames() ?? [] as $frame) {
+                $frame->setVars([]);
+            }
         }
 
         $event->setBreadcrumb(array_map(fn (Breadcrumb $crumb): Breadcrumb => self::breadcrumb($crumb), $event->getBreadcrumbs()));
@@ -84,8 +94,32 @@ final class EventScrubber
     {
         $masked = preg_replace(self::BEARER, '$1 '.self::REDACTED, $value) ?? self::REDACTED;
 
-        // A `key=value` pair in a URL or query string whose key is sensitive keeps the key and loses the value.
-        return preg_replace_callback('/(^|[?&;])([^=&;#\s]+)=([^&;#\s]*)/', fn (array $m): string => self::isSensitiveKey(urldecode($m[2])) ? $m[1].$m[2].'='.self::REDACTED : $m[0], $masked) ?? self::REDACTED;
+        // Header lines (`Authorization: …`, `X-Api-Key: …`, `Cookie: …`) lose everything after the name.
+        $masked = preg_replace('/\b(proxy-authorization|authorization|set-cookie|cookie|x-[a-z-]*(?:key|token|secret))\s*:[^\r\n]*/i', '$1: '.self::REDACTED, $masked) ?? self::REDACTED;
+
+        // Provider secret keys, and anything shaped like a card number.
+        $masked = preg_replace(['/\b[sr]k_(?:live|test)_[A-Za-z0-9]+/', '/(?<![\w.])(?:\d[ -]?){13,19}(?!\d)/'], self::REDACTED, $masked) ?? self::REDACTED;
+
+        // The token in a password-reset link path.
+        $masked = preg_replace('#(reset-password/)[^/?\#\s]+#i', '$1'.self::REDACTED, $masked) ?? self::REDACTED;
+
+        // JSON pairs: "password":"…" keeps the key and loses the value.
+        $masked = preg_replace_callback('/"([^"\\\\]+)"(\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/', fn (array $m): string => self::isSensitiveKey($m[1]) ? '"'.$m[1].'"'.$m[2].'"'.self::REDACTED.'"' : $m[0], $masked) ?? self::REDACTED;
+
+        // A `key=value` pair anywhere (query string, `--token=abc`, `password=x`) whose key is sensitive keeps the key and loses the value.
+        return preg_replace_callback('/(?<![A-Za-z0-9_.%\[\]-])([A-Za-z0-9_.%\[\]-]+)=([^&;#\s"\']*)/', fn (array $m): string => self::isSensitiveKey(urldecode($m[1])) ? $m[1].'='.self::REDACTED : $m[0], $masked) ?? self::REDACTED;
+    }
+
+    /** A message that can hold user data is replaced by its class; any other is masked like every other string. */
+    private static function exceptionValue(string $type, string $message): string
+    {
+        foreach (self::OPAQUE_EXCEPTIONS as $opaque) {
+            if (is_a($type, $opaque, true)) {
+                return self::REDACTED;
+            }
+        }
+
+        return self::string($message);
     }
 
     /**

@@ -3,11 +3,17 @@
 use App\Services\ErrorTracking\ErrorTrackingDsn;
 use App\Services\ErrorTracking\EventScrubber;
 use App\Services\Ops\Preflight;
+use Illuminate\Database\QueryException;
 use Sentry\Breadcrumb;
 use Sentry\ClientBuilder;
 use Sentry\Event;
 use Sentry\EventHint;
+use Sentry\ExceptionDataBag;
+use Sentry\Frame;
+use Sentry\Laravel\ServiceProvider;
+use Sentry\Options;
 use Sentry\SentrySdk;
+use Sentry\Stacktrace;
 use Sentry\State\Scope;
 use Sentry\Transport\Result;
 use Sentry\Transport\ResultStatus;
@@ -47,7 +53,9 @@ function recordingClient(): array
 }
 
 it('sends nothing without a DSN', function () {
-    expect(config('error-tracking.dsn'))->toBeNull()
+    // Guards against the check below passing only because the package was never discovered.
+    expect(app()->providerIsLoaded(ServiceProvider::class))->toBeTrue()
+        ->and(config('error-tracking.dsn'))->toBeNull()
         ->and(config('sentry.dsn'))->toBeNull()
         ->and(SentrySdk::getCurrentHub()->getClient()?->getOptions()->getDsn())->toBeNull();
 });
@@ -80,7 +88,37 @@ it('hands config/sentry.php the same DSN and keeps tracing, logs, metrics and PI
 });
 
 it('keeps the Sentry config serialisable for config:cache', function () {
-    expect(fn () => var_export(config('sentry'), true))->not->toThrow(Throwable::class);
+    // var_export does not throw on a Closure; it prints one. config:cache would then write a file that cannot load.
+    expect(var_export(config('sentry'), true))->not->toContain('Closure')
+        ->and(config('sentry.before_send'))->toBeArray()
+        ->and(config('sentry.before_breadcrumb'))->toBeArray()
+        ->and(config('sentry.before_send_transaction'))->toBeArray();
+});
+
+it('has no SENTRY_*-named way to switch it on', function () {
+    $previous = [$_SERVER['SENTRY_DSN'] ?? null, $_SERVER['SENTRY_SPOTLIGHT'] ?? null];
+    $_SERVER['SENTRY_DSN'] = FAKE_DSN;
+    $_SERVER['SENTRY_SPOTLIGHT'] = 'http://spotlight.invalid:8969/stream';
+
+    try {
+        $options = new Options(array_intersect_key(config('sentry'), array_flip(['dsn', 'spotlight'])));
+
+        expect(config('sentry.spotlight'))->toBeFalse()
+            ->and($options->getDsn())->toBeNull()
+            ->and($options->isSpotlightEnabled())->toBeFalse();
+    } finally {
+        foreach (['SENTRY_DSN', 'SENTRY_SPOTLIGHT'] as $i => $name) {
+            if ($previous[$i] === null) {
+                unset($_SERVER[$name]);
+            } else {
+                $_SERVER[$name] = $previous[$i];
+            }
+        }
+    }
+});
+
+it('does not forward log lines as breadcrumbs', function () {
+    expect(config('sentry.breadcrumbs.logs'))->toBeFalse();
 });
 
 it('classifies sensitive keys', function (string $key) {
@@ -89,19 +127,63 @@ it('classifies sensitive keys', function (string $key) {
     'password', 'password_confirmation', 'Authorization', 'authorization', 'Cookie', 'Set-Cookie', 'X-XSRF-TOKEN', 'x-csrf-token',
     'api_key', 'apiKey', 'API-KEY', 'private_key', 'stripe_secret', 'webhook_secret', 'clientSecret', 'access_token', 'remember_token',
     'bearerToken', 'key', 'signature', 'session_id', 'card_number', 'cardNumber', 'cvc', 'cvv', 'iban', 'bank_account_number',
-    'routing_number', 'swift_code', 'sort_code', 'payment_token', 'credentials',
+    'routing_number', 'swift_code', 'sort_code', 'payment_token', 'credentials', 'PHP_AUTH_PW', 'two_factor_recovery_codes', 'otp', 'pin',
+    'passcode', 'mfa_code', 'jwt', 'dsn', 'bic', 'email', 'phone', 'body',
 ]);
 
 it('leaves ordinary keys alone', function (string $key) {
     expect(EventScrubber::isSensitiveKey($key))->toBeFalse();
-})->with(['url', 'method', 'user_agent', 'lesson_id', 'status', 'amount_fils', 'message', 'monkey', 'accept', 'content-type', 'host']);
+})->with(['url', 'method', 'user_agent', 'lesson_id', 'status', 'amount_fils', 'message', 'monkey', 'accept', 'content-type', 'host', 'shipping', 'spinner', 'opinion']);
 
 it('masks bearer credentials and sensitive query values inside strings', function () {
-    expect(EventScrubber::string('Header Authorization: Bearer abc.DEF-123_xyz== was rejected'))
-        ->toBe('Header Authorization: Bearer [redacted] was rejected')
+    expect(EventScrubber::string('Gateway rejected Bearer abc.DEF-123_xyz== again'))
+        ->toBe('Gateway rejected Bearer [redacted] again')
         ->and(EventScrubber::string('https://x.test/cb?lesson=4&token=abc123&signature=ff00&page=2'))
         ->toBe('https://x.test/cb?lesson=4&token=[redacted]&signature=[redacted]&page=2')
         ->and(EventScrubber::string('plain message'))->toBe('plain message');
+});
+
+it('masks secrets that appear anywhere in a message', function (string $input, string $secret) {
+    expect(EventScrubber::string($input))->not->toContain($secret)->toContain(EventScrubber::REDACTED);
+})->with([
+    'console option' => ['ops:x --token=abc123SECRET run', 'abc123SECRET'],
+    'prose pair' => ['login failed password=hunter2SECRET for user', 'hunter2SECRET'],
+    'json body' => ['{"user":"a","password":"hunter2SECRET","api_key":"k"}', 'hunter2SECRET'],
+    'header line' => ['Authorization: sk_live_ABCDEFSECRET', 'ABCDEFSECRET'],
+    'provider key' => ['used sk_live_ABCDEFSECRET to charge', 'ABCDEFSECRET'],
+    'card number' => ['declined 4242 4242 4242 4242 today', '4242 4242'],
+    'reset link' => ['GET https://x.test/reset-password/TOKENSECRET123?email=a', 'TOKENSECRET123'],
+]);
+
+it('keeps ordinary messages readable', function () {
+    expect(EventScrubber::string('Lesson 41 failed at 2026-10-22 12:00:00 (status=failed)'))->toBe('Lesson 41 failed at 2026-10-22 12:00:00 (status=failed)');
+});
+
+it('never sends the message of an exception that carries bound values', function (Throwable $exception) {
+    [$client, $transport] = recordingClient();
+
+    $client->captureException($exception);
+
+    $json = json_encode(array_map(fn ($e) => [$e->getType(), $e->getValue()], $transport->events[0]->getExceptions()));
+
+    expect($json)->not->toContain('Aisha')->not->toContain('0501234567')->toContain(EventScrubber::REDACTED);
+})->with([
+    'query' => fn () => new QueryException('pgsql', 'insert into messages (body) values (?)', ['Call 0501234567, my daughter Aisha is 9'], new PDOException('deadlock')),
+    'pdo' => fn () => new PDOException('DETAIL: Key (email)=(aisha@example.test) already exists. 0501234567 Aisha'),
+]);
+
+it('empties the recorded arguments of every stack frame', function () {
+    [$client, $transport] = recordingClient();
+
+    $event = Event::createEvent();
+    $event->setExceptions([new ExceptionDataBag(new RuntimeException('boom'), new Stacktrace([new Frame('charge', 'app/Pay.php', 10, null, null, ['cardToken' => 'pm_SECRETCARD', 'password' => 'hunter2PW'])]))]);
+
+    $client->captureEvent($event);
+
+    $frames = $transport->events[0]->getExceptions()[0]->getStacktrace()->getFrames();
+
+    expect($frames[0]->getVars())->toBe([])
+        ->and(json_encode($transport->events[0]->getExceptions()))->not->toContain('pm_SECRETCARD')->not->toContain('hunter2PW');
 });
 
 it('scrubs a captured event end to end', function () {

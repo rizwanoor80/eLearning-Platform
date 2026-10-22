@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\ErrorTracking\ErrorTrackingDsn;
 use App\Services\ErrorTracking\EventScrubber;
 
 /*
@@ -9,14 +10,18 @@ use App\Services\ErrorTracking\EventScrubber;
 |
 | Deliberately narrower than the package's own config/sentry.php, which this file overrides key by key. Everything the
 | app does not need is switched off: no tracing or profiling, no log or metric forwarding, no request bodies, no PII.
-| The DSN comes only from config/error-tracking.php (loaded just before this file), so there is one gate for "may this
-| environment send" and no second, SENTRY_*-named way to switch it on. Every event passes `EventScrubber` first.
+| The DSN comes only from `ErrorTrackingDsn`, the same gate config/error-tracking.php uses, so there is one rule for "may
+| this environment send" and no second, SENTRY_*-named way to switch it on: the SDK's own `SENTRY_DSN` and
+| `SENTRY_SPOTLIGHT` defaults are overridden below. Every event passes `EventScrubber` first.
 |
 */
 
 return [
 
-    'dsn' => config('error-tracking.dsn'),
+    'dsn' => ErrorTrackingDsn::resolve(env('ERROR_TRACKING_DSN'), env('APP_ENV', 'production')),
+
+    // The SDK would otherwise read SENTRY_SPOTLIGHT and send events to that host with no DSN, from any environment.
+    'spotlight' => false,
 
     'environment' => env('APP_ENV', 'production'),
 
@@ -46,7 +51,8 @@ return [
     'before_breadcrumb' => [EventScrubber::class, 'beforeBreadcrumb'],
 
     'breadcrumbs' => [
-        'logs' => true,
+        // Off: Laravel logs every reported exception with its message (bound SQL values, mail addresses) as a breadcrumb.
+        'logs' => false,
         'cache' => false,
         'livewire' => false,
         'sql_queries' => true,
