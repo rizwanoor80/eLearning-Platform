@@ -46,6 +46,7 @@
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <server name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="ERROR_TRACKING_DSN" value="" force="true"/>
         <server name="NIGHTWATCH_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>

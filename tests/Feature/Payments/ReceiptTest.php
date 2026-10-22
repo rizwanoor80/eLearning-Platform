@@ -13,6 +13,7 @@ use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Services\Ledger\LedgerService;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 
 /**
@@ -109,7 +110,8 @@ it('renders one printable receipt per payment with no VAT line', function () {
             ->where('receipt.refunds', [])
             ->missing('receipt.vat'));
 
-    expect(json_encode($response->viewData('page')['props']['receipt']))->not->toMatch('/vat/i')
+    // Keys only: the values include a random faker name, and "Salvatore" is not a VAT line.
+    expect(implode(' ', array_keys(Arr::dot($response->viewData('page')['props']['receipt']))))->not->toMatch('/vat/i')
         ->and(file_get_contents(resource_path('js/pages/receipts/Show.vue')))->not->toMatch('/\bVAT\b/i');
 });
 
