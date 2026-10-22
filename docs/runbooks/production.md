@@ -25,7 +25,7 @@ Steps:
 2. Create the site for the production domain. Repository `rizwanoor80/eLearning-Platform`, branch **`production`** (a deploy branch separate from `rehearsal`; create it from a `main` commit whose CI is green on both PostgreSQL jobs). Install a TLS certificate; the site must answer on `https` only.
 3. Create the database and a database user limited to it. Choose the password in Forge; do not reuse another environment's.
 4. Add the **scheduler** and the **Horizon daemon** (sections 4 and 5).
-5. Put the load balancer or proxy address (if there is one) into `TRUSTED_PROXIES` (section 2). If Forge terminates TLS itself with no balancer, leave `TRUSTED_PROXIES` present and empty.
+5. Set `TRUSTED_PROXIES` (section 2). With a load balancer or proxy in front, use its address or range. With none (Forge's own nginx terminates TLS), set it to `127.0.0.1`: no outside caller has that address, so forwarded-address headers are ignored and a forged `X-Forwarded-For` cannot get past the `/ops/status` allow-list or the rate limiters. Empty fails `ops:preflight`, and `REMOTE_ADDR` is only for an origin reachable solely through a balancer; do not use it when there is no proxy.
 6. Turn on Forge's database backups (section 6) before the first real user exists.
 
 ---
@@ -44,13 +44,15 @@ Set these in the site's environment editor. **A value is the owner's to choose; 
 `REDIS_CLIENT` · `REDIS_HOST` · `REDIS_PORT` · `REDIS_PASSWORD` · `QUEUE_CONNECTION` (must be `redis`) · `CACHE_STORE` · `SESSION_DRIVER` · `SESSION_LIFETIME` · `SESSION_SECURE_COOKIE` (must be `true`) · `SESSION_DOMAIN`
 
 **Proxies**
-`TRUSTED_PROXIES` — present on every production site. Empty means "trust none". Set it to the balancer's address or range only if one exists; the `/ops/status` IP allow-list and the rate limiters key on the address this resolves to (ADR-026).
+`TRUSTED_PROXIES` — must be set on every production site; empty fails `ops:preflight`. The balancer's address or range if one exists, otherwise `127.0.0.1` (step 5 of section 1). The `/ops/status` IP allow-list and the rate limiters key on the address this resolves to (ADR-026).
 
 **Mail** (Postmark, R120; **new for production**)
-`MAIL_MAILER` · `MAIL_FROM_ADDRESS` · `MAIL_FROM_NAME` (must read `TrusTutor Team`, R279; confirm it in `/ops/status` after every deploy) · `POSTMARK_API_KEY` · `POSTMARK_MESSAGE_STREAM_ID`
+`MAIL_MAILER` · `MAIL_FROM_ADDRESS` · `POSTMARK_API_KEY`
+
+The sender **name** is not an environment variable. `/ops/status` `mail.from_name` and every outgoing mail read the **Admin → Settings → `from_name`** value (default `TrusTutor`), not `MAIL_FROM_NAME`. Set it there to read `TrusTutor Team` (R279) and confirm it in `/ops/status` after the first deploy.
 
 **Files**
-`FILESYSTEM_DISK` — uploads (identity and permit documents) go to the **private** disk (`storage/app/private`) and are served only by signed, expiring URLs (invariant 9). If object storage is chosen instead of the server disk: `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_DEFAULT_REGION` · `AWS_BUCKET` · `AWS_ENDPOINT` · `AWS_USE_PATH_STYLE_ENDPOINT`, with the bucket private.
+Leave `FILESYSTEM_DISK` at its default. Identity and permit documents are written to the **private `local` disk** (`storage/app/private`) by the code itself, whatever `FILESYSTEM_DISK` says, and are served only by signed, expiring URLs (invariant 9). Do not configure object storage for documents: no code path would use it, and the documents would stay on the server disk. That folder is therefore the only copy and must be backed up (section 6).
 
 **Real-time (Reverb)**
 `BROADCAST_CONNECTION` · `REVERB_APP_ID` · `REVERB_APP_KEY` · `REVERB_APP_SECRET` · `REVERB_HOST` · `REVERB_PORT` · `REVERB_SCHEME` · `VITE_REVERB_APP_KEY` · `VITE_REVERB_HOST` · `VITE_REVERB_PORT` · `VITE_REVERB_SCHEME` (the `VITE_` ones are read at build time, so a change needs a deploy). If Reverb is not run in production at launch, set `BROADCAST_CONNECTION` to the value that keeps the 60-second poll working and say so in STATUS.
@@ -109,7 +111,7 @@ Horizon is the production queue worker (`QUEUE_CONNECTION=redis`). `config/horiz
 1. Forge → the server → **Daemons** → add: command `php artisan horizon`, directory the site's current path, user `forge`, processes 1.
 2. The deploy script's `horizon:terminate` makes Horizon finish its current jobs and exit; the daemon starts it again on the new code. Confirm `horizon.status` reads `running` and the master pid has changed after each deploy.
 3. Horizon is never run locally; this is only for servers.
-4. `queues.failed_jobs` must stay at 0. A failure is read in the Horizon dashboard (`/horizon`, admins only) and the status document, and is investigated, not cleared.
+4. `queues.failed_jobs` must stay at 0. A failure is read in the status document and the application log, and is investigated, not cleared. The `/horizon` dashboard is closed to everyone outside local (its gate has an empty allow-list, `HorizonServiceProvider`); opening it for named admins is a code change for a later cycle, not something to do on the server.
 
 ---
 
@@ -119,23 +121,24 @@ The app's recurring work (permit checks, `lessons:expire-unpaid`, `recurring:gen
 
 Forge → the server → **Scheduler** → add: `php artisan schedule:run`, every minute, user `forge`.
 
-Each command is idempotent and uses `onOneServer()` plus `withoutOverlapping()`. `recurring:generate` and `recurring:charge` are safe to run twice by design. `/ops/status` shows `scheduler.status` from a tick the scheduler writes every minute; `ops:preflight` fails if there has been no tick in the last three minutes.
+The money and booking commands are idempotent and use `onOneServer()` plus `withoutOverlapping()`; the one-minute `scheduler:ping` tick that feeds the status document is a plain cache write and uses neither. `recurring:generate` and `recurring:charge` are safe to run twice by design. `/ops/status` shows `scheduler.status` from a tick the scheduler writes every minute; `ops:preflight` fails if there has been no tick in the last three minutes.
 
 ---
 
 ## 6. Database backups, and the restore drill (CP8 acceptance)
 
-Two things need backing up: **the database** and **the private document disk** (`storage/app/private`, or the bucket if object storage is used). A backup of one without the other cannot restore a working tenant, because documents are referenced from rows.
+Two things need backing up: **the database** and **the private document disk** (`storage/app/private`; documents are written there and nowhere else). A backup of one without the other cannot restore a working tenant, because documents are referenced from rows.
 
 1. Forge → the server → **Backups** → add a **daily** PostgreSQL database backup to an off-server storage provider of the owner's choice. Keep at least 14 days. The backup destination's credentials are the owner's and are entered in Forge only.
-2. Back up the private document disk daily to the same off-server place (for object storage, enable the bucket's versioning instead).
+2. Back up `storage/app/private` daily to the same off-server place (a Forge scheduled job that copies or syncs it, or a server-level snapshot; Forge's database backup does not include files). There is no other copy of an identity document, so a missing folder backup is a missing backup.
 3. After the first real data exists, run **one restore drill** on a scratch server, and record the date:
-   1. Create a throwaway Forge server with PHP 8.4 and PostgreSQL 18. Do not point it at production services, and do not give it real mail or payment keys.
+   1. Create a throwaway Forge server with PHP 8.4 and PostgreSQL 18, **with no Forge Scheduler entry and no Horizon daemon, and never add one**. The restored database holds real saved-card tokens and real queued jobs; `recurring:charge`, `payments:retry-refunds` or a worker on this copy could charge or refund real cards. Do not point it at production services.
    2. Download last night's database backup to it and restore it into an empty database (`pg_restore` or `psql`, according to the backup's format).
    3. Restore the private-disk backup to `storage/app/private`.
-   4. Deploy the same commit as production, with `APP_ENV` not `production`, mail set to a log driver and **no gateway row `live`**.
-   5. Run `php artisan migrate --no-interaction` (expect nothing to migrate) and `php artisan ledger:verify --no-interaction`. **Pass = ledger OK and an admin can sign in and open a lesson, a tutor document by signed URL and the payments page.**
-   6. Destroy the scratch server and delete the restored data.
+   4. **Before the app is deployed or any request reaches the copy**, deactivate the integrations in the restored database only: `UPDATE payment_gateways SET is_active = false, mode = 'test'` and `UPDATE video_providers SET is_active = false`. The restored rows hold the live credentials, so nothing may run against them first. This is the only SQL in the drill, it runs on the scratch database, and it is never run on production.
+   5. Deploy the same commit as production, with `APP_ENV` not `production`, the mailer set to the `log` driver, no queue worker, and **the same `APP_KEY` as production** (the stored gateway and video credentials and other encrypted columns decrypt only with it; destroying the server in step 7 is what retires the copy of that key). Enter no gateway or video key.
+   6. Run `php artisan migrate --no-interaction` (expect nothing to migrate) and `php artisan ledger:verify --no-interaction`. **Pass = ledger OK and an admin can sign in and open a lesson, a tutor document by signed URL and the payments page.**
+   7. Destroy the scratch server and delete the restored data.
 4. Record the result in STATUS and tick CHECKPOINTS CP8 "Restore from last night's backup on a scratch server succeeds". Until it is recorded, the box is not ticked.
 
 A restore drill never touches production. Restoring over production is a deletion of production data and a rule 8 gate.

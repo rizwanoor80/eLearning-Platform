@@ -87,6 +87,21 @@ it('words each attention mail for what actually happened', function (string $rea
     'stuck pending' => [PaymentNeedsAttention::REFUND_STUCK, ['72 hours ago', 'still pending'], ['The ledger has returned money', 'refused']],
 ]);
 
+it('words the gateway-refund mail without inventing an amount when the payment shows none yet (R277)', function (?int $fils) {
+    $payment = loPayment(['refunded_amount' => $fils]);
+    $html = (new AdminPaymentAttentionMail($payment, PaymentNeedsAttention::REFUNDED_AT_GATEWAY))->render();
+
+    expect($html)->toContain('has not fully recorded')
+        ->not->toContain('refunded in total')
+        ->not->toContain('did not record');
+})->with([[null], [0]]);
+
+it('states the total refunded in the gateway-refund mail only when there is one', function () {
+    $html = (new AdminPaymentAttentionMail(loPayment(['refunded_amount' => 2500]), PaymentNeedsAttention::REFUNDED_AT_GATEWAY))->render();
+
+    expect($html)->toContain('refunded in total, whoever made the refunds');
+});
+
 it('lists a refund the gateway holds pending once, not also as not yet confirmed', function () {
     $payment = loPayment();
     $entry = DB::table('ledger_entries')->insertGetId(['lesson_id' => $payment->lesson_id, 'account' => LedgerAccount::Refund->value, 'type' => 'refund', 'amount' => 4000, 'created_at' => now()->subMinutes(30)]);

@@ -16,7 +16,7 @@
         <p>
             Payment {{ $payment->id }} for lesson {{ $payment->lesson_id }} was taken but the booking could not be confirmed,
             and the automatic refund to the parent's card has not gone through. The ledger was never involved and has not been changed.
-            A refund that could not be requested is retried automatically; one the gateway refused or failed needs you.
+            A refund that could not be requested is retried automatically; one the gateway refused, failed or cancelled needs you.
         </p>
     @elseif ($reason === \App\Events\Payments\PaymentNeedsAttention::EXTERNAL_REFUND_FAILED)
         <p>
@@ -28,7 +28,7 @@
         <p>
             A refund on payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}) was accepted by the payment gateway more than
             {{ \App\Console\Commands\RetryGatewayRefunds::STUCK_HOURS }} hours ago and is still pending there, so the money has not
-            reached the card. It is the gateway's to finish and nothing is retried. Nothing has been changed on the lesson or in the ledger.
+            reached the card. It is the gateway's to finish. If the platform made this refund the ledger has already returned the money and the hourly sweep asks again with the same key; otherwise nothing has been changed on the lesson or in the ledger.
         </p>
     @elseif ($reason === \App\Events\Payments\PaymentNeedsAttention::UNVERIFIED_CAPTURE_REFUNDED)
         <p>
@@ -38,8 +38,10 @@
         </p>
     @else
         <p>
-            The payment gateway has refunded {{ ($payment->refunded_amount ?? \App\Support\Money::zero())->format($payment->currency) }}
-            of payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}), which the platform did not record.
+            The payment gateway reported a refund on payment {{ $payment->id }} (lesson {{ $payment->lesson_id }}) that the platform has not fully recorded.
+            @if ($payment->refunded_amount !== null && $payment->refunded_amount->toFils() > 0)
+                The payment shows {{ $payment->refunded_amount->format($payment->currency) }} refunded in total, whoever made the refunds.
+            @endif
             Nothing has been changed on the lesson or in the ledger.
         </p>
     @endif
