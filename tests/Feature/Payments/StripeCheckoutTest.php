@@ -584,12 +584,21 @@ it('says the payment could not be confirmed for anything but a clean hold', func
     if ($intent === null) {
         $this->http->reply('GET /v1/payment_intents/pi_test_1', ['error' => ['type' => 'api_error', 'message' => 'boom']], 500);
     } else {
-        $this->http->reply('GET /v1/payment_intents/pi_test_1', $intent);
+        // Read twice: once to confirm, once more to release it.
+        $this->http->reply('GET /v1/payment_intents/pi_test_1', $intent)->reply('GET /v1/payment_intents/pi_test_1', $intent);
     }
+
+    $this->http->reply('POST /v1/payment_intents/pi_test_1/cancel', ['id' => 'pi_test_1', 'object' => 'payment_intent', 'status' => 'canceled']);
 
     $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.confirm'), $form)
         ->assertOk()
         ->assertExactJson(['confirmed' => false]);
+
+    // The page tells the parent to start again, which places a new hold: the parent's own unusable one is released
+    // (never another parent's, a spent or a saved-card intent, nor when Stripe cannot be asked).
+    $released = ! in_array($case, ['another parent\'s hold', 'a hold the bank is still checking', 'a spent intent', 'a cancelled intent', 'a saved-card charge', 'Stripe not answering'], true);
+    expect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount($released ? 1 : 0)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
 })->with([
     'another parent\'s hold', 'another tutor', 'another start time', 'a smaller amount', 'a larger amount', 'an amount only partly held',
     'a hold not yet confirmed', 'a hold the bank is still checking', 'a spent intent', 'a cancelled intent', 'automatic capture',
@@ -599,7 +608,7 @@ it('says the payment could not be confirmed for anything but a clean hold', func
 
 it('does not confirm a hold for someone who is not the parent it was made for, nor when the tutor or price no longer stands', function (string $case) {
     $b = scBooking();
-    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
     $user = $b['parent'];
 
     if ($case === 'a stranger') {
@@ -610,10 +619,30 @@ it('does not confirm a hold for someone who is not the parent it was made for, n
         $b['tutor']->update(['hourly_rate' => 12000]);
     }
 
+    $this->http->reply('POST /v1/payment_intents/pi_test_1/cancel', ['id' => 'pi_test_1', 'object' => 'payment_intent', 'status' => 'canceled']);
+
     $this->actingAs($user)->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))
         ->assertOk()
         ->assertExactJson(['confirmed' => false]);
+
+    // The parent's own hold is released; a stranger's call can never cancel someone else's.
+    expect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount($case === 'a stranger' ? 0 : 1);
 })->with(['a stranger', 'a tutor who stopped being bookable', 'a price changed since']);
+
+it('keeps the bank\'s return address (with the client secret) out of the session\'s previous url', function () {
+    $b = scBooking();
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
+
+    $this->actingAs($b['parent'])
+        ->withSession(['_previous' => ['url' => url('/tutors/1/book?payment_intent=pi_test_1&payment_intent_client_secret=pi_test_1_secret_x&redirect_status=succeeded')]])
+        ->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))
+        ->assertOk();
+
+    $previous = session('_previous.url');
+
+    expect($previous)->toBe(route('tutors.book', ['tutor' => $b['tutor']->id, 'starts_at' => SC_SLOT]))
+        ->and($previous)->not->toContain('secret');
+});
 
 it('refuses a malformed confirmation, a guest, and the fake driver', function () {
     $b = scBooking();

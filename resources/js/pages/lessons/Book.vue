@@ -299,6 +299,7 @@ async function resumeAfterRedirect() {
         !intent ||
         intent.id !== stripeReturn.paymentIntentId
     ) {
+        forgetChoice(stripeReturn.paymentIntentId);
         cardError.value =
             'We could not check your payment. Nothing was booked; please try again.';
         paying.value = false;
@@ -330,29 +331,41 @@ async function resumeAfterRedirect() {
 
     // The browser's word is not enough: the page says the card was approved only when the server confirms a hold
     // for this intent, this parent, this tutor and slot, and the quoted price.
+    // A network blip or a server error is retried a couple of times; a definite "no" is not.
     let confirmedHold: Awaited<
         ReturnType<typeof postJson<{ confirmed: boolean }>>
     > | null = null;
 
-    try {
-        confirmedHold = await postJson<{ confirmed: boolean }>(
-            '/payments/checkout-intent/confirm',
-            {
-                payment_intent_id: intent.id,
-                tutor_id: props.tutor.id,
-                starts_at: props.starts_at,
-            },
-        );
-    } catch {
-        // Treated like a hold the server did not confirm, below.
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            confirmedHold = await postJson<{ confirmed: boolean }>(
+                '/payments/checkout-intent/confirm',
+                {
+                    payment_intent_id: intent.id,
+                    tutor_id: props.tutor.id,
+                    starts_at: props.starts_at,
+                },
+            );
+
+            if (confirmedHold.ok) {
+                break;
+            }
+        } catch {
+            confirmedHold = null;
+        }
+
+        if (attempt < 2) {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
     }
 
     if (!confirmedHold?.ok || !confirmedHold.body.confirmed) {
         forgetChoice(intent.id);
         attemptId.value = crypto.randomUUID();
         paying.value = false;
-        returnNotice.value =
-            'We could not confirm your payment for this lesson. Nothing was booked and you were not charged. Please start the payment again.';
+        returnNotice.value = confirmedHold?.ok
+            ? 'We could not confirm your payment for this lesson. Nothing was booked and you were not charged; the card check is being released. Please start the payment again.'
+            : 'We could not reach the payment service to confirm your card. Nothing was booked and you were not charged. If your bank shows a temporary hold, it lapses by itself within a few days. Please wait a minute and start the payment again.';
 
         return;
     }
