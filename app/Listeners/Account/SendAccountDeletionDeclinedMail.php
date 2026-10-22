@@ -10,8 +10,8 @@ use Illuminate\Support\Facades\Mail;
 
 class SendAccountDeletionDeclinedMail implements ShouldQueue
 {
-    /** R273: the decline note goes to the account's own address; an erased (trashed) user gets nothing. */
     /**
+     * R273: the decline note goes to the account's own address; an erased (trashed) user gets nothing.
      * `sendNow()`, not `send()`: this listener is already queued, and a second queue hop would fix the address before an
      * erasure that lands in between. The mailable reads the request (and any decline note) when it renders.
      */

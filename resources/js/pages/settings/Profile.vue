@@ -187,8 +187,9 @@ const user = computed(() => page.props.auth.user);
                 data-test="account-deletion-open"
             >
                 You asked for your account to be deleted on
-                {{ accountDeletion.requested_at }}. Our team is reviewing it
-                and we will email you. You do not need to ask again.
+                {{ accountDeletion.requested_at }}. Our team is reviewing it.
+                If we cannot go ahead we will email you why; otherwise your
+                account is simply erased. You do not need to ask again.
             </p>
 
             <template v-else>
@@ -212,8 +213,8 @@ const user = computed(() => page.props.auth.user);
                 </div>
 
                 <p class="text-muted-foreground text-sm">
-                    We cannot erase an account while a lesson is still open or
-                    while money is owed on it. Past lessons and payments are
+                    We cannot erase an account while a lesson is still open, and we
+                    may ask you to wait if money is still owed on it. Past lessons and payments are
                     kept for our records, without your name.
                 </p>
 
