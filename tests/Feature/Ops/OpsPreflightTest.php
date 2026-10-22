@@ -2,6 +2,7 @@
 
 use App\Enums\PaymentGatewayMode;
 use App\Enums\PreflightStatus;
+use App\Models\Lesson;
 use App\Models\PaymentGatewayAccount;
 use App\Models\User;
 use App\Models\VideoProvider;
@@ -23,8 +24,9 @@ use Symfony\Component\Console\Output\BufferedOutput;
  */
 beforeEach(function () {
     $this->publicPath = sys_get_temp_dir().'/preflight-'.Str::random(12);
-    File::ensureDirectoryExists($this->publicPath.'/target');
-    symlink($this->publicPath.'/target', $this->publicPath.'/storage');
+    File::ensureDirectoryExists($this->publicPath);
+    File::ensureDirectoryExists(storage_path('app/public'));
+    symlink(storage_path('app/public'), $this->publicPath.'/storage');
     app()->usePublicPath($this->publicPath);
 
     $this->app['env'] = 'production';
@@ -109,10 +111,16 @@ it('fails when the URL is not https', function (?string $url) {
     expectOnlyFailing('APP_URL is https');
 })->with(['http://trustutor.example.invalid', '', null]);
 
-it('fails without an application key', function () {
-    config(['app.key' => '']);
+it('fails without a usable application key', function (string $key) {
+    config(['app.key' => $key]);
 
     expectOnlyFailing('APP_KEY is set');
+})->with(['empty' => '', 'too short' => 'base64:c2hvcnQ=', 'not base64' => 'base64:!!!not base64!!!']);
+
+it('fails when the URL has no host', function () {
+    config(['app.url' => 'https://']);
+
+    expectOnlyFailing('APP_URL is https');
 });
 
 it('fails when session cookies are not secure', function (array $session) {
@@ -131,6 +139,29 @@ it('fails when the mailer only logs', function (string $mailer) {
     expectOnlyFailing('Mailer is a real transport');
 })->with(['log', 'array']);
 
+it('judges the mailer by its transport, not its name', function (array $config, string $default) {
+    config($config + ['mail.default' => $default]);
+
+    expectOnlyFailing('Mailer is a real transport');
+})->with([
+    'an unknown mailer name' => [[], 'not-configured'],
+    'a mailer named smtp that logs' => [['mail.mailers.smtp' => ['transport' => 'log']], 'smtp'],
+    'failover that ends in the log transport' => [[], 'failover'],
+    'failover with no members' => [['mail.mailers.failover' => ['transport' => 'failover', 'mailers' => []]], 'failover'],
+    'round robin over an array mailer' => [['mail.mailers.roundrobin' => ['transport' => 'roundrobin', 'mailers' => ['smtp', 'array']]], 'roundrobin'],
+]);
+
+it('passes a failover whose members are all real', function () {
+    config([
+        'mail.mailers.smtp' => ['transport' => 'smtp', 'host' => 'mail.invalid'],
+        'mail.mailers.failover' => ['transport' => 'failover', 'mailers' => ['smtp', 'ses']],
+        'mail.mailers.ses' => ['transport' => 'ses'],
+        'mail.default' => 'failover',
+    ]);
+
+    expect(preflightStatuses()['Mailer is a real transport'])->toBe(PreflightStatus::Pass);
+});
+
 it('fails when the queue is not Redis', function () {
     config(['queue.default' => 'database']);
 
@@ -144,6 +175,11 @@ it('fails when Horizon has no supervisors for this environment or one is off Red
 })->with([
     'no entry for the environment' => [['horizon.environments' => ['local' => ['supervisor-1' => []]]]],
     'a supervisor on another connection' => [['horizon.environments.production.supervisor-1.connection' => 'database']],
+    'a wildcard entry first, as Horizon would pick it' => [['horizon.environments' => [
+        '*' => ['supervisor-1' => ['connection' => 'database', 'maxProcesses' => 1]],
+        'production' => ['supervisor-1' => ['connection' => 'redis', 'maxProcesses' => 10]],
+    ]]],
+    'a supervisor with no processes' => [['horizon.environments.production.supervisor-1.maxProcesses' => 0]],
 ]);
 
 it('fails when the scheduler has not ticked recently or at all', function (?int $age) {
@@ -178,6 +214,21 @@ it('fails when the active gateway is missing credentials', function () {
     expect(preflightStatuses()['A payment gateway is active'])->toBe(PreflightStatus::Fail);
 });
 
+it('fails when the active gateway cannot be used here', function (string $case) {
+    // Written below the model, which refuses these states: this is a row left over from another environment.
+    $row = PaymentGatewayAccount::query()->active()->firstOrFail();
+
+    if ($case === 'live while live is not allowed') {
+        config(['payments.live_mode_allowed' => false]);
+        DB::table('payment_gateways')->where('id', $row->id)->update(['mode' => PaymentGatewayMode::Live->value]);
+    } else {
+        $credentials = ['publishable_key' => 'pk_live_x', 'secret_key' => 'sk_live_x', 'webhook_secret' => 'whsec_x'];
+        DB::table('payment_gateways')->where('id', $row->id)->update(['credentials' => Crypt::encryptString(json_encode($credentials, JSON_THROW_ON_ERROR))]);
+    }
+
+    expect(preflightStatuses()['A payment gateway is active'])->toBe(PreflightStatus::Fail);
+})->with(['live while live is not allowed', 'test mode with live keys']);
+
 it('reports the active gateway mode as test or live, and nothing else', function () {
     $line = collect(app(Preflight::class)->run())->first(fn ($result) => $result->name === 'A payment gateway is active');
 
@@ -203,6 +254,14 @@ it('fails when the video provider is the fake or there is none', function (strin
     expect(preflightStatuses()['Video provider is real and active'])->toBe(PreflightStatus::Fail);
 })->with(['none', 'fake']);
 
+it('fails when the active video provider cannot be used here', function () {
+    DB::table('video_providers')->where('is_active', true)->update([
+        'credentials' => Crypt::encryptString(json_encode(['webhook_secret' => 'test-daily-webhook-secret'], JSON_THROW_ON_ERROR)),
+    ]);
+
+    expect(preflightStatuses()['Video provider is real and active'])->toBe(PreflightStatus::Fail);
+});
+
 it('fails when a webhook secret is missing on the gateway or the video provider', function (string $table) {
     $credentials = $table === 'payment_gateways'
         ? ['publishable_key' => 'pk_test_example', 'secret_key' => 'sk_test_example']
@@ -213,6 +272,12 @@ it('fails when a webhook secret is missing on the gateway or the video provider'
 
     expect(preflightStatuses()['Webhook secrets are present'])->toBe(PreflightStatus::Fail);
 })->with(['payment_gateways', 'video_providers']);
+
+it('says when REMOTE_ADDR trusts the caller', function () {
+    $line = collect(app(Preflight::class)->run())->first(fn ($result) => $result->name === 'Trusted proxies are set');
+
+    expect($line->passed())->toBeTrue()->and($line->note)->toContain('reachable only through the load balancer');
+});
 
 it('judges trusted proxies by shape', function (?string $proxies, bool $passes) {
     config(['trustedproxy.proxies' => $proxies]);
@@ -227,7 +292,12 @@ it('judges trusted proxies by shape', function (?string $proxies, bool $passes) 
     'trust everyone' => ['*', false],
     'trust everyone, double' => ['**', false],
     'a typo' => ['10.0.0.5, load-balancer', false],
-    'a range too wide' => ['10.0.0.0/33', false],
+    'a prefix past the address length' => ['10.0.0.0/33', false],
+    'every IPv4 address' => ['0.0.0.0/0', false],
+    'every IPv6 address' => ['::/0', false],
+    'every IPv4 address as two halves' => ['0.0.0.0/1,128.0.0.0/1', false],
+    'a /7' => ['10.0.0.0/7', false],
+    'a /8' => ['10.0.0.0/8', true],
     'an empty entry' => ['10.0.0.5,', false],
 ]);
 
@@ -242,6 +312,10 @@ it('fails when a demo or factory account exists, trashed ones included, and igno
     'x@example.net',
     'someone@staging.test',
     'someone@box.localhost',
+    'x@mail.example.com',
+    'x@demo.example',
+    'x@elsewhere.invalid',
+    ' padded@example.test ',
 ]);
 
 it('counts a soft-deleted demo account', function () {
@@ -257,21 +331,39 @@ it('does not treat an erased account tombstone or a real address as a demo accou
     expect(preflightStatuses()['No demo accounts'])->toBe(PreflightStatus::Pass);
 });
 
-it('fails without a storage link or with a dangling one', function (bool $dangling) {
+it('fails without a storage link, with a dangling one or with one to the wrong place, and never makes one', function (string $case) {
     File::delete($this->publicPath.'/storage');
 
-    if ($dangling) {
-        symlink($this->publicPath.'/gone', $this->publicPath.'/storage');
-    }
+    match ($case) {
+        'dangling' => symlink($this->publicPath.'/gone', $this->publicPath.'/storage'),
+        'elsewhere' => symlink(sys_get_temp_dir(), $this->publicPath.'/storage'),
+        default => null,
+    };
 
     expectOnlyFailing('Storage link exists');
-})->with([false, true]);
+
+    if ($case === 'missing') {
+        expect(is_link($this->publicPath.'/storage'))->toBeFalse();
+    }
+})->with(['missing', 'dangling', 'elsewhere']);
 
 it('fails when the ledger does not verify, without printing what is wrong', function () {
     Artisan::shouldReceive('call')->with('ledger:verify')->once()->andReturn(1);
     Artisan::shouldReceive('output')->never();
 
     expectOnlyFailing('Ledger verifies');
+});
+
+it('does not print what is wrong with a real unbalanced ledger', function () {
+    $lesson = Lesson::factory()->create();
+    DB::table('ledger_entries')->insert(['lesson_id' => $lesson->id, 'account' => 'platform', 'type' => 'goodwill', 'amount' => 7, 'created_at' => now()]);
+
+    [$exit, $output] = runPreflight();
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain('FAIL  Ledger verifies')
+        ->and($output)->not->toContain('sums to')
+        ->and($output)->not->toContain("Lesson {$lesson->id}");
 });
 
 it('fails without an error tracking DSN', function (mixed $dsn) {
@@ -318,6 +410,7 @@ it('never prints a configured value', function () {
         'webhook' => 'whsec_SENTINELWEBHOOK',
         'mail' => 'sentinel-mailer',
     ];
+    config(['mail.mailers.sentinel-mailer' => ['transport' => 'smtp']]);
 
     config([
         'app.key' => $sentinels['key'],

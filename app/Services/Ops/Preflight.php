@@ -10,9 +10,11 @@ use App\Models\PaymentGatewayAccount;
 use App\Models\User;
 use App\Models\VideoProvider;
 use Closure;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\IpUtils;
 use Throwable;
 
@@ -27,8 +29,19 @@ use Throwable;
  */
 final class Preflight
 {
-    /** Email domains no real account has; a demo or factory user on production is a defect (invariant: demo data stays out). */
-    private const RESERVED_EMAIL_SUFFIXES = ['@example.test', '@example.com', '@example.org', '@example.net', '.test', '.localhost'];
+    /**
+     * Email patterns no real account has (`like`, matched on the lower-cased, trimmed address): the reserved example
+     * domains and their subdomains, and the reserved TLDs. A demo or factory user on production is a defect.
+     */
+    private const RESERVED_EMAIL_PATTERNS = ['%@example.%', '%.test', '%.localhost', '%.example', '%.example.com', '%.example.org', '%.example.net'];
+
+    /** `.invalid` is reserved too, but an erased account's tombstone address (`AnonymizeUser`) is legitimate on production. */
+    private const TOMBSTONE_EMAIL_PATTERN = 'deleted+%@tombstone.invalid';
+
+    /** A proxy range wider than this trusts a large part of the internet; REMOTE_ADDR is the way to say "trust the caller". */
+    private const MIN_PROXY_PREFIX_IPV4 = 8;
+
+    private const MIN_PROXY_PREFIX_IPV6 = 16;
 
     /**
      * @return list<PreflightResult>
@@ -38,10 +51,10 @@ final class Preflight
         $checks = [
             'APP_ENV is production' => fn () => $this->bool(app()->environment('production'), 'set APP_ENV=production'),
             'APP_DEBUG is off' => fn () => $this->bool(config('app.debug') === false, 'set APP_DEBUG=false'),
-            'APP_URL is https' => fn () => $this->bool(str_starts_with(strtolower((string) config('app.url')), 'https://'), 'set APP_URL to the https address'),
-            'APP_KEY is set' => fn () => $this->bool(is_string(config('app.key')) && config('app.key') !== '', 'generate the application key'),
+            'APP_URL is https' => fn () => $this->bool($this->httpsUrl(config('app.url')), 'set APP_URL to the https address'),
+            'APP_KEY is set' => fn () => $this->bool($this->validKey(config('app.key'), config('app.cipher')), 'generate the application key'),
             'Session cookies are secure' => fn () => $this->bool(config('session.secure') === true && config('session.http_only') === true, 'set SESSION_SECURE_COOKIE=true'),
-            'Mailer is a real transport' => fn () => $this->bool(! in_array(config('mail.default'), ['log', 'array', null, ''], true), 'set MAIL_MAILER to a real transport'),
+            'Mailer is a real transport' => fn () => $this->bool($this->realMailer(config('mail.default')), 'set MAIL_MAILER to a real transport'),
             'Queue is Redis with Horizon configured' => fn () => $this->queue(),
             'Scheduler is ticking' => fn () => $this->scheduler(),
             'Payment gateway is not the fake' => fn () => $this->fakeGatewayInactive(),
@@ -90,6 +103,76 @@ final class Preflight
         return [$passed, $passed ? '' : $fix];
     }
 
+    private function httpsUrl(mixed $url): bool
+    {
+        if (! is_string($url) || ! str_starts_with(strtolower($url), 'https://')) {
+            return false;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '';
+    }
+
+    /** Shape only: the key must decode to the length the configured cipher needs. The key itself is never returned. */
+    private function validKey(mixed $key, mixed $cipher): bool
+    {
+        if (! is_string($key) || $key === '' || ! is_string($cipher)) {
+            return false;
+        }
+
+        if (str_starts_with($key, 'base64:')) {
+            $key = base64_decode(substr($key, 7), true);
+
+            if ($key === false) {
+                return false;
+            }
+        }
+
+        return Encrypter::supported($key, $cipher);
+    }
+
+    /**
+     * The mailer is judged by its transport, not its name: a mailer called `smtp` can be configured with the `log`
+     * transport, and `failover` is only as real as its members.
+     *
+     * @param  list<string>  $seen
+     */
+    private function realMailer(mixed $name, array $seen = []): bool
+    {
+        if (! is_string($name) || $name === '' || in_array($name, $seen, true)) {
+            return false;
+        }
+
+        $mailer = config("mail.mailers.{$name}");
+
+        if (! is_array($mailer) || ! is_string($mailer['transport'] ?? null)) {
+            return false;
+        }
+
+        $transport = $mailer['transport'];
+
+        if (in_array($transport, ['log', 'array'], true)) {
+            return false;
+        }
+
+        if (in_array($transport, ['failover', 'roundrobin'], true)) {
+            $members = $mailer['mailers'] ?? null;
+
+            if (! is_array($members) || $members === []) {
+                return false;
+            }
+
+            foreach ($members as $member) {
+                if (! $this->realMailer($member, [...$seen, $name])) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     /** @return array{0: bool, 1: string} */
     private function queue(): array
     {
@@ -97,24 +180,39 @@ final class Preflight
             return [false, 'set QUEUE_CONNECTION=redis'];
         }
 
-        $environments = (array) config('horizon.environments', []);
-        $supervisors = $environments[app()->environment()] ?? $environments['*'] ?? null;
+        // The way Horizon picks its supervisors: the first environment key, in config order, that matches the app's.
+        $supervisors = null;
+
+        foreach ((array) config('horizon.environments', []) as $key => $candidate) {
+            if (Str::is((string) $key, app()->environment())) {
+                $supervisors = $candidate;
+                break;
+            }
+        }
 
         if (! is_array($supervisors) || $supervisors === []) {
             return [false, 'add this environment to config/horizon.php'];
         }
 
         $defaults = (array) config('horizon.defaults', []);
+        $running = 0;
 
         foreach ($supervisors as $name => $supervisor) {
             $merged = array_merge((array) ($defaults[$name] ?? []), (array) $supervisor);
+
+            // Horizon starts no process for a supervisor with zero `maxProcesses`.
+            if (! is_numeric($merged['maxProcesses'] ?? null) || (int) $merged['maxProcesses'] <= 0) {
+                continue;
+            }
+
+            $running++;
 
             if (($merged['connection'] ?? null) !== 'redis') {
                 return [false, 'every Horizon supervisor must use the redis connection'];
             }
         }
 
-        return [true, ''];
+        return $running > 0 ? [true, ''] : [false, 'no Horizon supervisor would start in this environment'];
     }
 
     /** @return array{0: bool, 1: string} */
@@ -155,6 +253,12 @@ final class Preflight
             return [false, 'the active gateway is missing credentials'];
         }
 
+        // The registry's own rules for an active row, which can stop holding after an environment change (live mode
+        // switched off, a key swapped): pure model reads, no driver and no provider call.
+        if ($gateway->activationProblem() !== null || $gateway->keyModeProblem() !== null) {
+            return [false, 'the active gateway cannot be used here: open it in the admin registry'];
+        }
+
         return [true, $gateway->mode === PaymentGatewayMode::Live ? 'mode: live' : 'mode: test'];
     }
 
@@ -169,6 +273,10 @@ final class Preflight
 
         if ($provider->providerCode() === null || $provider->providerCode() === VideoProviderCode::Fake) {
             return [false, 'the active video provider must not be the fake'];
+        }
+
+        if ($provider->activationProblem() !== null) {
+            return [false, 'the active video provider cannot be used here: open it in the admin registry'];
         }
 
         return [true, ''];
@@ -200,7 +308,7 @@ final class Preflight
         $proxies = trim($proxies);
 
         if ($proxies === 'REMOTE_ADDR') {
-            return [true, ''];
+            return [true, 'trusts the caller: the origin must be reachable only through the load balancer'];
         }
 
         foreach (explode(',', $proxies) as $entry) {
@@ -227,20 +335,26 @@ final class Preflight
             return true;
         }
 
-        $max = str_contains($address, ':') ? 128 : 32;
+        $ipv6 = str_contains($address, ':');
+        $max = $ipv6 ? 128 : 32;
+        $min = $ipv6 ? self::MIN_PROXY_PREFIX_IPV6 : self::MIN_PROXY_PREFIX_IPV4;
 
-        return ctype_digit($mask) && (int) $mask <= $max && IpUtils::checkIp($address, $entry);
+        return ctype_digit($mask) && (int) $mask >= $min && (int) $mask <= $max && IpUtils::checkIp($address, $entry);
     }
 
     /** @return array{0: bool, 1: string} */
     private function noDemoAccounts(): array
     {
         // Soft-deleted rows count, and the users table alone is enough: tutors, learners and cards hang off a user.
-        // Erased accounts carry `@tombstone.invalid`, which is deliberately not on this list.
         $query = User::withTrashed()->where(function ($users): void {
-            foreach (self::RESERVED_EMAIL_SUFFIXES as $suffix) {
-                $users->orWhereRaw('lower(email) like ?', ['%'.$suffix]);
+            foreach (self::RESERVED_EMAIL_PATTERNS as $pattern) {
+                $users->orWhereRaw('lower(trim(email)) like ?', [$pattern]);
             }
+
+            $users->orWhere(function ($invalid): void {
+                $invalid->whereRaw('lower(trim(email)) like ?', ['%.invalid'])
+                    ->whereRaw('lower(trim(email)) not like ?', [self::TOMBSTONE_EMAIL_PATTERN]);
+            });
         });
 
         return $this->bool(! $query->exists(), 'remove the demo accounts');
@@ -249,8 +363,10 @@ final class Preflight
     private function storageLinked(): bool
     {
         $link = public_path('storage');
+        $target = realpath(storage_path('app/public'));
 
-        return is_link($link) && file_exists($link);
+        // The link must resolve to the public disk's root; a link to anywhere else serves the wrong files.
+        return is_link($link) && $target !== false && realpath($link) === $target;
     }
 
     /** @return array{0: bool, 1: string} */

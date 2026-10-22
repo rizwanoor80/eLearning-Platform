@@ -130,6 +130,6 @@ it('seeds only reference data and the one admin under APP_ENV=production (R275)'
         ->and(PaymentMethod::query()->count())->toBe(0)
         ->and(RecurringSlot::query()->count())->toBe(0)
         ->and(DB::table('lessons')->count())->toBe(0)
-        // The preflight's own demo-account rule agrees.
+        // No factory or example-domain account is left behind.
         ->and(User::query()->where('email', 'like', '%@example.%')->count())->toBe(0);
 });
