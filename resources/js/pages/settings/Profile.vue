@@ -2,6 +2,7 @@
 import { Form, Head, usePage } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import AccountDeletionController from '@/actions/App/Http/Controllers/Settings/AccountDeletionController';
 import DisplayNameController from '@/actions/App/Http/Controllers/Settings/DisplayNameController';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import Heading from '@/components/Heading.vue';
@@ -28,6 +29,12 @@ defineProps<{
         shown: string;
         approved: string | null;
         requested: string | null;
+    } | null;
+    accountDeletion: {
+        status: 'open' | 'erased' | 'declined' | null;
+        requested_at: string | null;
+        handled_at: string | null;
+        note: string | null;
     } | null;
 }>();
 
@@ -161,6 +168,69 @@ const user = computed(() => page.props.auth.user);
                     >Send for approval</Button
                 >
             </Form>
+        </div>
+
+        <div
+            v-if="accountDeletion"
+            class="flex flex-col space-y-6"
+            data-test="account-deletion-section"
+        >
+            <Heading
+                variant="small"
+                title="Delete your account"
+                description="Ask us to erase your account. Nothing is deleted until our team has reviewed your request"
+            />
+
+            <p
+                v-if="accountDeletion.status === 'open'"
+                class="text-sm"
+                data-test="account-deletion-open"
+            >
+                You asked for your account to be deleted on
+                {{ accountDeletion.requested_at }}. Our team is reviewing it
+                and we will email you. You do not need to ask again.
+            </p>
+
+            <template v-else>
+                <div
+                    v-if="
+                        accountDeletion.status === 'declined' &&
+                        accountDeletion.note
+                    "
+                    class="text-sm"
+                    data-test="account-deletion-declined"
+                >
+                    <p>
+                        Your request on {{ accountDeletion.requested_at }}
+                        was not carried out yet. Our team wrote:
+                    </p>
+                    <blockquote
+                        class="border-s-2 ps-4 py-1 mt-2 whitespace-pre-line"
+                    >
+                        {{ accountDeletion.note }}
+                    </blockquote>
+                </div>
+
+                <p class="text-muted-foreground text-sm">
+                    We cannot erase an account while a lesson is still open or
+                    while money is owed on it. Past lessons and payments are
+                    kept for our records, without your name.
+                </p>
+
+                <Form
+                    v-bind="AccountDeletionController.store.form()"
+                    class="space-y-6"
+                    v-slot="{ errors, processing }"
+                >
+                    <InputError :message="errors.account" />
+                    <Button
+                        variant="destructive"
+                        :disabled="processing"
+                        data-test="request-account-deletion-button"
+                        >Request account deletion</Button
+                    >
+                </Form>
+            </template>
         </div>
     </div>
 </template>
