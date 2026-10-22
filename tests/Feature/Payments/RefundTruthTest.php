@@ -155,7 +155,7 @@ it('fails a pending refund the gateway then fails or cancels, tells admins, and 
         ->and($payment->fresh()->status)->toBe(PaymentStatus::Captured)
         ->and(DB::table('ledger_entries')->count())->toBe($before);
     Event::assertDispatchedTimes(PaymentNeedsAttention::class, 1);
-    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
 })->with(['failed', 'canceled']);
 
 it('never moves a settled row back: a late pending changes nothing, a later failure only alerts', function () {

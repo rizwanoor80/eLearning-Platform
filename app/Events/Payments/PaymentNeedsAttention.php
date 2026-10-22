@@ -2,6 +2,7 @@
 
 namespace App\Events\Payments;
 
+use App\Enums\PaymentRefundKind;
 use App\Models\Payment;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -27,6 +28,25 @@ class PaymentNeedsAttention
 
     /** R259 (2): a captured payment for a booking that could not be confirmed was refunded to the parent's card automatically. */
     public const UNVERIFIED_CAPTURE_REFUNDED = 'unverified_capture_refunded';
+
+    /** R277: a refund the platform asked the gateway for, with an unverified capture (no ledger entry exists), that the gateway refused or that could not be made. */
+    public const UNVERIFIED_REFUND_FAILED = 'unverified_refund_failed';
+
+    /** R277: a refund made at the gateway outside the platform (the dashboard) that the gateway then failed or cancelled. */
+    public const EXTERNAL_REFUND_FAILED = 'external_refund_failed';
+
+    /** R277: a refund the gateway accepted but has kept `pending` for longer than `RetryGatewayRefunds::STUCK_HOURS`. */
+    public const REFUND_STUCK = 'refund_stuck';
+
+    /** The reason for a refund row of this kind that failed: each kind has a different true sentence. */
+    public static function refundFailedFor(PaymentRefundKind $kind): string
+    {
+        return match ($kind) {
+            PaymentRefundKind::Ledger => self::REFUND_FAILED,
+            PaymentRefundKind::Unverified => self::UNVERIFIED_REFUND_FAILED,
+            PaymentRefundKind::External => self::EXTERNAL_REFUND_FAILED,
+        };
+    }
 
     public function __construct(public readonly Payment $payment, public readonly string $reason) {}
 }

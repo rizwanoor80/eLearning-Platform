@@ -42,6 +42,9 @@ class VerifyLedger extends Command
 
         $unheld = $unheldCaptures();
 
+        // A captured payment with ledger entries but no Hold is in both lists: one line for it (R277).
+        $unheld = $unheld->reject(fn (array $row): bool => $stranded->contains('payment_id', $row['payment_id']))->values();
+
         foreach ($unheld as $row) {
             $this->error("Payment {$row['payment_id']} on lesson {$row['lesson_id']} is {$row['status']} for {$row['amount']} fils but the ledger holds {$row['held']} fils for it (invariant #1).");
         }

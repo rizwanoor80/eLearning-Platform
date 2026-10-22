@@ -375,7 +375,7 @@ it('keeps the payment visible to ledger:verify, and tells admins, when the gatew
 
     expect($payment->status)->toBe(PaymentStatus::Captured)
         ->and(PaymentRefund::query()->where('payment_id', $payment->id)->sole()->status)->toBe(PaymentRefundStatus::Failed);
-    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
 
     $this->travel(2)->hours();
 

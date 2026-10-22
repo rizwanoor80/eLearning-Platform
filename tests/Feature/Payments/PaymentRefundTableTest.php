@@ -136,7 +136,7 @@ it('refuses a refund row that breaks the table\'s own rules', function () {
 
 it('reconciles the gateway\'s refunds: records one made by someone else, skips the platform\'s own, and alerts once', function () {
     Event::fake([PaymentNeedsAttention::class]);
-    $payment = prPayment();
+    $payment = prPayment(['refunded_amount' => 2000]);
     PaymentRefund::factory()->create(['payment_id' => $payment->id, 'idempotency_key' => 'unverified-pi_test_1', 'gateway_refund_id' => 're_own', 'amount' => 3000]);
     $reply = prRefundList([
         ['id' => 're_own', 'object' => 'refund', 'amount' => 3000, 'status' => 'succeeded', 'created' => 1790000000, 'metadata' => []],
@@ -161,7 +161,7 @@ it('reconciles the gateway\'s refunds: records one made by someone else, skips t
 it('says so, and records nothing, when the gateway cannot tell whose refunds they are', function () {
     Event::fake([PaymentNeedsAttention::class]);
     PaymentGatewayAccount::factory()->fake()->active()->create();
-    $payment = prPayment(['gateway' => 'fake']);
+    $payment = prPayment(['gateway' => 'fake', 'refunded_amount' => 2000]);
 
     dispatch_sync(new ReconcileGatewayRefunds($payment->id));
 
@@ -171,12 +171,23 @@ it('says so, and records nothing, when the gateway cannot tell whose refunds the
 
 it('alerts admins when the reconcile job gives up', function () {
     Event::fake([PaymentNeedsAttention::class]);
-    $payment = prPayment();
+    $payment = prPayment(['refunded_amount' => 2000]);
 
     (new ReconcileGatewayRefunds($payment->id))->failed(new RuntimeException('gateway down'));
 
     Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUNDED_AT_GATEWAY);
 });
+
+it('does not tell admins the gateway refunded money when the payment shows none (R277)', function (?int $refunded) {
+    Event::fake([PaymentNeedsAttention::class]);
+    PaymentGatewayAccount::factory()->fake()->active()->create();
+    $payment = prPayment(['gateway' => 'fake', 'refunded_amount' => $refunded]);
+
+    (new ReconcileGatewayRefunds($payment->id))->failed(new RuntimeException('gateway down'));
+    dispatch_sync(new ReconcileGatewayRefunds($payment->id));
+
+    Event::assertNotDispatched(PaymentNeedsAttention::class);
+})->with([[null], [0]]);
 
 it('re-queues a refused ledger refund as a new attempt with its own key, audits it, and sends it on the queue', function () {
     Bus::fake([ProcessPaymentRefund::class]);
@@ -339,7 +350,7 @@ it('alerts admins when the process job gives up', function () {
 
     (new ProcessPaymentRefund($row->id))->failed(new RuntimeException('down'));
 
-    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::REFUND_FAILED);
+    Event::assertDispatched(PaymentNeedsAttention::class, fn ($e) => $e->reason === PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
 });
 
 it('shows the admin page to an active admin only, and offers Re-queue on a refused refund only', function () {

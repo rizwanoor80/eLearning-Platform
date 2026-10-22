@@ -31,6 +31,6 @@ class RefundUnverifiedCaptureListener implements ShouldQueue
 
     public function failed(UnverifiedCaptureNeedsRefund $event, Throwable $e): void
     {
-        PaymentNeedsAttention::dispatch($event->payment, PaymentNeedsAttention::REFUND_FAILED);
+        PaymentNeedsAttention::dispatch($event->payment, PaymentNeedsAttention::UNVERIFIED_REFUND_FAILED);
     }
 }
