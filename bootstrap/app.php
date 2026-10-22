@@ -11,6 +11,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Sentry\Laravel\Integration;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -48,6 +49,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // body/comment must not go there, or an over-long one holding a phone number would be kept
         // unmasked (R134/R136).
         $exceptions->dontFlash(['body', 'comment']);
+
+        // R276: reports reach the error tracker only when a DSN is configured (config/error-tracking.php); without
+        // one the client is a no-op. Every event passes App\Services\ErrorTracking\EventScrubber before it leaves.
+        Integration::handles($exceptions);
 
         // R187(a): a conflict the app raises itself (abort(409, ...)) on a form submit — a double click,
         // a stale tab, a step already locked — is told to the user on the page they are on, never as a
