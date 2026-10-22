@@ -8651,3 +8651,27 @@ Halt reason: END of programme (plan step 7). Context size not measured by the to
 
 ### 2026-10-22 — VERIFICATION (R279 sender-name reading at START, CC)
 `GET /ops/status` on rehearsal (HTTP 200): `app.git_sha` `ccd3fdf1c0b01c4eebdd3de30325b1692a047829`, `migrations.pending` 0, `mail.from_name` = `trusTutor Team` (not `TrusTutor Team`). Owner action 5 therefore stays OPEN; the cycle 25 END line "Owner action 5 is closed on evidence" is wrong and is corrected in STATUS §6 (my own cycle 25 END carried it from an older STATUS file without a recorded reading — that was my mistake).
+
+### 2026-10-22 — START (26a, PR #87, CC)
+Branch `cp/26a-erasure` from `origin/main` `ae25c73`; R273, R280; advisor minimum 1. Adds the admin "Erase account" action, the `account_deletion_requests` table and admin queue (Erase / Decline with a mailed note), and the parent/tutor "Request account deletion" section in Settings. `AnonymizeUser` is called unchanged in its rules.
+
+### 2026-10-22 — ADVISOR (26a, CC)
+Model that answered: Claude Opus 5.5. Quoted line: "Put Erase on a separate read-only Accounts resource rather than UserResource, and skip the optional RequirePassword on the request route." Advisor consultations this cycle so far: 1.
+
+### 2026-10-22 — DEVIATION (26a, CC)
+R273 says "the Filament Users resource (`UserResource`)". That resource is admin-only with a create page, so putting an Erase action next to a list of every user would mix two jobs. Done instead: a separate read-only `Accounts` resource (non-admin users, role filter, Erase) plus the `AccountDeletionRequests` queue resource, both behind `RequiresActiveAdmin`. Disclosed in STATUS §6.
+
+### 2026-10-22 — DECISION (26a, CC)
+The request route does not use `RequirePassword`: that middleware stores an intended URL for GET only, so it breaks a POST, and the request erases nothing. Erasure is still admin-only (R54). The Erase action reports every refusal (`UserDeletionException`, `TutorStatusTransitionException`, validation, authorisation) as a notification that does not name the account. Audit rows hold ids, role and status only; the decline note is mailed and stored, then nulled when the account is erased. No mail is sent on erasure itself.
+
+### 2026-10-22 — VERIFICATION (26a gates on `d92dba7`, CC)
+Pest **3421 passed / 24698 assertions** (baseline after 25e 3388); Pint, PHPStan 0, `types:check` (vue-tsc), `npm run build`, RTL and `ledger:verify` green. New tests: `AccountDeletionActionsTest` (14), `AccountDeletionQueueTest` (9), `AccountDeletionSettingsTest` (6). `git log origin/main..HEAD`: `d92dba7`, `4a03008`. No frozen file touched.
+
+### 2026-10-22 — REVIEW (26a round 1, PR #87, fresh subagent, Claude Opus 5.5)
+Verdict: **0 High / 0 Medium / Lows only**. Lock order users row, then request, then tutor profile holds in one transaction; a refusal rolls back and leaves the request open; the partial unique index backs the one-open rule. Lows fixed in `d92dba7`: wording corrections in the mail and Settings text, the Erase action catching `TutorStatusTransitionException`, the role label, a merged docblock. Not fixed, disclosed: no withdraw option and no password re-confirmation on the request; the route is not `verified`, so the acknowledgement can reach an unverified address; the R268 branch is not exercised through `EraseAccount` in tests; the 1000-character note limit is enforced by the form only; a minor learner's own name stays under the existing UserObserver rule; the migration is dated 2026_10_23, so a later 26b migration must be dated after it.
+
+### 2026-10-22 — NOTE (mail-transport residual, 26a, CC)
+A mail transport exception, or the `log` mailer, can write a recipient address or body into logs or `failed_jobs`. The two deletion mails go through queued listeners using `sendNow()` and skip a trashed user, but the transport's own logging is outside the app's control. Production must not use the `log` mailer (the 26c pre-flight checks this).
+
+### 2026-10-22 — VERIFICATION (26a merged, CC)
+Merge authorisation, quoting R224(2): "a PR meeting the merge rule merges without asking". PR #87 squash-merged -> `main` `d08100041b4b02ce6c6cee6eb655d597019cc716`; CI on the PR head green on PostgreSQL 16 and 18. Fix round 1 of cap 2 (Lows only).

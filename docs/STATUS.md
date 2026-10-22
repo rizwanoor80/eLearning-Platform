@@ -1,14 +1,17 @@
-# STATUS — cycle 26 r1 — programme "erasure and production readiness" — step 1 done, starting 26a, 2026-10-22
-Tests: **3388 passed / 24467 assertions** on `main` `ccd3fdf` (baseline at START of cycle 25: 3295 / 23820) · Advisor: **3 times** (25a, 25b, 25c; all Claude Opus 5.5) · Review: 25a 0 High / 1 Medium / 3 Low, 25b 0 High / 2 Medium / several Low, 25c 0 High / 0 Medium / 2 Low (both FAIL Low fixed), 25d 0 High / 1 Medium / 1 Low (both fixed), 25e 0 High / 0 Medium / 0 Low (4 PASS, 2 PASS WITH NOTE); every Medium fixed within the cap of 2 · Resume cap 12, 0 used · Context size not measured (cloud session), 2 compactions this run
+# STATUS — cycle 26 r1 — programme "erasure and production readiness" — 26a merged (deploy pending), 26b next, 2026-10-22
+Tests: **3421 passed / 24698 assertions** on `main` `d081000` (baseline at START of cycle 26: 3388 / 24467) · Advisor: **1 time** this cycle (26a, Claude Opus 5.5) · Review: 26a 0 High / 0 Medium / Lows only (fixed in fix round 1 of cap 2) · Resume cap 12, 0 used · Context size not measured (cloud session), 1 compaction this run
 
 ## §1 Git state
-- `main` = `ccd3fdf` (25e, PR #86 squash) plus, on top, the docs-only commit carrying this file and the CYCLE-LOG END entry (`[skip ci]`). Chain of squash merges this cycle: `d20d3cf` 25a (#82), `b4775f4` 25b (#83), `64227ef` 25c (#84), `3df85ae` 25d (#85), `ccd3fdf` 25e (#86). CI green on both PostgreSQL jobs for each.
-- `rehearsal` ref = `ccd3fdf`, and the server runs it (`/ops/status` `app.git_sha` `ccd3fdf1`). No production deploy. No branch deleted; `cp/25a-test-to-live` … `cp/25e-end-to-end` remain on the remote.
+- `main` = `d081000` (26a, PR #87 squash) plus, on top, the docs-only commit carrying this file and the CYCLE-LOG 26a entries (`[skip ci]`). Cycle 25 chain: `d20d3cf` 25a, `b4775f4` 25b, `64227ef` 25c, `3df85ae` 25d, `ccd3fdf` 25e.
+- `rehearsal` ref = `ccd3fdf` until the 26a deploy below is recorded. No production deploy. No branch deleted.
 
 ## §2 Step map
-START: done. 25a (R266, R271): merged, on rehearsal (after the owner's manual Forge deploy, R272). 25b (R267): merged, on rehearsal. 25c (R268): merged, on rehearsal. 25d (R269): merged, on rehearsal. 25e (R270): merged, on rehearsal; CP8 acceptance line ticked. END: this file.
+START: done. 26a (R273, R280): merged `d081000`, deploy to rehearsal and R213 next. 26b to 26e: not started. END: not reached.
 
 ## §3 What changed
+**Cycle 26 so far — 26a (R273):** an admin can erase an account from Admin → Accounts (a read-only list of non-admin users with an "Erase account" action; the modal names the account and lists what is erased and kept) or from the new queue Admin → Account deletion requests (Erase, or Decline with a required note that is mailed). Parents and tutors get a "Delete your account" section in Settings that only files a request (one open at a time, acknowledged by mail to their own address). Erasure runs `AnonymizeUser` unchanged in its rules; a refusal rolls everything back and leaves the request open. New table `account_deletion_requests` (partial unique index: one open request per user). Audit rows hold ids, role and status only.
+
+Cycle 25 (kept below until END of cycle 26 rewrites it):
 - **25a test-to-live safety:** Stripe idempotency keys carry the mode and environment; every payment and saved card carries the `gateway_mode` of the driver that made the call (additive migration, backfill `test`); a card from the other mode is unusable (computed on read); webhooks compare `livemode` to the active row; `payments:mode-readiness` is read-only and lists what blocks a switch.
 - **25b refund truth:** a pending Stripe refund is recorded `requested` and settled only through `SettleGatewayRefund` (webhooks, reconcile, hourly sweep); `listRefunds` pages through every refund; a refund stuck over 72 h alerts admins; `ledger:verify` and the ops ledger check report a capture whose hold is missing or wrong.
 - **25c privacy clean-up:** `AnonymizeUser` clears a tutor's `bank_*` fields when nothing is owed and keeps them until an admin records the decision otherwise; `DetachRemovedCard`'s final failure raises a deduplicated admin alert; an admin action (`ReleaseOrphanedPendingPayment`) closes a pending weekly-charge attempt orphaned on a non-reserved lesson, reading Stripe only and never charging again.
@@ -26,7 +29,9 @@ END of programme "live switch ready": the queue (25a to 25e) is finished and the
 
 ## §6 Mismatches
 - **Cycle 26 START correction (R279):** the cycle 25 END text said Owner action 5 was "closed on evidence"; no `mail.from_name` reading was recorded in cycle 25 and the 2026-10-22 reading is `trusTutor Team`. It is open. That was my error in the cycle 25 END write.
-- Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/25*` branches, which were used.
+- Branch disclosure: the session harness named `claude/confident-mendel-80sp0u`; the plan and CLAUDE.md authorise the `cp/25*` and `cp/26*` branches, which were used.
+- **26a plan–repo mismatch:** R273 names the Filament Users resource, which is admin-only with a create page; erasure is on a separate read-only `Accounts` resource plus the `AccountDeletionRequests` queue (advisor, DEVIATION logged). The request route has no `RequirePassword` (it stores an intended URL for GET only; the request erases nothing).
+- 26a, not fixed (Low): no withdraw option or password re-confirmation on a request; the route is not `verified`, so the acknowledgement can go to an unverified address; the R268 path is not exercised through `EraseAccount` in tests; the 1000-character note limit is enforced by the form only; mail transport exceptions or the `log` mailer could write the recipient or body to logs (production must not use `log`; 26c checks it); the 26a migration is dated 2026_10_23, so 26b's must be dated after it.
 - R266 says a card from the other mode is "marked unusable"; it is computed on read from `gateway_mode` instead (no data change on a switch back).
 - 25a, not built: `env` metadata on intents; ignoring other-environment events in `CheckOrphanCapture` (pre-existing); the setup intent has no idempotency key (pre-existing); the re-add mail has no wording for the final-attempt cancellation and two race paths.
 - 25b, not fixed: a pending dashboard refund still inflates `refunded_amount` through `charge.refunded` until reconcile records it; the REFUND_FAILED mail wording is wrong for the stuck-72 h, External and unverified cases and `ReconcileGatewayRefunds::failed()` raises REFUNDED_AT_GATEWAY too broadly; after a mode switch an other-mode payment's pending own refund can be marked Failed and `StripeModeReadiness` counts External rows as blockers; duplicate lines in `--list` and `ledger:verify`.
@@ -55,13 +60,12 @@ Carried unchanged from earlier STATUS files (full text: `git show 467f057:docs/S
 **Cycle 26 r1 — "erasure and production readiness"** (resume cap 12, 0 used) — in progress
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | — | — | starting |
+| 26a erase action + deletion requests (R273) | `cp/26a-erasure` | #87 | Opus 5.5 round 1: 0 High, 0 Medium, Lows; fix round 1 | merged `d081000`; rehearsal deploy and R213 next |
 | 26b payout-copy erasure (R274) | `cp/26b-payout-copy-erasure` | — | — | not started |
 | 26c ops:preflight + seeding (R275) | `cp/26c-preflight-seeding` | — | — | not started |
 | 26d error tracking (R276) | `cp/26d-error-tracking` | — | — | not started |
 | 26e runbook + leftovers (R277) | `cp/26e-runbook-and-leftovers` | — | — | not started |
 
-**Cycle 25 r2 (closed) — "live switch ready":** 25a to 25e merged (PRs #82 to #86); last `ccd3fdf`.
 **Cycle 25 r2 — "live switch ready"** (resume cap 12, 0 used) — END
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
