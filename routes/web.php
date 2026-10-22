@@ -125,6 +125,7 @@ Route::middleware(['auth', 'verified', 'can:access-parent-area', 'throttle:accou
     Route::post('lessons', [BookLessonController::class, 'store'])->middleware('throttle:bookings')->name('lessons.store');
     // R248: the hold the browser confirms before `lessons.store` runs; 404 unless Stripe is the active gateway.
     Route::post('payments/checkout-intent', [CheckoutIntentController::class, 'store'])->middleware('throttle:bookings')->name('payments.checkout-intent.store');
+    Route::post('payments/checkout-intent/confirm', [CheckoutIntentController::class, 'confirm'])->middleware('throttle:bookings')->name('payments.checkout-intent.confirm');
     Route::post('lessons/{lesson}/cancel', CancelLessonController::class)->name('lessons.cancel');
 
     Route::resource('learners', LearnerController::class);

@@ -533,6 +533,134 @@ it('books from a hold only once: a reload of the bank\'s return that posts the s
         ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toHaveCount(1);
 });
 
+// --- 25d (R269): the page says "approved" only when the server confirms the hold ---------------------
+
+function scConfirmForm(array $b, array $extra = []): array
+{
+    return $extra + ['payment_intent_id' => 'pi_test_1', 'tutor_id' => $b['tutor']->id, 'starts_at' => SC_SLOT];
+}
+
+it('confirms a hold that is the caller\'s own, for this tutor and slot and the price quoted now, and changes nothing', function () {
+    $b = scBooking();
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
+
+    $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))
+        ->assertOk()
+        ->assertExactJson(['confirmed' => true, 'learner_id' => $b['learner']->id]);
+
+    expect($this->http->requests)->toHaveCount(1)
+        ->and($this->http->requestsTo('GET /v1/payment_intents/pi_test_1'))->toHaveCount(1)
+        ->and(Payment::query()->count())->toBe(0)
+        ->and(Lesson::query()->count())->toBe(0);
+});
+
+it('says the payment could not be confirmed for anything but a clean hold', function (string $case) {
+    $b = scBooking();
+    $form = scConfirmForm($b);
+    $intent = match ($case) {
+        'another parent\'s hold' => scHeld($b, [], ['account_user_id' => (string) ($b['parent']->id + 1000)]),
+        'another tutor' => scHeld($b, [], ['tutor_profile_id' => (string) ($b['tutor']->id + 1000)]),
+        'another start time' => scHeld($b, [], ['starts_at' => '2026-09-22T09:00:00Z']),
+        'a smaller amount' => scHeld($b, ['amount' => $b['amount'] - 100, 'amount_capturable' => $b['amount'] - 100]),
+        'a larger amount' => scHeld($b, ['amount' => $b['amount'] + 100, 'amount_capturable' => $b['amount'] + 100]),
+        'an amount only partly held' => scHeld($b, ['amount_capturable' => $b['amount'] - 100]),
+        'a hold not yet confirmed' => scHeld($b, ['status' => 'requires_payment_method', 'amount_capturable' => 0]),
+        'a hold the bank is still checking' => scHeld($b, ['status' => 'processing', 'amount_capturable' => 0]),
+        'a spent intent' => scCaptured($b),
+        'a cancelled intent' => scHeld($b, ['status' => 'canceled', 'amount_capturable' => 0]),
+        'automatic capture' => scHeld($b, ['capture_method' => 'automatic']),
+        'a live-mode intent on a test row' => scHeld($b, ['livemode' => true]),
+        'another currency' => scHeld($b, ['currency' => 'usd']),
+        'a saved-card charge' => scHeld($b, [], ['kind' => 'recurring']),
+        'an intent that already became a payment' => scHeld($b),
+        'an unknown learner' => scHeld($b, [], ['learner_id' => '99999999']),
+        'Stripe not answering' => null,
+    };
+
+    if ($case === 'an intent that already became a payment') {
+        Payment::factory()->create(['gateway' => 'stripe', 'gateway_ref' => 'pi_test_1']);
+    }
+
+    if ($intent === null) {
+        $this->http->reply('GET /v1/payment_intents/pi_test_1', ['error' => ['type' => 'api_error', 'message' => 'boom']], 500);
+    } else {
+        // Read twice: once to confirm, once more to release it.
+        $this->http->reply('GET /v1/payment_intents/pi_test_1', $intent)->reply('GET /v1/payment_intents/pi_test_1', $intent);
+    }
+
+    $this->http->reply('POST /v1/payment_intents/pi_test_1/cancel', ['id' => 'pi_test_1', 'object' => 'payment_intent', 'status' => 'canceled']);
+
+    $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.confirm'), $form)
+        ->assertOk()
+        ->assertExactJson(['confirmed' => false]);
+
+    // The page tells the parent to start again, which places a new hold: the parent's own unusable one is released
+    // (never another parent's, a spent or a saved-card intent, nor when Stripe cannot be asked).
+    $released = ! in_array($case, ['another parent\'s hold', 'a hold the bank is still checking', 'a spent intent', 'a cancelled intent', 'a saved-card charge', 'Stripe not answering'], true);
+    expect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount($released ? 1 : 0)
+        ->and($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/capture'))->toBeEmpty();
+})->with([
+    'another parent\'s hold', 'another tutor', 'another start time', 'a smaller amount', 'a larger amount', 'an amount only partly held',
+    'a hold not yet confirmed', 'a hold the bank is still checking', 'a spent intent', 'a cancelled intent', 'automatic capture',
+    'a live-mode intent on a test row', 'another currency', 'a saved-card charge', 'an intent that already became a payment',
+    'an unknown learner', 'Stripe not answering',
+]);
+
+it('does not confirm a hold for someone who is not the parent it was made for, nor when the tutor or price no longer stands', function (string $case) {
+    $b = scBooking();
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b))->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
+    $user = $b['parent'];
+
+    if ($case === 'a stranger') {
+        $user = User::factory()->create();
+    } elseif ($case === 'a tutor who stopped being bookable') {
+        $b['tutor']->forceFill(['status' => 'suspended'])->save();
+    } elseif ($case === 'a price changed since') {
+        $b['tutor']->update(['hourly_rate' => 12000]);
+    }
+
+    $this->http->reply('POST /v1/payment_intents/pi_test_1/cancel', ['id' => 'pi_test_1', 'object' => 'payment_intent', 'status' => 'canceled']);
+
+    $this->actingAs($user)->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))
+        ->assertOk()
+        ->assertExactJson(['confirmed' => false]);
+
+    // The parent's own hold is released; a stranger's call can never cancel someone else's.
+    expect($this->http->requestsTo('POST /v1/payment_intents/pi_test_1/cancel'))->toHaveCount($case === 'a stranger' ? 0 : 1);
+})->with(['a stranger', 'a tutor who stopped being bookable', 'a price changed since']);
+
+it('keeps the bank\'s return address (with the client secret) out of the session\'s previous url', function () {
+    $b = scBooking();
+    $this->http->reply('GET /v1/payment_intents/pi_test_1', scHeld($b));
+
+    $this->actingAs($b['parent'])
+        ->withSession(['_previous' => ['url' => url('/tutors/1/book?payment_intent=pi_test_1&payment_intent_client_secret=pi_test_1_secret_x&redirect_status=succeeded')]])
+        ->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))
+        ->assertOk();
+
+    $previous = session('_previous.url');
+
+    expect($previous)->toBe(route('tutors.book', ['tutor' => $b['tutor']->id, 'starts_at' => SC_SLOT]))
+        ->and($previous)->not->toContain('secret');
+});
+
+it('refuses a malformed confirmation, a guest, and the fake driver', function () {
+    $b = scBooking();
+
+    $this->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))->assertUnauthorized();
+
+    foreach ([['payment_intent_id' => 'not-an-intent'], ['payment_intent_id' => 'pi_x/../y'], ['tutor_id' => 'abc'], ['starts_at' => 'tomorrow']] as $bad) {
+        $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b, $bad))->assertUnprocessable();
+    }
+
+    expect($this->http->requests)->toBeEmpty();
+
+    PaymentGatewayAccount::factory()->fake()->active()->create();
+
+    $this->actingAs($b['parent'])->postJson(route('payments.checkout-intent.confirm'), scConfirmForm($b))->assertNotFound();
+    expect($this->http->requests)->toBeEmpty();
+});
+
 it('keeps source tripwires on the booking page (no JS test runner exists: the behaviour itself is checked by hand on rehearsal, see STATUS)', function () {
     $page = file_get_contents(resource_path('js/pages/lessons/Book.vue'));
 
@@ -547,7 +675,13 @@ it('keeps source tripwires on the booking page (no JS test runner exists: the be
         ->and($page)->toContain('retrievePaymentIntent')
         // A failed Stripe.js load or a network error must not leave the form stuck.
         ->and($page)->toContain('startPayment(')
-        ->and($page)->toContain('stripePromise = null');
+        ->and($page)->toContain('stripePromise = null')
+        // R269: the secret leaves the address and Inertia's history entry first, and "approved" waits on the server.
+        ->and($page)->toContain('router.replace(')
+        ->and($page)->toContain('window.history.replaceState(')
+        ->and($page)->toContain('/payments/checkout-intent/confirm')
+        // The in-page decline forgets what it remembered for that payment.
+        ->and(substr_count($page, 'forgetChoice(intent.body.payment_intent_id)'))->toBe(1);
 });
 
 // --- CancelCheckoutIntent ----------------------------------------------------------------------------
