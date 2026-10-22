@@ -8570,3 +8570,12 @@ Gates on `f9bab71`: Pest **3338 passed / 24009 assertions**, `ledger:verify` OK,
 
 ### 2026-10-21 — HANDOFF (cycle 25 halt, CC)
 Halt reason: R224 failed post-deploy check. Context size not measured by the tool (cloud session); 1 compaction this run (during 25b). Done: START, 25a and 25b merged. Next: Owner action 18 (Forge deploy of `d20d3cf`), then 25c, 25d, 25e and END. Ruled out: re-pushing `rehearsal`, empty commits, any production deploy, any gateway row to live. Owner to `/clear` this session, then reply `update`.
+
+### 2026-10-22 — START (cycle 25 r2, resume at step 2b, CC)
+`update` received after a `/clear`. `git fetch` + fast-forward: `main` = `883b7a3` ("PLAN.md cycle 25 r2 — R272 ... [skip ci]"); the plan is already committed by the planner (R215), so no "PLAN.md cycle 25 r2" commit by CC. No END exists in this log for cycle 25. R222 window check: `CLAUDE_CODE_DISABLE_1M_CONTEXT` = 1, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` = 200000; cloud session (`CLAUDE_CODE_REMOTE=true`), SessionStart hook reported "Nothing to migrate". Resume cap 12, 0 used. Resuming at step 2b under R272. Not touched: `LessonStateMachine.php`, `LedgerService.php`, the ledger migration; no key handled; no gateway row switched to live.
+
+### 2026-10-22 — NOTE (cause of the failed 25a deploy, R272, CC)
+Cause recorded, replacing "cause unknown" in the 2026-10-21 VERIFICATION (25a rehearsal, R213, FAILED): per the owner's evidence in R272, Forge shows the push-to-deploy for `d20d3cf` was "cancelled automatically because it was queued for too long"; the build never started, no migration ran, the code was not at fault. The owner redeployed `d20d3cf` from Forge at about 10:08 UTC on 2026-10-22 ("Deployed", 28 s, migration `2026_10_22_100000_add_gateway_mode_to_payments_and_payment_methods` ran). Standing from R272: if a rehearsal deploy has not landed after 3 minutes of R213 polling, record "deploy not landed — check Forge's deployment list (a queued-too-long cancel needs a manual Deploy)" as the Owner action and halt; never re-push the same sha.
+
+### 2026-10-22 — VERIFICATION (25a rehearsal, R213 on `d20d3cf`, CC)
+`GET /ops/status` at 11:13 UTC: `app.git_sha` `d20d3cfd`, release 80891615, `migrations.pending` 0 (the 25a migration ran), `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok, `unbalanced_lessons` 0, `stranded_payments` 0, scheduler ok. `/`, `/login`, `/tutors`, `/terms` all 200. Expectation of R272 met. Production untouched.
