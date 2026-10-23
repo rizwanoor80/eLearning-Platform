@@ -8763,3 +8763,12 @@ Context size not measured (cloud session); compactions this run: more than one (
 
 ### 2026-10-22 — END (cycle 26 r1, CC)
 Programme "erasure and production readiness" finished: 26a (#87 `d081000`), 26b (#88 `8fa8b91`), 26c (#89 `866169d`), 26d (#90 `e69ef53`), 26e (#91 `1a21f84`); `main` and `rehearsal` both at `1a21f84` plus the docs-only commits. Tests **3631 passed / 25122 assertions** (baseline at START 3388 / 24467); `ledger:verify` green. Resume cap 12, 0 used. No frozen file touched; no migration beyond the two R280 authorised; no gateway row switched to live; no key, token or DSN entered, read or logged. **Advisor consultations this cycle: 3** (26a, 26b, 26c; Claude Opus 5.5). Reviews: 26a and 26b Lows only; 26c 0 High / 3 Medium / 7 Low then fixed; 26d FAIL (1 High, 2 Medium) then FAIL (2 Medium) then fixed at the cap; 26e FAIL (6 Medium) then PASS WITH NOTE. Halt: yes, the plan makes END a halt (Owner actions in STATUS §7).
+
+### 2026-10-23 08:50 — START (cycle 27 r1, CC)
+`git fetch origin main`, fast-forwarded `6f11980` → `d6a93d9`: `docs/PLAN.md` is the committed cycle 27 r1 (planner, R215), no END entry for cycle 27 in this log, so the revision is executable. Plan: R281 sentences, then 27a (R282, a confirmation review of the merged 26d scrubber), then END. Resume cap 6, 0 used. Read at start: HOW-WE-WORK, PLAN, STATUS, CYCLE-LOG tail; PROJECT_BRIEF, PRD, DATA_MODEL and CHECKPOINTS are unchanged background for a review-only cycle and were not re-read.
+
+### 2026-10-23 08:51 — VERIFICATION (R222 window check, first of the session; CC)
+`CLAUDE_CODE_DISABLE_1M_CONTEXT` = `1`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` = `200000`, `CLAUDE_CODE_REMOTE` = `true`: the session runs on the 200k window. Compactions observed so far this session: 0. SessionStart hook printed "Nothing to migrate".
+
+### 2026-10-23 08:55 — BLOCKER (step 1, the R281 sentences in CLAUDE.md and HOW-WE-WORK §12, CC)
+PLAN step 1 asks for one sentence each in `CLAUDE.md` (Owner loop item 15) and `docs/HOW-WE-WORK.md` §12. The edit was attempted once (a small scripted append to the end of the R224 line in each file) and the harness permission classifier denied it ("Instruction Poisoning": a change to agent instruction files). It was not retried by another route. Both files are unchanged. The rest of the cycle does not depend on it, so work continues with step 2; the two sentences go into STATUS §7 as an owner action (the owner can allow the edit and reply `update`, or make it by hand).
