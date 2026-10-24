@@ -1,11 +1,11 @@
-# STATUS — cycle 28 r1 — programme "SaaS foundation" — 28a merged, rehearsal deploy next — 2026-10-24 16:30
-Tests: **3666 passed** (3631 + 35 tenancy tests), also under `TENANCY_SPIKE=1 --parallel`, on `cp/28a-tenancy-spike` `38d292b`; `main` `c81b3bc` is that content squashed (CI on `main` running at write) · Advisor: consulted 2 times (Claude Opus 5.5; 28a minimum 2 met) · Review: 28a review 1 FAIL (3 Medium, fixed), review 2 PASS WITH NOTES (0 High, 0 Medium) · Resume cap 18, 0 used · Context size not measured (cloud session), 1 compaction
+# STATUS — cycle 28 r1 — programme "SaaS foundation" — 28a merged and deployed to rehearsal, 28b next — 2026-10-24 16:36
+Tests: **3666 passed** (3631 + 35 tenancy tests), also under `TENANCY_SPIKE=1 --parallel`, on `cp/28a-tenancy-spike` `38d292b`; `main` `c81b3bc` is that content squashed (CI on `main` green) · Advisor: consulted 2 times (Claude Opus 5.5; 28a minimum 2 met) · Review: 28a review 1 FAIL (3 Medium, fixed), review 2 PASS WITH NOTES (0 High, 0 Medium) · Resume cap 18, 0 used · Context size not measured (cloud session), 1 compaction
 
 ## §1 Git state
-- `main` = `c81b3bc` (28a squash-merge of PR #92) plus this docs-only commit. `rehearsal` ref = `1a21f84` (not yet moved). Branch `cp/28a-tenancy-spike` is merged and kept (no branch deleted). No production deploy.
+- `main` = `c81b3bc` (28a squash-merge of PR #92) plus this docs-only commit. `rehearsal` ref = `c81b3bc` (deployed; R213: git_sha matches, pending 0, horizon running, failed_jobs 0, ledger ok). Branch `cp/28a-tenancy-spike` is merged and kept (no branch deleted). No production deploy.
 
 ## §2 Step map
-1. START, ADR-031, PRD §13: **done**. 2. 28a tenancy spike (R284): **merged** (PR #92, `c81b3bc`, CI green on both PostgreSQL jobs at `38d292b`). 3. 28b tenancy core (R285, R290) then halt for the R291 GO: **next** (deploy of 28a to rehearsal first, once CI on `main` is green). 4 to 8: not started.
+1. START, ADR-031, PRD §13: **done**. 2. 28a tenancy spike (R284): **merged** (PR #92, `c81b3bc`, CI green on both PostgreSQL jobs at `38d292b`). 3. 28b tenancy core (R285, R290) then halt for the R291 GO: **next** (28a deployed to rehearsal, R213 green). 4 to 8: not started.
 
 ## §3 What changed
 - 28a, `app/Tenancy/*`, `TenancyServiceProvider`, `tenants:create|migrate|each`, `IdentifyTenant`, central registry migrations, ADR-032, `docs/runbooks/tenancy.md`, 35 tenancy tests, `TestCase` hook for `TENANCY_SPIKE=1`. Tenancy is off by default (`TENANCY_ENABLED=false`): v1 behaviour is unchanged. No frozen file touched, no tenant column added, no gateway, key or deploy touched. Log: ADVISOR x2, DECISION x2, REVIEW x2, VERIFICATION, two NOTEs (serial-run stall; 11 carry-forward Lows) in `docs/CYCLE-LOG.md`.
@@ -26,7 +26,7 @@ Tests: **3666 passed** (3631 + 35 tenancy tests), also under `TENANCY_SPIKE=1 --
 - **CLAUDE.md "NOT in v1: B2B organisations" and PROJECT_BRIEF non-goal "B2B organisations, tenancy"** stay true for v1; R283 opens v2 through ADR-031 and PRD section 13. Not edited (CLAUDE.md and the brief are the owner's and the planner's files); the cloud session notes it here.
 
 ## §7 Next step / Owner actions
-Next: deploy `c81b3bc` to rehearsal when CI on `main` is green and verify under R213 (a no-op while tenancy is off), then 28b under R285/R290 (branch `cp/28b-tenancy-core` from `origin/main`).
+Next: 28b under R285/R290 (branch `cp/28b-tenancy-core` from `origin/main`).
 **Before step 3's deploy (R290), Owner action 27:** in Forge create the database `trustutor_central` on rehearsal's PostgreSQL with the same user as the app database, and add `DB_CENTRAL_DATABASE=trustutor_central` to rehearsal's environment; reply `update` when done if CC has halted for it. Nothing is needed from the owner before then.
 **Owner action 26 (Recommended; small, first):** the R281 sentences. Either allow the edit when the harness prompts, or add one sentence each yourself at the end of `CLAUDE.md` rule 15 and of HOW-WE-WORK §12's R224 paragraph: "R281 (owner, 2026-10-23, amends R224): the fix-loop cap limits fix rounds, not reviews; a fresh-subagent confirmation review of the exact final head always runs before any merge and must show 0 Medium and 0 High, else the PR parks; outside money, auth and ledger code a High may be fixed inside the loop, in those areas a High still halts." Reason: until then the rule lives only in PLAN.md, which the next plan overwrites. Reply `update` when done.
 

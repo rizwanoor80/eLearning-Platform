@@ -8825,3 +8825,6 @@ Not fixed in 28a: (1) `rollBack(0)` in `restore()` could throw on a lost connect
 
 ### 2026-10-24 16:25 — DECISION (28a merge, CC)
 R224(2) merge rule met: CI green on `38d292b` on both PostgreSQL 16 and PostgreSQL 18, `mergeable_state` clean, final review 0 High and 0 Medium (R281 confirmation review = review 2 on `9d53979`; `38d292b` changed wording only), fix loop cap of 2 used. PR #92 squash-merged as `c81b3bc` on `main`. Tenancy is disabled by default (`TENANCY_ENABLED=false`), so a deploy of this commit is a behavioural no-op. Advisor consultations in 28a: 2 (minimum 2).
+
+### 2026-10-24 16:35 — VERIFICATION (28a deploy to rehearsal, R228/R213, CC)
+Authorisation quoted: PLAN authorisation boundary, "deploy rehearsal and verify under R228/R213". CI on `main` `c81b3bc` (run 40111207281): success. `rehearsal` ref fast-forwarded `1a21f84` to `c81b3bc` (no force). `GET /ops/status` (bearer from the environment, not echoed) returned HTTP 200: `app.git_sha` = `c81b3bc902d45fc795be8f3433ae48152b0bd153`, `migrations.pending` 0, `horizon.status` running, `queues.failed_jobs` 0, `ledger.result` ok. Tenancy is off, so the deploy is a no-op for v1.
