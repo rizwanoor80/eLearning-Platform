@@ -1,0 +1,65 @@
+# Tenancy runbook — skeleton
+
+Written in cycle 28a (R284) from the spike; **a skeleton**: sections marked _(28b)_ to _(28f)_ are filled by the sub-cycle that builds the thing. Mechanism and measurements: ADR-032. Product frame: ADR-031, PRD section 13.
+
+**Never put a value in this file, in a commit, in STATUS or in a log.** Variables are listed by name only. This repository is public.
+
+---
+
+## 1. Model in one paragraph
+
+A tenant is one TrusTutor instance: a PostgreSQL database holding the v1 schema. The registry (`tenants`, `tenant_domains`) lives in the **central** database. A request names its tenant by host (`IdentifyTenant`); a queued job carries `tenant_id` in its payload; a scheduled command runs once per tenant through `tenants:each`. Switching tenant re-points the `pgsql` connection; with no tenant the connection points at the database `__no_tenant__`, which does not exist, so a query outside a tenant fails instead of reading someone's data.
+
+## 2. Environment (names only)
+
+| Name | Meaning |
+|---|---|
+| `TENANCY_ENABLED` | `false` leaves the application exactly as v1 (single database). |
+| `DB_CENTRAL_DATABASE` | The central registry database. Created by the owner in Forge _(Owner action 27)_. |
+| `TENANCY_DATABASE_PREFIX` | Prefix for tenant database names (default `tenant_`). |
+| `TENANCY_TEMPLATE_DATABASE` | Optional database cloned by `tenants:create` instead of migrating. |
+
+The database role needs `CREATEDB` to create tenant databases. A role Forge creates does not have it: owner action _(28b)_.
+
+## 3. Commands
+
+| Command | Does |
+|---|---|
+| `php artisan tenants:create <slug> [--name=] [--host=] [--template=]` | Creates the database (migrated, or cloned from a template), the tenant row and its primary domain. |
+| `php artisan tenants:migrate [--tenant=<slug>]` | Runs the tenant migrations on every active tenant (or one). Safe to run twice. |
+| `php artisan tenants:each "<artisan command>" [--tenant=<slug>]` | Runs a command once per active tenant; carries on after one fails; exits 1 and names the failures. |
+| `php artisan migrate --database=central --path=database/migrations/central --force` | Registry migrations. |
+
+All run with `--no-interaction` in scripts.
+
+## 4. Deploy order _(28b)_
+
+1. Central migrations. 2. `tenants:migrate`. 3. Reload workers (they hold a tenant only while a job runs). Per-tenant R213 checks replace the single-instance ones _(28b)_.
+
+## 5. Adopting the v1 database as tenant one _(28b, R291)_
+
+`tenants:adopt trustutor` registers the existing database as tenant `trustutor` without copying data. Gated on the owner's GO. Steps, rollback and the landlord-default rule are written when the command exists.
+
+## 6. Connections and capacity
+
+One tenant connection and one central connection per PHP process, regardless of tenant count. PostgreSQL `max_connections` (100 by default) therefore bounds PHP-FPM children plus Horizon processes, not tenants. If it is tight, put PgBouncer in transaction mode in front; the tenancy code uses no session-level state.
+
+Measured (ADR-032): migrate-all with everything applied is 0.4 s for 2 tenants, 0.8 to 0.9 s for 20; a new tenant by migration is 0.8 s, by template clone 65 to 216 ms.
+
+## 7. Queues, scheduler, cache _(28c)_
+
+One shared queue for all tenants; a payload without `tenant_id` is refused. Scheduled commands go through `tenants:each` (28c adds the unique per-tenant job). Cache keys carry the tenant in their prefix. Failed-job and batch tables and the scheduler's lock live in the central database _(28c)_.
+
+## 8. Domains and Caddy _(28d)_
+
+## 9. Signup and the super-admin _(28e)_
+
+## 10. Metering and invoices _(28f)_
+
+## 11. Suspending, closing, restoring a tenant _(28e)_
+
+## 12. Backups and restore, per tenant _(28b)_
+
+## 13. Known risks carried from the spike
+
+Tenant-scoped Daily room names and Stripe idempotency keys (28c); landlord default connection after adoption (28b); super-admin host skips `IdentifyTenant` (28e); Redis-shared cache and locks (28c). Detail in ADR-032.

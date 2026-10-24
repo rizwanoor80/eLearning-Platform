@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\YearGroup;
 use App\Support\YearGroups\YearGroupDefaults;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenancyTestCase;
 use Tests\TestCase;
 
 /*
@@ -26,6 +27,9 @@ use Tests\TestCase;
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature');
+
+// Tenancy tests (ADR-032) switch tenants themselves, so no RefreshDatabase transaction may be open around them.
+pest()->extend(TenancyTestCase::class)->in('Tenancy');
 
 /*
 |--------------------------------------------------------------------------

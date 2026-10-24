@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Tenancy;
+
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+
+/**
+ * Creates, migrates and drops tenant databases. CREATE DATABASE cannot run on the database it names, so it goes
+ * through a throwaway connection to the server's `postgres` database. Needs the CREATEDB privilege (ADR-032).
+ */
+final class DatabaseProvisioner
+{
+    private const ADMIN = 'tenancy_admin';
+
+    public function exists(string $database): bool
+    {
+        return DB::connection($this->admin())->table('pg_database')->where('datname', $database)->exists();
+    }
+
+    public function create(string $database, ?string $template = null): void
+    {
+        $this->guardName($database);
+        $sql = 'CREATE DATABASE "'.$database.'"';
+
+        if ($template !== null) {
+            $this->guardName($template);
+            $sql .= ' TEMPLATE "'.$template.'"';
+        }
+
+        DB::connection($this->admin())->statement($sql);
+    }
+
+    public function drop(string $database): void
+    {
+        $this->guardName($database);
+        DB::connection($this->admin())->statement('DROP DATABASE IF EXISTS "'.$database.'" WITH (FORCE)');
+    }
+
+    /** Run the v1 migrations (the default path) against a tenant's database. */
+    public function migrate(Tenant $tenant): string
+    {
+        return app(TenantManager::class)->run($tenant, function (): string {
+            Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]);
+
+            return trim(Artisan::output());
+        });
+    }
+
+    private function admin(): string
+    {
+        config()->set('database.connections.'.self::ADMIN, [
+            ...config('database.connections.'.config('tenancy.central_connection')),
+            'database' => 'postgres',
+        ]);
+
+        return self::ADMIN;
+    }
+
+    private function guardName(string $name): void
+    {
+        if (preg_match('/^[a-z0-9_]{1,63}$/', $name) !== 1) {
+            throw new InvalidArgumentException("Unsafe database name [{$name}].");
+        }
+    }
+}
