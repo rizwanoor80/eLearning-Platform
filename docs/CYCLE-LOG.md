@@ -8789,3 +8789,12 @@ Context size not measured (cloud session); compactions this run: 0. Done: 27a re
 
 ### 2026-10-23 09:30 — END (cycle 27 r1, CC)
 Step 1 partly done (R222 window check logged; the two R281 sentences were blocked by the harness, see BLOCKER). Step 2 done: 27a review CLEAR (0 High, 0 Medium, 6 Low). No PR, no branch, no code, no deploy. Tests unchanged on `main`: 3631 passed / 25122 assertions at `1a21f84` (not rerun; the reviewer ran the 101-test error-tracking file: 101 passed). **Advisor consultations this cycle: 0** (minimum 0). Resume cap 6, 0 used. Halt: yes, END.
+
+### 2026-10-24 14:17 — START (cycle 28 r1, CC)
+`update` received. `git fetch origin main` and fast-forward `2ade078` to `fcce956`: `docs/PLAN.md` is the committed "PLAN.md cycle 28 r1" (planner, R215), so no PLAN commit by CC. No END entry for cycle 28 exists in this log, so the revision is executable. Programme "SaaS foundation" (R283 to R292): steps 1 to 8, resume cap 18, 0 used. Read at start: HOW-WE-WORK (full), PLAN, STATUS, CYCLE-LOG tail, PROJECT_BRIEF, PRD (sections 8 to 12), DECISIONS head and tail, CLAUDE.md. Branch disclosure as in cycle 27: the session harness names `claude/confident-mendel-80sp0u`; docs-only commits go to `main` under R210 and the plan's authorisation boundary, code goes on `cp/28a-...` branches.
+
+### 2026-10-24 14:17 — VERIFICATION (R222 window check, first of the session; CC)
+`CLAUDE_CODE_DISABLE_1M_CONTEXT` = `1`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW` = `200000`, `CLAUDE_CODE_REMOTE` = `true`: the session runs on the 200k window. Compactions observed so far this session: 0. SessionStart hook printed "Nothing to migrate".
+
+### 2026-10-24 14:17 — DECISION (step 1, ADR-031 and PRD section 13, CC)
+Written from R283 with no addition of substance: `docs/DECISIONS.md` gains ADR-031 (row appended after ADR-030) and `docs/PRD.md` gains section 13 "v2 — TrusTutor SaaS" after section 12. PRD sections 1 to 12 and the section 11 D-rows are untouched (diff is append-only: 21 insertions, 0 deletions). CLAUDE.md says the PRD is read-only for CC; PLAN step 1 and R283 authorise exactly this section, so it is not a deviation. Section 13 lists the counsel and owner questions it does not answer (tenant terms and DPA, contracting entity, children's data for a business tenant, recording consent, VAT on TrusTutor's invoice). Advisor: not triggered by step 1 (docs only).

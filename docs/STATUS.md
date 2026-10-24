@@ -1,20 +1,20 @@
-# STATUS — cycle 27 r1 — "close the one unreviewed change" — END, 27a CLEAR, 2026-10-23
-Tests: **3631 passed / 25122 assertions** on `main` at `1a21f84` (unchanged; no code this cycle; the reviewer ran the error-tracking file: 101 passed / 168 assertions) · Advisor: consulted 0 times (minimum 0) · Review: 27a **CLEAR** (0 High, 0 Medium, 6 Low; Claude Opus 5.5) · Resume cap 6, 0 used · Context size not measured (cloud session), 0 compactions
+# STATUS — cycle 28 r1 — programme "SaaS foundation" — step 1 done, 28a starting — 2026-10-24 14:17
+Tests: **3631 passed / 25122 assertions** on `main` at `1a21f84` (unchanged; step 1 is docs only, no suite run yet) · Advisor: consulted 0 times so far (minimum 1 per sub-cycle, 2 for 28a) · Review: n/a · Resume cap 18, 0 used · Context size not measured (cloud session), 0 compactions
 
 ## §1 Git state
-- `main` = `1a21f84` (26e) plus docs-only `[skip ci]` commits (cycle 26 END, PLAN cycle 27 r1 `d6a93d9`, cycle 27 START `bbc4094`, and the one carrying this file). No cycle 27 branch or PR exists. `rehearsal` ref = `1a21f84` (unchanged; nothing to deploy). No production deploy. No branch deleted.
+- `main` = `fcce956` (PLAN.md cycle 28 r1, planner) plus this docs-only commit. `rehearsal` ref = `1a21f84` (unchanged). No cycle 28 branch or PR yet; `cp/28a-tenancy-spike` is next. No production deploy. No branch deleted.
 
 ## §2 Step map
-1. START: R222 window check done (`1`, `200000`, logged). The two R281 sentences (`CLAUDE.md` Owner loop item 15; HOW-WE-WORK §12): **blocked by the harness, not done** (BLOCKER in CYCLE-LOG; Owner action 26). 2. 27a (R282): **done**, review logged, outcome (a). 3. END: this file.
+1. START, R222 window check, STATUS header and board, ADR-031 and PRD section 13: **done**. 2. 28a tenancy spike (R284): **in progress (next)**. 3. 28b tenancy core, halt for the R291 GO: not started. 4. adopt, then 28c: not started. 5. 28d: not started. 6. 28e: not started. 7. 28f: not started. 8. END: not started.
 
 ## §3 What changed
-- A fresh-subagent review of the merged 26d error tracking (REVIEW entry, CYCLE-LOG 2026-10-23 09:20): the two round-2 Mediums (opaque exception chains; query-string and Referer values) are truly fixed; it is inert without a DSN, silent on `local`/`testing`, tracing and Spotlight off, fails closed if the scrubber throws, `ops:preflight` shows presence only. Six Low hardening items are in Deferred. No code, config, migration or deploy changed.
+- `docs/DECISIONS.md` ADR-031 (v2 scope, from R283); `docs/PRD.md` section 13 "v2 — TrusTutor SaaS" (append-only); `docs/CYCLE-LOG.md` START, VERIFICATION (R222: `1`, `200000`) and DECISION entries. No code, config, migration or deploy changed.
 
 ## §4 Decisions and by whom
-- R282(a) applied by CC as the plan states: 0 Medium and 0 High, so no fix branch and Owner action 24 is cleared. R281 and R282 are owner rulings in PLAN. CC's own choice: the six Lows are not fixed (the plan authorises a branch only for Medium or High).
+- R283 to R292 are owner rulings in PLAN. CC's own choice: ADR-031 and PRD section 13 restate R283 and add only a list of questions left to counsel and the owner. Docs-only commits go to `main` under R210, as in cycle 27.
 
 ## §5 Why stopping
-END of cycle 27: the queue (27a) is finished and the plan makes END a halt. CC has no queued work. Handoff for a new session: **done** the review and its record; **next** only the owner's actions in §7; **ruled out** any DSN, key or token handling, any code change, any deploy, any frozen-file change.
+- Not stopping: the programme continues into 28a. (This file is the step-boundary rewrite required by rule 5.)
 
 ## §6 Mismatches
 - **Process fault, disclosed (26d merge):** PR #90 merged as `e69ef53` on head `8ca7f26`, whose round-2 Mediums were fixed with "the cap is reached, no third review", against R224(2) and R234; its round-1 High was also fixed inside the loop although R224(5) makes a High a halt. Outcome: the missing confirmation review ran in 27a on `main` and found 0 High and 0 Medium, so nothing needs undoing. Risk was nil meanwhile (Sentry is inert without a DSN).
@@ -22,8 +22,12 @@ END of cycle 27: the queue (27a) is finished and the plan makes END a halt. CC h
 - **Branch disclosure:** the session harness names `claude/confident-mendel-80sp0u`; docs-only commits went to `main` under R210 and CLAUDE.md rule 6, as in earlier cycles.
 - **Reviewer tool note:** Pest has no `--no-interaction` option (the reviewer's first run failed on it), contrary to the blanket flag rule in CLAUDE.md; `composer test` / `vendor/bin/pest` without it is correct.
 - Everything in cycle 26's §6 still stands (26a to 26e accepted notes), carried in `git show 6f11980:docs/STATUS.md` §6. `mail.from_name` was not read this cycle (no deploy); Owner action 5 stays OPEN (R279): last recorded reading `trusTutor Team`.
+- **R281 sentences still not in the repo's rule text** (Owner action 26 below is unchanged and does not block this programme; R281 is in PLAN and binds).
+- **CLAUDE.md "NOT in v1: B2B organisations" and PROJECT_BRIEF non-goal "B2B organisations, tenancy"** stay true for v1; R283 opens v2 through ADR-031 and PRD section 13. Not edited (CLAUDE.md and the brief are the owner's and the planner's files); the cloud session notes it here.
 
 ## §7 Next step / Owner actions
+Next: 28a under R284 (branch `cp/28a-tenancy-spike` from `origin/main`).
+**Before step 3's deploy (R290), Owner action 27:** in Forge create the database `trustutor_central` on rehearsal's PostgreSQL with the same user as the app database, and add `DB_CENTRAL_DATABASE=trustutor_central` to rehearsal's environment; reply `update` when done if CC has halted for it. Nothing is needed from the owner before then.
 **Owner action 26 (Recommended; small, first):** the R281 sentences. Either allow the edit when the harness prompts, or add one sentence each yourself at the end of `CLAUDE.md` rule 15 and of HOW-WE-WORK §12's R224 paragraph: "R281 (owner, 2026-10-23, amends R224): the fix-loop cap limits fix rounds, not reviews; a fresh-subagent confirmation review of the exact final head always runs before any merge and must show 0 Medium and 0 High, else the PR parks; outside money, auth and ledger code a High may be fixed inside the loop, in those areas a High still halts." Reason: until then the rule lives only in PLAN.md, which the next plan overwrites. Reply `update` when done.
 
 **Owner actions, in the planner's priority order (none are CC's):**
@@ -35,17 +39,19 @@ END of cycle 27: the queue (27a) is finished and the plan makes END a halt. CC h
 6. The UI-developer reviews and the remaining rehearsal checks: Owner actions 2, 3, 4, 6 to 12 (full text: `git show 467f057:docs/STATUS.md` §7).
 Switch-day steps are unchanged in `docs/runbooks/production.md` §8. Live-money readiness: nothing left that the code can close; the open items are the owner's list above.
 
-**Handoff for a clear (rule 13):** END with nothing further authorised, so a clear is offered: `/clear` this session, ask the planner "where are we?" for the next PLAN.md, then reply `update` once it is on `main`.
-
 ## §8 Programme board
-**Cycle 27 r1 — "close the one unreviewed change"** (resume cap 6, 0 used) — END
+**Cycle 28 r1 — "SaaS foundation"** (resume cap 18, 0 used) — in progress
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
-| 27a confirmation review of the 26d scrubber (R282) | none | none | CLEAR: 0 High, 0 Medium, 6 Low | done; Owner action 24 cleared |
+| step 1 ADR-031, PRD section 13 | main (docs) | none | n/a | done |
+| 28a tenancy spike (R284) | `cp/28a-tenancy-spike` | none | not yet | next |
+| 28b tenancy core (R285, R290), halt R291 | — | — | — | not started |
+| 28c tenant runtime (R286) | — | — | — | not started |
+| 28d domains and Caddy (R287) | — | — | — | not started |
+| 28e signup and super-admin (R288) | — | — | — | not started |
+| 28f metering and billing (R289) | — | — | — | not started |
 
-**Cycle 26 r1 (closed) — "erasure and production readiness":** 26a to 26e merged (PRs #87 to #91); last `1a21f84`. Detail: `git show 6f11980:docs/STATUS.md` §8.
-**Cycle 25 r2 (closed) — "live switch ready":** 25a to 25e merged (PRs #82 to #86); last `ccd3fdf`.
-**Cycle 24 r1 (closed):** 24a to 24f merged (PRs #76 to #81); last `6c6b544`. **Cycle 23 (closed):** 23a to 23h merged (PRs #68 to #75); last `01f5f34`.
+**Cycle 27 r1 (closed):** 27a review CLEAR; no PR. **Cycle 26 r1 (closed):** 26a to 26e merged (PRs #87 to #91); last `1a21f84`.
 
 ## Deferred
 - **27a review Lows (REVIEW 2026-10-23, not built; the scrubber was ruled CLEAR):** (10) the HTTP-client breadcrumb keeps raw `http.query`/`url.full` (run `url()` on those keys; the only caller, `DailyVideoProvider`, sends no query); (11) add `Symfony\Component\Mime\Exception\ExceptionInterface` to `OPAQUE_EXCEPTIONS`; (12) `command_info` breadcrumbs carry the full command line; (13) free-text gaps in `string()` (escaped JSON, `%3D`, `pass_word`, unspaced IBAN) and free-text keys (name, comment, reason, details, bio, payload) missing from `SENSITIVE_KEY`; (14) pin `data_collection`, `org_id`, `ignore_exceptions`, `integrations` in `config/sentry.php` with a test of the effective value; (15) filter `CF-Connecting-IP`, `Forwarded`, `True-Client-IP` headers. 10, 11 and 14 are the cheap ones.

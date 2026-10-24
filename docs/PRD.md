@@ -224,3 +224,23 @@ Tutor approval queue · Match requests · Lessons (search, force-cancel, force-c
 | **Toggles:** match-request path, reviews, messaging — so pieces can be switched off at soft launch. | The state machine, the ledger, the fifteen invariants in CLAUDE.md. |
 
 Rules that follow from the principle: credentials are encrypted at rest, masked in the admin, never logged, never committed. Policy values are still frozen onto each lesson at creation (§3) — configurability never changes an existing lesson. A registry entry that is inactive or incomplete is not an error at boot: the app runs, and the affected flow shows a clear admin notice instead.
+
+---
+
+## 13. v2 — TrusTutor SaaS (owner ruling R283, 2026-10-24; ADR-031)
+
+_Written by Claude Code from R283 in PLAN cycle 28 r1. Sections 1 to 12 and the D-rows in §11 describe v1 and stay true for it; this section opens v2 and changes none of them._
+
+**What v2 is.** A tenant, a freelance tutor or a tutoring business, runs its own TrusTutor under its own brand and domain, with its own tutors, parents, payment gateway and payouts, and pays TrusTutor per lesson. TrusTutor's own marketplace (v1) becomes tenant number one, on the same terms as everyone else.
+
+1. **Tenant.** One TrusTutor instance: its own database, brand, legal entity, settings, pages, tutors, parents, payment-gateway keys, payouts and domain. Video rooms are created on TrusTutor's Daily account and the provider is never shown to the tenant. The tenant database schema is the v1 schema unchanged.
+2. **Pricing.** Per lesson, billed monthly in arrears on one Stripe invoice per tenant. Standard lesson $1. Custom domain $10 a month or $100 a year. A $5 a month minimum, waived against lesson charges. A card on file at signup. Later tiers (a recorded lesson at $2.50 with 14-day streaming-only retention and parental consent; a transcript add-on at $1) belong to later programmes and ship nothing before counsel answers.
+3. **Lesson money never touches TrusTutor.** Each tenant collects through its own gateway and pays its own tutors. TrusTutor's own Stripe account collects only the tenant's subscription invoice.
+4. **Public by rule.** Tutor profiles (display name, subjects, rating) and, later, tutors' anonymised explanations are public across the network. This is a condition in the tenant terms and the tutor agreement; a centre that refuses is not a customer.
+5. **Fairness.** Tenant number one is ranked and treated like every other tenant. The operator never uses tenant data to compete, and no tenant data is aggregated for anything but billing and fleet status. The terms say so.
+6. **Learners never have logins** (invariant 7) in any tenant. The AI and coverage features, when built, live in the parent portal.
+7. **Counsel's questions.** 3-D Secure, recording consent and children's data are counsel's. Nothing in v2 ships recording or AI before counsel answers.
+
+**Programme "SaaS foundation" (PLAN cycle 28 r1)** builds only what the first paying tenant needs: 28a tenancy spike (ADR-032), 28b tenancy core, 28c tenant runtime, 28d domains and Caddy, 28e signup and super-admin, 28f lesson metering and billing. The directory, lesson tiers, the AI and the public marketing pages are later programmes, outlined in R292 and not authorised.
+
+**Open for counsel and the owner (not built):** the tenant terms and DPA wording, which entity contracts with a tenant, the children's-data position when a tenant is a business, the recording-consent flow, and the VAT treatment of TrusTutor's invoice to a tenant.
