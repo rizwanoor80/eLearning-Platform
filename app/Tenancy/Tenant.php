@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * One TrusTutor instance: a PostgreSQL database holding the v1 schema. Lives in the central database.
  *
  * @property TenantStatus $status
+ * @property string $plan
  */
 class Tenant extends Model
 {
@@ -31,6 +32,22 @@ class Tenant extends Model
     public function domains(): HasMany
     {
         return $this->hasMany(TenantDomain::class);
+    }
+
+    /**
+     * @return HasMany<TenantAdmin, $this>
+     */
+    public function admins(): HasMany
+    {
+        return $this->hasMany(TenantAdmin::class);
+    }
+
+    /**
+     * @return HasMany<TenantTermsAcceptance, $this>
+     */
+    public function termsAcceptances(): HasMany
+    {
+        return $this->hasMany(TenantTermsAcceptance::class);
     }
 
     public function isActive(): bool

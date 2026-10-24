@@ -16,7 +16,7 @@ class TenantDomain extends Model
 
     protected function casts(): array
     {
-        return ['is_primary' => 'boolean', 'verified_at' => 'datetime'];
+        return ['is_primary' => 'boolean', 'verified_at' => 'datetime', 'tls_issued_at' => 'datetime'];
     }
 
     /**

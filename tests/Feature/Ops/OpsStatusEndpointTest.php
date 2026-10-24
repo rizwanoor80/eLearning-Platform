@@ -65,8 +65,8 @@ it('answers 200 with the status document to a valid token', function () {
         ->assertOk()
         ->assertJsonStructure([
             'schema_version', 'generated_at',
-            'app' => ['environment', 'git_sha', 'release', 'php_version', 'laravel_version', 'debug'],
-            'migrations' => ['pending'],
+            'app' => ['environment', 'git_sha', 'release', 'php_version', 'laravel_version', 'debug', 'tenant'],
+            'migrations' => ['pending', 'central_pending'],
             'horizon' => ['status', 'master_pid', 'supervisors'],
             'queues' => ['default_size', 'failed_jobs'],
             'scheduler' => ['status', 'last_tick_age_seconds'],
@@ -92,8 +92,8 @@ it('holds exactly these keys and no others, in every section', function () {
     // An allow-list of names: a new key (a host name, a path, a connection detail) fails here until someone
     // decides it belongs in a document that has no secrets, rows or user data.
     expect(array_keys($document))->toBe(['schema_version', 'generated_at', 'app', 'migrations', 'horizon', 'queues', 'scheduler', 'ledger', 'video', 'mail', 'settings'])
-        ->and(array_keys($document['app']))->toBe(['environment', 'git_sha', 'release', 'php_version', 'laravel_version', 'debug'])
-        ->and(array_keys($document['migrations']))->toBe(['pending'])
+        ->and(array_keys($document['app']))->toBe(['environment', 'git_sha', 'release', 'php_version', 'laravel_version', 'debug', 'tenant'])
+        ->and(array_keys($document['migrations']))->toBe(['pending', 'central_pending'])
         ->and(array_keys($document['horizon']))->toBe(['status', 'master_pid', 'supervisors'])
         ->and(array_keys($document['horizon']['supervisors'][0]))->toBe(['name', 'status', 'process_count', 'processes'])
         ->and(array_keys($document['queues']))->toBe(['default_size', 'failed_jobs'])

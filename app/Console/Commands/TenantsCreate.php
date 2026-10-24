@@ -2,11 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\Tenancy\CreateTenantAdmin;
 use App\Enums\TenantStatus;
 use App\Tenancy\DatabaseProvisioner;
 use App\Tenancy\Tenant;
 use App\Tenancy\TenantDomain;
 use App\Tenancy\TenantManager;
+use App\Tenancy\TenantRules;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -17,11 +19,13 @@ class TenantsCreate extends Command
     protected $signature = 'tenants:create {slug : Lower-case letters, digits and hyphens}
         {--name= : Display name (default: the slug)}
         {--host= : Primary host (default: <slug>.test)}
-        {--template= : Clone this database instead of running the migrations}';
+        {--template= : Clone this database instead of running the migrations}
+        {--admin-email= : Create the first administrator with this address (their password is set through "forgot password")}
+        {--admin-name= : The administrator\'s name (default: Admin)}';
 
-    protected $description = 'Create a tenant: its database, the v1 schema and its registry rows (ADR-032). A failure leaves nothing behind.';
+    protected $description = 'Create a tenant: its database, the v1 schema, the reference data (never demo data), an optional first administrator and its registry rows (ADR-032). A failure leaves nothing behind.';
 
-    public function handle(DatabaseProvisioner $provisioner, TenantManager $manager): int
+    public function handle(DatabaseProvisioner $provisioner, TenantManager $manager, CreateTenantAdmin $createAdmin): int
     {
         if (! $manager->enabled()) {
             $this->error('Tenancy is disabled (TENANCY_ENABLED=false).');
@@ -31,16 +35,24 @@ class TenantsCreate extends Command
 
         $slug = (string) $this->argument('slug');
 
-        if (preg_match('/^[a-z0-9](?:[a-z0-9-]{0,40}[a-z0-9])?$/', $slug) !== 1) {
+        if (! TenantRules::validSlug($slug)) {
             $this->error('The slug must be lower-case letters, digits and hyphens.');
 
             return self::FAILURE;
         }
 
-        $host = strtolower(trim((string) ($this->option('host') ?: $slug.'.test')));
+        $host = TenantRules::normaliseHost((string) ($this->option('host') ?: $slug.'.test'));
 
-        if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/', $host) !== 1) {
+        if (! TenantRules::validHost($host)) {
             $this->error("[{$host}] is not a valid host name.");
+
+            return self::FAILURE;
+        }
+
+        $adminEmail = $this->option('admin-email') ? strtolower(trim((string) $this->option('admin-email'))) : null;
+
+        if ($adminEmail !== null && filter_var($adminEmail, FILTER_VALIDATE_EMAIL) === false) {
+            $this->error('The administrator address is not a valid email address.');
 
             return self::FAILURE;
         }
@@ -97,11 +109,17 @@ class TenantsCreate extends Command
                 $provisioner->migrate($tenant);
             }
 
+            $provisioner->seedReference($tenant);
+
+            if ($adminEmail !== null) {
+                $createAdmin($tenant, $adminEmail, (string) ($this->option('admin-name') ?: 'Admin'));
+            }
+
             $tenant->update(['status' => TenantStatus::Active]);
         } catch (Throwable $e) {
             $this->error("Creating tenant [{$slug}] failed and was rolled back: ".$e->getMessage());
 
-            foreach ([fn () => $tenant?->domains()->delete(), fn () => $tenant?->delete(), fn () => $created && $provisioner->drop($database)] as $cleanup) {
+            foreach ([fn () => $tenant?->admins()->delete(), fn () => $tenant?->domains()->delete(), fn () => $tenant?->delete(), fn () => $created && $provisioner->drop($database)] as $cleanup) {
                 try {
                     $cleanup();
                 } catch (Throwable $cleanupFailure) {
@@ -112,7 +130,7 @@ class TenantsCreate extends Command
             return self::FAILURE;
         }
 
-        $this->info(sprintf('Tenant [%s] created in %d ms (%s).', $slug, (hrtime(true) - $started) / 1e6, $template === null ? 'migrated' : 'from template'));
+        $this->info(sprintf('Tenant [%s] created in %d ms (%s)%s.', $slug, (hrtime(true) - $started) / 1e6, $template === null ? 'migrated' : 'from template', $adminEmail === null ? '' : ', administrator created'));
 
         return self::SUCCESS;
     }

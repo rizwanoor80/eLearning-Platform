@@ -7,7 +7,9 @@ use App\Models\VideoWebhookDelivery;
 use App\Models\VideoWebhookEvent;
 use App\Support\Facades\Settings;
 use App\Support\Mail\MailBrand;
+use App\Tenancy\TenantManager;
 use Closure;
+use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -117,6 +119,7 @@ final class OpsStatusReport
             'php_version' => PHP_VERSION,
             'laravel_version' => app()->version(),
             'debug' => (bool) config('app.debug'),
+            'tenant' => app(TenantManager::class)->current()?->slug,
         ];
     }
 
@@ -151,13 +154,31 @@ final class OpsStatusReport
         $migrator = app('migrator');
 
         if (! $migrator->repositoryExists()) {
-            return ['pending' => null];
+            return ['pending' => null, 'central_pending' => $this->centralPending($migrator)];
         }
 
         $files = $migrator->getMigrationFiles(array_merge($migrator->paths(), [database_path('migrations')]));
         $ran = $migrator->getRepository()->getRan();
 
-        return ['pending' => count(array_diff(array_keys($files), $ran))];
+        return ['pending' => count(array_diff(array_keys($files), $ran)), 'central_pending' => $this->centralPending($migrator)];
+    }
+
+    /** Registry migrations not yet run on the central database; null while tenancy is off (there is no registry). */
+    private function centralPending(Migrator $migrator): ?int
+    {
+        if (! app(TenantManager::class)->enabled()) {
+            return null;
+        }
+
+        $central = DB::connection(config('tenancy.central_connection'));
+
+        if (! $central->getSchemaBuilder()->hasTable('migrations')) {
+            return null;
+        }
+
+        $files = $migrator->getMigrationFiles(database_path('migrations/central'));
+
+        return count(array_diff(array_keys($files), $central->table('migrations')->pluck('migration')->all()));
     }
 
     /**
@@ -202,7 +223,7 @@ final class OpsStatusReport
     {
         return [
             'default_size' => $this->attempt(fn () => Queue::size('default')),
-            'failed_jobs' => $this->attempt(fn () => DB::table((string) config('queue.failed.table', 'failed_jobs'))->count()),
+            'failed_jobs' => $this->attempt(fn () => DB::connection(config('queue.failed.database'))->table((string) config('queue.failed.table', 'failed_jobs'))->count()),
         ];
     }
 

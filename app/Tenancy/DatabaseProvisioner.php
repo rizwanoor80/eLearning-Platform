@@ -2,6 +2,7 @@
 
 namespace App\Tenancy;
 
+use Database\Seeders\TenantReferenceSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -58,6 +59,18 @@ class DatabaseProvisioner
             }
 
             return $output;
+        });
+    }
+
+    /** Seed the reference data (never demo data) into a tenant's database; idempotent. */
+    public function seedReference(Tenant $tenant): void
+    {
+        app(TenantManager::class)->run($tenant, function (): void {
+            $exit = Artisan::call('db:seed', ['--class' => TenantReferenceSeeder::class, '--force' => true, '--no-interaction' => true]);
+
+            if ($exit !== 0) {
+                throw new RuntimeException("db:seed exited {$exit}: ".trim(Artisan::output()));
+            }
         });
     }
 
