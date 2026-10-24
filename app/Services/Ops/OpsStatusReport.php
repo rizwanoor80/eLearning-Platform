@@ -223,7 +223,7 @@ final class OpsStatusReport
     {
         return [
             'default_size' => $this->attempt(fn () => Queue::size('default')),
-            'failed_jobs' => $this->attempt(fn () => DB::table((string) config('queue.failed.table', 'failed_jobs'))->count()),
+            'failed_jobs' => $this->attempt(fn () => DB::connection(config('queue.failed.database'))->table((string) config('queue.failed.table', 'failed_jobs'))->count()),
         ];
     }
 

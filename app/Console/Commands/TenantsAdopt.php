@@ -128,6 +128,13 @@ class TenantsAdopt extends Command
         }
 
         $this->info("Tenant [{$slug}] now answers on [{$host}]; its database was not changed ({$users} users, {$admins->count()} administrator(s)).");
+
+        $appHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+        if ($appHost !== null && $appHost !== false && strtolower($appHost) !== $host) {
+            $this->warn("[{$host}] differs from the host in APP_URL ([{$appHost}]): links already sent and webhooks addressed to another host will answer 404 until that host is registered too.");
+        }
+
         $this->line('Run tenants:migrate for any pending migration. To undo: tenants:unregister '.$slug.' --yes (the database is left as it is).');
 
         return self::SUCCESS;

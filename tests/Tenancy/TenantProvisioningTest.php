@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Tests\Support\TenancyFixtures;
 
 beforeEach(function () {
@@ -113,6 +114,7 @@ it('adopts the current database as a tenant without changing it, and unregisters
 
     $this->artisan('tenants:adopt', ['slug' => 'adopted', '--from' => 'current', '--host' => 'Adopted.test'])
         ->expectsOutputToContain('now answers on [adopted.test]')
+        ->expectsOutputToContain('differs from the host in APP_URL')
         ->assertSuccessful();
 
     $adopted = TenancyFixtures::tenant('adopted');
@@ -246,6 +248,19 @@ it('reports the tenant and the central migrations in the status document', funct
         expect((new OpsStatusReport)->build()['migrations']['central_pending'])->toBe(1);
     } finally {
         DB::connection('central')->table('migrations')->insert(['migration' => '2026_10_25_090000_extend_tenancy_registry', 'batch' => 99]);
+    }
+});
+
+it('counts failed jobs from the central table, where tenancy records them', function () {
+    $this->tenants->initialize(TenancyFixtures::tenant('x'));
+    $before = (new OpsStatusReport)->build()['queues']['failed_jobs'];
+
+    $id = DB::connection('central')->table('failed_jobs')->insertGetId(['uuid' => (string) Str::uuid(), 'connection' => 'redis', 'queue' => 'default', 'payload' => '{}', 'exception' => 'x', 'failed_at' => now()]);
+
+    try {
+        expect((new OpsStatusReport)->build()['queues']['failed_jobs'])->toBe($before + 1);
+    } finally {
+        DB::connection('central')->table('failed_jobs')->where('id', $id)->delete();
     }
 });
 

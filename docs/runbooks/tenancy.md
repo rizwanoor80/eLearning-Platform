@@ -38,16 +38,29 @@ A bare `php artisan migrate`, `migrate:fresh`, `db:seed` and the like **refuse t
 
 Operator how-to: create `php artisan tenants:create acme --name="Acme" --host=acme.example --no-interaction`; migrate all `php artisan tenants:migrate --no-interaction`; run a command for every tenant `php artisan tenants:each "<command>" --no-interaction`.
 
-## 4. Deploy order
+## 4. Deploy order, and the cutover
 
-1. Once, before the first deploy that carries tenancy: create the central database in Forge and set `DB_CENTRAL_DATABASE` (name only here; Owner action 27). The application refuses to boot with `TENANCY_ENABLED=true` and no central database.
-2. `php artisan migrate --database=central --path=database/migrations/central --force --no-interaction` (the registry; run it first, a tenant migration never needs it).
-3. `php artisan tenants:migrate --force --no-interaction` (every active or suspended tenant; safe to run twice).
-4. Reload the workers (they hold a tenant only while a job runs).
+Steady state, every deploy once tenancy is on (the Forge deploy script, `docs/runbooks/production.md` section 3):
 
-Verification is R213 through `GET /ops/status` on each tenant's host: `app.tenant` names the tenant, `migrations.pending` is 0 for it, and `migrations.central_pending` is 0 (it is `null` only when tenancy is off). A host that is unknown or not verified answers 404; a tenant that is not active answers 503.
+1. `php artisan migrate --database=central --path=database/migrations/central --force --no-interaction` (the registry, first).
+2. `php artisan tenants:migrate --force --no-interaction` (every active or suspended tenant; safe to run twice).
+3. `config:cache`, `route:cache`, `view:cache`, `event:cache`, then `horizon:terminate` (workers hold a tenant only while a job runs).
 
-While `TENANCY_ENABLED=false` the application is exactly v1 and none of the above applies.
+A bare `php artisan migrate --force` is **refused** while tenancy is on, so the script's current line must be replaced by 1 and 2 **before** `TENANCY_ENABLED` is turned on, or the script stops before `config:cache` and `horizon:terminate`. Until then (flag off) the old line is correct.
+
+R213 verification, per tenant host, through `GET /ops/status`: `app.tenant` names the tenant, `migrations.pending` and `migrations.central_pending` are 0, `queues.failed_jobs` counts the central table (where tenancy records failures). A host that is unknown or not verified answers 404; a tenant that is not active answers 503.
+
+### Cutover from v1 (once, after the owner's GO, R291)
+
+Before: Owner action 27 done (central database created, `DB_CENTRAL_DATABASE` set), the 28b code deployed with `TENANCY_ENABLED=false`, and the Forge deploy script already carries steps 1 and 2 above. Record the session driver (`SESSION_DRIVER=redis` logs everyone out at the switch, because the cache prefix changes; `database` sessions survive; open forms answer 419 either way).
+
+1. `php artisan down`.
+2. **Drain**: the default queue and the delayed set are empty and `failed_jobs` is 0 (queue payloads written before the switch carry no `tenant_id`; a worker refuses them, and `queue:retry` cannot repair them). `php artisan horizon:terminate`.
+3. Set `TENANCY_ENABLED=true`, then `config:cache`. The site answers 404 from here until adopt has run.
+4. Central migrate (step 1 above), then `php artisan tenants:adopt trustutor --from=current --host=<the instance host> --no-interaction`, then `tenants:migrate` (step 2).
+5. `php artisan up`; reload workers; R213 on the host.
+
+The scheduler is not yet tenant-aware: its commands run with no tenant set until 28c wraps them in `tenants:each`, so after the flip the scheduled jobs are dormant (and `/ops/status` shows the scheduler pulse as stale or unknown, because the pulse is written under the base cache prefix). On rehearsal this is accepted until 28c is deployed; on any instance with real users it is not, so 28c ships before the flag is turned on there.
 
 ## 5. Adopting the v1 database as tenant one _(28b, R291)_
 
@@ -61,7 +74,13 @@ It refuses: any `--from` but `current`; no `--host`; a database that is already 
 
 Afterwards: the host answers through the tenant path, `php artisan tenants:each "ledger:verify" --no-interaction` is green, and R213 on the host shows the tenant slug and 0 pending.
 
-**Rollback** (the database is never touched): `php artisan tenants:unregister trustutor --yes --no-interaction`. The host then answers 404 until `TENANCY_ENABLED=false` is set or the tenant is adopted again.
+**Rollback** (the database is never touched), in this order, because unregistering first makes every host answer 404 and workers fail the jobs they pick up into the central `failed_jobs`, which nobody can see once tenancy is off:
+
+1. `php artisan down`.
+2. `TENANCY_ENABLED=false`, `config:cache`, `horizon:terminate`.
+3. If central `failed_jobs` holds rows, retry them first while tenancy is still wanted, or accept that they are lost.
+4. `php artisan cache:clear` (the settings cache was written under the base prefix before the switch and is stale; this flushes the cache Redis database).
+5. `php artisan up`, then `php artisan tenants:unregister trustutor --yes --no-interaction` last.
 
 The landlord default: after adoption `DB_DATABASE` still names the tenant's database, but with tenancy on the tenant connection is re-pointed at `__no_tenant__` outside a tenant, so a stray query fails instead of reading it. Do not point `DB_DATABASE` anywhere else while tenancy is on: `tenants:adopt` reads it, and an adopted database must still be the one the instance had.
 
