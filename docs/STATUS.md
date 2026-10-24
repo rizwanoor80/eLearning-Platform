@@ -1,20 +1,20 @@
-# STATUS — cycle 28 r1 — programme "SaaS foundation" — step 1 done, 28a starting — 2026-10-24 14:17
-Tests: **3631 passed / 25122 assertions** on `main` at `1a21f84` (unchanged; step 1 is docs only, no suite run yet) · Advisor: consulted 0 times so far (minimum 1 per sub-cycle, 2 for 28a) · Review: n/a · Resume cap 18, 0 used · Context size not measured (cloud session), 0 compactions
+# STATUS — cycle 28 r1 — programme "SaaS foundation" — 28a merged, rehearsal deploy next — 2026-10-24 16:30
+Tests: **3666 passed** (3631 + 35 tenancy tests), also under `TENANCY_SPIKE=1 --parallel`, on `cp/28a-tenancy-spike` `38d292b`; `main` `c81b3bc` is that content squashed (CI on `main` running at write) · Advisor: consulted 2 times (Claude Opus 5.5; 28a minimum 2 met) · Review: 28a review 1 FAIL (3 Medium, fixed), review 2 PASS WITH NOTES (0 High, 0 Medium) · Resume cap 18, 0 used · Context size not measured (cloud session), 1 compaction
 
 ## §1 Git state
-- `main` = `fcce956` (PLAN.md cycle 28 r1, planner) plus this docs-only commit. `rehearsal` ref = `1a21f84` (unchanged). No cycle 28 branch or PR yet; `cp/28a-tenancy-spike` is next. No production deploy. No branch deleted.
+- `main` = `c81b3bc` (28a squash-merge of PR #92) plus this docs-only commit. `rehearsal` ref = `1a21f84` (not yet moved). Branch `cp/28a-tenancy-spike` is merged and kept (no branch deleted). No production deploy.
 
 ## §2 Step map
-1. START, R222 window check, STATUS header and board, ADR-031 and PRD section 13: **done**. 2. 28a tenancy spike (R284): **in progress (next)**. 3. 28b tenancy core, halt for the R291 GO: not started. 4. adopt, then 28c: not started. 5. 28d: not started. 6. 28e: not started. 7. 28f: not started. 8. END: not started.
+1. START, ADR-031, PRD §13: **done**. 2. 28a tenancy spike (R284): **merged** (PR #92, `c81b3bc`, CI green on both PostgreSQL jobs at `38d292b`). 3. 28b tenancy core (R285, R290) then halt for the R291 GO: **next** (deploy of 28a to rehearsal first, once CI on `main` is green). 4 to 8: not started.
 
 ## §3 What changed
-- `docs/DECISIONS.md` ADR-031 (v2 scope, from R283); `docs/PRD.md` section 13 "v2 — TrusTutor SaaS" (append-only); `docs/CYCLE-LOG.md` START, VERIFICATION (R222: `1`, `200000`) and DECISION entries. No code, config, migration or deploy changed.
+- 28a, `app/Tenancy/*`, `TenancyServiceProvider`, `tenants:create|migrate|each`, `IdentifyTenant`, central registry migrations, ADR-032, `docs/runbooks/tenancy.md`, 35 tenancy tests, `TestCase` hook for `TENANCY_SPIKE=1`. Tenancy is off by default (`TENANCY_ENABLED=false`): v1 behaviour is unchanged. No frozen file touched, no tenant column added, no gateway, key or deploy touched. Log: ADVISOR x2, DECISION x2, REVIEW x2, VERIFICATION, two NOTEs (serial-run stall; 11 carry-forward Lows) in `docs/CYCLE-LOG.md`.
 
 ## §4 Decisions and by whom
 - R283 to R292 are owner rulings in PLAN. CC's own choice: ADR-031 and PRD section 13 restate R283 and add only a list of questions left to counsel and the owner. Docs-only commits go to `main` under R210, as in cycle 27.
 
 ## §5 Why stopping
-- Not stopping: the programme continues into 28a. (This file is the step-boundary rewrite required by rule 5.)
+- Not stopping: the programme continues (rehearsal deploy of 28a, then 28b). The only planned halt is the R291 GO after 28b.
 
 ## §6 Mismatches
 - **Process fault, disclosed (26d merge):** PR #90 merged as `e69ef53` on head `8ca7f26`, whose round-2 Mediums were fixed with "the cap is reached, no third review", against R224(2) and R234; its round-1 High was also fixed inside the loop although R224(5) makes a High a halt. Outcome: the missing confirmation review ran in 27a on `main` and found 0 High and 0 Medium, so nothing needs undoing. Risk was nil meanwhile (Sentry is inert without a DSN).
@@ -26,7 +26,7 @@ Tests: **3631 passed / 25122 assertions** on `main` at `1a21f84` (unchanged; ste
 - **CLAUDE.md "NOT in v1: B2B organisations" and PROJECT_BRIEF non-goal "B2B organisations, tenancy"** stay true for v1; R283 opens v2 through ADR-031 and PRD section 13. Not edited (CLAUDE.md and the brief are the owner's and the planner's files); the cloud session notes it here.
 
 ## §7 Next step / Owner actions
-Next: 28a under R284 (branch `cp/28a-tenancy-spike` from `origin/main`).
+Next: deploy `c81b3bc` to rehearsal when CI on `main` is green and verify under R213 (a no-op while tenancy is off), then 28b under R285/R290 (branch `cp/28b-tenancy-core` from `origin/main`).
 **Before step 3's deploy (R290), Owner action 27:** in Forge create the database `trustutor_central` on rehearsal's PostgreSQL with the same user as the app database, and add `DB_CENTRAL_DATABASE=trustutor_central` to rehearsal's environment; reply `update` when done if CC has halted for it. Nothing is needed from the owner before then.
 **Owner action 26 (Recommended; small, first):** the R281 sentences. Either allow the edit when the harness prompts, or add one sentence each yourself at the end of `CLAUDE.md` rule 15 and of HOW-WE-WORK §12's R224 paragraph: "R281 (owner, 2026-10-23, amends R224): the fix-loop cap limits fix rounds, not reviews; a fresh-subagent confirmation review of the exact final head always runs before any merge and must show 0 Medium and 0 High, else the PR parks; outside money, auth and ledger code a High may be fixed inside the loop, in those areas a High still halts." Reason: until then the rule lives only in PLAN.md, which the next plan overwrites. Reply `update` when done.
 
@@ -44,8 +44,8 @@ Switch-day steps are unchanged in `docs/runbooks/production.md` §8. Live-money 
 | Sub-cycle | Branch | PR | Review | State |
 |---|---|---|---|---|
 | step 1 ADR-031, PRD section 13 | main (docs) | none | n/a | done |
-| 28a tenancy spike (R284) | `cp/28a-tenancy-spike` | none | not yet | next |
-| 28b tenancy core (R285, R290), halt R291 | — | — | — | not started |
+| 28a tenancy spike (R284) | `cp/28a-tenancy-spike` | #92 | 2 reviews, final PASS WITH NOTES | merged `c81b3bc` |
+| 28b tenancy core (R285, R290), halt R291 | `cp/28b-tenancy-core` | — | — | next |
 | 28c tenant runtime (R286) | — | — | — | not started |
 | 28d domains and Caddy (R287) | — | — | — | not started |
 | 28e signup and super-admin (R288) | — | — | — | not started |
@@ -54,6 +54,7 @@ Switch-day steps are unchanged in `docs/runbooks/production.md` §8. Live-money 
 **Cycle 27 r1 (closed):** 27a review CLEAR; no PR. **Cycle 26 r1 (closed):** 26a to 26e merged (PRs #87 to #91); last `1a21f84`.
 
 ## Deferred
+- **28a carry-forward Lows (CYCLE-LOG NOTE 2026-10-24, for 28b):** `rollBack(0)` in `TenantManager::restore()` could throw on a lost connection (fall back to `disconnect()`); only the tenant connection is checked for leaked transactions; `failed()` writes are rolled back after a leaked transaction; `failover` cache/queue drivers pass the boot checks; `session.connection` of `''` falsely refuses; Redis session prefix unchecked; a non-default cache store or mailer keeps the old prefix; the migrate guard does not check the `--path` value; test gaps (web `forceRootUrl`, `Looping` restore, migrate exit-code and missing-database paths, failing cleanup); missing tenant database, `IdentifyTenant` ignoring `verified_at`, `Cache::flush` wiping every tenant; `TENANCY_TEMPLATE_DATABASE` could name a live database.
 - **27a review Lows (REVIEW 2026-10-23, not built; the scrubber was ruled CLEAR):** (10) the HTTP-client breadcrumb keeps raw `http.query`/`url.full` (run `url()` on those keys; the only caller, `DailyVideoProvider`, sends no query); (11) add `Symfony\Component\Mime\Exception\ExceptionInterface` to `OPAQUE_EXCEPTIONS`; (12) `command_info` breadcrumbs carry the full command line; (13) free-text gaps in `string()` (escaped JSON, `%3D`, `pass_word`, unspaced IBAN) and free-text keys (name, comment, reason, details, bio, payload) missing from `SENSITIVE_KEY`; (14) pin `data_collection`, `org_id`, `ignore_exceptions`, `integrations` in `config/sentry.php` with a test of the effective value; (15) filter `CF-Connecting-IP`, `Forwarded`, `True-Client-IP` headers. 10, 11 and 14 are the cheap ones.
 - **25c, for an owner ruling (Deferred, review item 3):** `payout_batch_lines.details` holds an encrypted frozen copy of the bank details for every tutor ever paid by bank transfer. `AnonymizeUser` clears the profile's `bank_*` fields but does not touch those copies. Options: (1) (Recommended) clear `details` on a paid line when its tutor is anonymised, keeping amount, method and reference, because the copy has no use after payment; (2) keep them for the accounting retention period and say so in the privacy notice.
 - **25c review notes, not fixed:** (1) a comment overclaims lesson-settlement locking; (2) `EarningsBuckets::owed()` can over-report processing money when `available` is negative, which errs towards keeping the details; (11) lock order payment then lesson in `ReleaseOrphanedPendingPayment` is the reverse of `ChargeReservedLesson::fail()` (reachable only on a live attempt, which the 30-minute floor excludes); (14) test gaps: escrow-pending, on-hold, processing and overpaid keep cases, and the Filament actions.
