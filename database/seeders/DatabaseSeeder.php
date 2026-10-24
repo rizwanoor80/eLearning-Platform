@@ -16,14 +16,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            CurriculumSeeder::class,
-            YearGroupSeeder::class,
-            SubjectSeeder::class,
-            PriceBandSeeder::class,
-            SettingsSeeder::class,
-            DocumentTypeSeeder::class,
-            PageSeeder::class,
-            ContentBlockSeeder::class,
+            TenantReferenceSeeder::class,
             AdminUserSeeder::class,
         ]);
 

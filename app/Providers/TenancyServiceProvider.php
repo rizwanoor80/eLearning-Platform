@@ -108,7 +108,7 @@ class TenancyServiceProvider extends ServiceProvider
             throw TenancyException::misconfigured("the {$sessions} session driver would honour one tenant's session on another host; use database or redis.");
         }
 
-        if ($sessions === 'database' && config('session.connection') !== null && config('session.connection') !== $tenant) {
+        if ($sessions === 'database' && filled(config('session.connection')) && config('session.connection') !== $tenant) {
             throw TenancyException::misconfigured('the session table is per tenant; session.connection must be unset.');
         }
 

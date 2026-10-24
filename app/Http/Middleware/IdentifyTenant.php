@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Resolves the tenant from the request host and switches to it. An unknown host is a 404 and a suspended or closed
+ * Resolves the tenant from the request host and switches to it. An unknown or unverified host is a 404 and a suspended or closed
  * tenant a 503, before anything else touches a database. Never ends tenancy: terminating callbacks and
  * after-response work still belong to this tenant, and a PHP-FPM process serves one request (Octane is unsupported).
  */
@@ -23,7 +23,7 @@ class IdentifyTenant
             return $next($request);
         }
 
-        $domain = TenantDomain::query()->with('tenant')->where('host', strtolower($request->getHost()))->first();
+        $domain = TenantDomain::query()->with('tenant')->where('host', strtolower($request->getHost()))->whereNotNull('verified_at')->first();
 
         abort_if($domain === null || $domain->tenant === null, 404);
         abort_unless($domain->tenant->isActive(), 503);

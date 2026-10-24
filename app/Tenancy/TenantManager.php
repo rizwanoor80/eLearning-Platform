@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Throwable;
 
 /**
  * Holds the current tenant and repoints everything that is per-tenant when it changes (ADR-032).
@@ -26,6 +27,8 @@ final class TenantManager
     private ?Tenant $current = null;
 
     private ?string $baseCachePrefix = null;
+
+    private ?string $baseAppUrl = null;
 
     public function __construct(private readonly Application $app) {}
 
@@ -97,7 +100,12 @@ final class TenantManager
         $connection = DB::connection(config('tenancy.tenant_connection'));
 
         if ($connection->transactionLevel() > 0) {
-            $connection->rollBack(0);
+            try {
+                $connection->rollBack(0);
+            } catch (Throwable) {
+                // A lost connection cannot roll back; dropping it ends the transaction on the server.
+                $connection->disconnect();
+            }
         }
 
         $previous === null ? $this->end() : $this->initialize($previous);
@@ -129,8 +137,12 @@ final class TenantManager
         // Outside a request (queue worker, scheduler, console) the tenant's primary host is the base of every absolute
         // URL (mail, queued jobs); it keeps the scheme of app.url and drops any port. Inside a request the request's own
         // host stays the root, so a secondary domain keeps its own links, cookies and asset URLs.
-        $root = $host !== null && $this->app->runningInConsole() ? parse_url((string) config('app.url'), PHP_URL_SCHEME).'://'.$host : null;
-        URL::forceRootUrl($root);
+        $this->baseAppUrl ??= (string) config('app.url');
+        $tenantUrl = $host !== null ? (parse_url($this->baseAppUrl, PHP_URL_SCHEME) ?: 'https').'://'.$host : null;
+        URL::forceRootUrl($tenantUrl !== null && $this->app->runningInConsole() ? $tenantUrl : null);
+
+        // APP_URL is what mail layouts and anything else that builds a link by hand read: the tenant's own address.
+        config()->set('app.url', $tenantUrl ?? $this->baseAppUrl);
 
         Cache::forgetDriver();
         $this->app->forgetInstance('cache.store');

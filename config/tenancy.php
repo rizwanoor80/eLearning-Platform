@@ -28,6 +28,11 @@ return [
     // Optional template database a new tenant is cloned from (CREATE DATABASE ... TEMPLATE). Null = run the migrations.
     'template_database' => env('TENANCY_TEMPLATE_DATABASE'),
 
+    // The database the application used before tenancy (DB_DATABASE). `tenants:adopt --from=current` registers it as a
+    // tenant without copying anything; it is read here because enabling tenancy replaces the connection's database with
+    // the sentinel.
+    'current_database' => env('DB_DATABASE'),
+
     // Payload key carrying the tenant id on every queued job.
     'payload_key' => 'tenant_id',
 ];
