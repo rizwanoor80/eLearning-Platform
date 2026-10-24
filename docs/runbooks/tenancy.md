@@ -46,17 +46,17 @@ Steady state, every deploy once tenancy is on (the Forge deploy script, `docs/ru
 2. `php artisan tenants:migrate --force --no-interaction` (every active or suspended tenant; safe to run twice).
 3. `config:cache`, `route:cache`, `view:cache`, `event:cache`, then `horizon:terminate` (workers hold a tenant only while a job runs).
 
-A bare `php artisan migrate --force` is **refused** while tenancy is on, so the script's current line must be replaced by 1 and 2 **before** `TENANCY_ENABLED` is turned on, or the script stops before `config:cache` and `horizon:terminate`. Until then (flag off) the old line is correct.
+A bare `php artisan migrate --force` is **refused** while tenancy is on, so the script's current line must be replaced by 1 and 2 at cutover step 3 below, in the same maintenance window as the flag. Until then (flag off) the old line is the correct one: replacing it earlier would make a deploy skip the v1 migrations silently (`tenants:migrate` finds no tenant and exits 0).
 
 R213 verification, per tenant host, through `GET /ops/status`: `app.tenant` names the tenant, `migrations.pending` and `migrations.central_pending` are 0, `queues.failed_jobs` counts the central table (where tenancy records failures). A host that is unknown or not verified answers 404; a tenant that is not active answers 503.
 
 ### Cutover from v1 (once, after the owner's GO, R291)
 
-Before: Owner action 27 done (central database created, `DB_CENTRAL_DATABASE` set), the 28b code deployed with `TENANCY_ENABLED=false`, and the Forge deploy script already carries steps 1 and 2 above. Record the session driver (`SESSION_DRIVER=redis` logs everyone out at the switch, because the cache prefix changes; `database` sessions survive; open forms answer 419 either way).
+Before: Owner action 27 done (central database created, `DB_CENTRAL_DATABASE` set), and the 28b code deployed with `TENANCY_ENABLED=false` (the Forge deploy script still has its old `migrate --force` line). Record the session driver (`SESSION_DRIVER=redis` logs everyone out at the switch, because the cache prefix changes; `database` sessions survive; open forms answer 419 either way).
 
 1. `php artisan down`.
 2. **Drain**: the default queue and the delayed set are empty and `failed_jobs` is 0 (queue payloads written before the switch carry no `tenant_id`; a worker refuses them, and `queue:retry` cannot repair them). `php artisan horizon:terminate`.
-3. Set `TENANCY_ENABLED=true`, then `config:cache`. The site answers 404 from here until adopt has run.
+3. Replace the deploy script's `migrate --force` line by steps 1 and 2 above, set `TENANCY_ENABLED=true`, then `config:cache`. The site answers 404 from here until adopt has run.
 4. Central migrate (step 1 above), then `php artisan tenants:adopt trustutor --from=current --host=<the instance host> --no-interaction`, then `tenants:migrate` (step 2).
 5. `php artisan up`; reload workers; R213 on the host.
 

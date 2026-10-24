@@ -15,6 +15,7 @@ use App\Tenancy\TenantDomain;
 use App\Tenancy\TenantManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -74,7 +75,11 @@ it('gives the first administrator a password nobody knows, set through the reset
 
         expect(Password::broker()->createToken($user))->toBeString();
         // 64 random characters, hashed: the stored value is neither empty nor a readable word.
-        expect($user->password)->not->toBeEmpty()->and(strlen($user->password))->toBeGreaterThan(40);
+        expect($user->password)->not->toBeEmpty();
+
+        foreach (['', 'password', 'secret', 'admin', 'a@example.test', 'Admin'] as $guess) {
+            expect(Hash::check($guess, $user->password))->toBeFalse();
+        }
     });
 });
 
@@ -105,7 +110,10 @@ it('adopts the current database as a tenant without changing it, and unregisters
     $this->artisan('tenants:unregister', ['slug' => 'legacy', '--yes' => true])->expectsOutputToContain('untouched')->assertSuccessful();
     $this->cleanup = ['legacy', 'adopted'];
 
-    $count = fn (Tenant $tenant) => $this->tenants->run($tenant, fn () => [User::query()->count(), DB::table('settings')->count(), DB::table('migrations')->count()]);
+    $count = fn (Tenant $tenant) => $this->tenants->run($tenant, fn () => collect(['users', 'settings', 'migrations', 'lessons', 'ledger_entries', 'payments'])
+        ->map(fn (string $table) => DB::selectOne("select count(*) as n, coalesce(md5(string_agg(t::text, ',' order by t::text)), '') as hash from {$table} t"))
+        ->map(fn ($row) => [$row->n, $row->hash])
+        ->all());
     $probe = Tenant::query()->create(['slug' => 'probe', 'name' => 'Probe', 'database' => $database, 'status' => TenantStatus::Active]);
     $before = $count($probe);
     $probe->delete();
