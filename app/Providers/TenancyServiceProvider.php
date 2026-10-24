@@ -65,8 +65,8 @@ class TenancyServiceProvider extends ServiceProvider
                 return;
             }
 
-            // Registry migrations are the one use: another connection, with the central path named so the v1 schema cannot
-            // land in the registry. Fresh, refresh, reset, wipe and seed never run without a tenant.
+            // Registry migrations are the one use: another connection, with a --path given (its value is not checked: the
+            // operator names database/migrations/central, see the runbook). Fresh, refresh, reset, wipe and seed never run without a tenant.
             $database = $event->input->hasParameterOption('--database') ? $event->input->getParameterOption('--database') : null;
 
             if ($database !== null && $database !== false && $database !== config('tenancy.tenant_connection')

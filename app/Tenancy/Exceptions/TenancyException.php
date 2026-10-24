@@ -33,7 +33,7 @@ final class TenancyException extends RuntimeException
 
     public static function commandWithoutTenant(string $command): self
     {
-        return new self("[{$command}] would run on the tenant connection with no tenant set. Use tenants:migrate / tenants:each, or name the central connection with --database=central.");
+        return new self("[{$command}] would run on the tenant connection with no tenant set. Use tenants:migrate / tenants:each, or migrate the registry with --database=central --path=database/migrations/central.");
     }
 
     public static function tenantNotRunnable(string $slug, string $status): self

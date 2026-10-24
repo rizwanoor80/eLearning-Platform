@@ -32,7 +32,7 @@ The database role needs `CREATEDB` to create tenant databases. A role Forge crea
 
 All run with `--no-interaction` in scripts.
 
-A bare `php artisan migrate`, `migrate:fresh`, `db:seed` and the like **refuse to run** on a tenancy-enabled server while no tenant is set (they would target the non-existent `__no_tenant__` database). Use `tenants:migrate` for tenants; the registry migrates only with `--database=central --path=database/migrations/central` (the path is required). `tenants:create` creates the tenant as `provisioning`, migrates it, then marks it `active`; if anything fails it removes what it created.
+A bare `php artisan migrate`, `migrate:fresh`, `db:seed` and the like **refuse to run** on a tenancy-enabled server while no tenant is set (they would target the non-existent `__no_tenant__` database). Use `tenants:migrate` for tenants; the registry migrates with `--database=central --path=database/migrations/central` (the guard requires a `--path` and another connection; it does not check their values, so name them exactly). `tenants:create` creates the tenant as `provisioning`, migrates it, then marks it `active`; if anything fails it removes what it created.
 
 Operator how-to: create `php artisan tenants:create acme --name="Acme" --host=acme.example --no-interaction`; migrate all `php artisan tenants:migrate --no-interaction`; run a command for every tenant `php artisan tenants:each "<command>" --no-interaction`.
 
