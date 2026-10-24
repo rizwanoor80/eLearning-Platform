@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureAccountActive;
 use App\Http\Middleware\EnsureFeatureEnabled;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\IdentifyTenant;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function (): void {
             // R193: operator routes sit outside the `web` group — no session, cookies, CSRF or Inertia.
-            Route::group([], base_path('routes/ops.php'));
+            Route::middleware(IdentifyTenant::class)->group(base_path('routes/ops.php'));
         },
     )
     // Registered here, not through `withRouting(channels:)`, to carry the baseline write limiter (R233): Echo's channel
@@ -36,6 +37,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'feature' => EnsureFeatureEnabled::class,
         ]);
+
+        // The tenant is resolved from the host before the session starts, so the session store is the tenant's.
+        $middleware->web(prepend: [IdentifyTenant::class]);
 
         $middleware->web(append: [
             HandleAppearance::class,
