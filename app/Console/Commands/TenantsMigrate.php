@@ -12,14 +12,22 @@ class TenantsMigrate extends Command
 {
     protected $signature = 'tenants:migrate {--tenant= : Only this slug}';
 
-    protected $description = 'Run the pending migrations on every tenant database; the first failure stops and names the tenant.';
+    protected $description = 'Run the pending migrations (never seeders) on every active or suspended tenant database; the first failure stops and names the tenant.';
 
     public function handle(DatabaseProvisioner $provisioner): int
     {
+        // Active and Suspended: a suspended tenant comes back one day and must be on the current schema. Closed ones are
+        // frozen, and Provisioning ones belong to the tenants:create that is still building them.
         $tenants = Tenant::query()
-            ->where('status', '!=', TenantStatus::Closed)
+            ->whereIn('status', [TenantStatus::Active, TenantStatus::Suspended])
             ->when($this->option('tenant'), fn ($q, $slug) => $q->where('slug', $slug))
             ->orderBy('id')->get();
+
+        if ($tenants->isEmpty() && $this->option('tenant')) {
+            $this->error('No migratable tenant ['.$this->option('tenant').'].');
+
+            return self::FAILURE;
+        }
 
         foreach ($tenants as $tenant) {
             $started = hrtime(true);

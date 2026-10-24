@@ -10,7 +10,7 @@ use InvalidArgumentException;
  * Creates, migrates and drops tenant databases. CREATE DATABASE cannot run on the database it names, so it goes
  * through a throwaway connection to the server's `postgres` database. Needs the CREATEDB privilege (ADR-032).
  */
-final class DatabaseProvisioner
+class DatabaseProvisioner
 {
     private const ADMIN = 'tenancy_admin';
 
@@ -35,6 +35,13 @@ final class DatabaseProvisioner
     public function drop(string $database): void
     {
         $this->guardName($database);
+
+        $protected = ['postgres', 'template0', 'template1', (string) config('database.connections.'.config('tenancy.central_connection').'.database')];
+
+        if (in_array($database, $protected, true)) {
+            throw new InvalidArgumentException("Refusing to drop protected database [{$database}].");
+        }
+
         DB::connection($this->admin())->statement('DROP DATABASE IF EXISTS "'.$database.'" WITH (FORCE)');
     }
 
@@ -58,9 +65,9 @@ final class DatabaseProvisioner
         return self::ADMIN;
     }
 
-    private function guardName(string $name): void
+    public function guardName(string $name): void
     {
-        if (preg_match('/^[a-z0-9_]{1,63}$/', $name) !== 1) {
+        if (preg_match('/^[a-z0-9_]{1,63}$/', $name) !== 1 || $name === config('tenancy.no_tenant_database')) {
             throw new InvalidArgumentException("Unsafe database name [{$name}].");
         }
     }

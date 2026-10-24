@@ -25,6 +25,12 @@ class TenantsEach extends Command
             ->when($this->option('tenant'), fn ($q, $slug) => $q->where('slug', $slug))
             ->orderBy('id')->get();
 
+        if ($tenants->isEmpty() && $this->option('tenant')) {
+            $this->error('No active tenant ['.$this->option('tenant').'].');
+
+            return self::FAILURE;
+        }
+
         foreach ($tenants as $tenant) {
             try {
                 $code = $manager->run($tenant, function () use ($line): int {
