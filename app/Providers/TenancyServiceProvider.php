@@ -19,6 +19,9 @@ class TenancyServiceProvider extends ServiceProvider
         'migrate:status', 'db:seed', 'db:wipe', 'schema:dump',
     ];
 
+    /** Commands allowed on another connection while no tenant is set (the registry): all but install need --path. */
+    private const CENTRAL_COMMANDS = ['migrate', 'migrate:status', 'migrate:rollback', 'migrate:install'];
+
     public function register(): void
     {
         $this->app->singleton(TenantManager::class);
@@ -31,10 +34,14 @@ class TenancyServiceProvider extends ServiceProvider
             $app->make('cache')->driver($app['config']->get('cache.limiter'))
         ));
 
-        if (! config('tenancy.enabled')) {
-            return;
+        if (config('tenancy.enabled')) {
+            $this->enable();
         }
+    }
 
+    /** Everything that makes the application tenant-safe from the first query; refuses to boot on unsafe settings. */
+    public function enable(): void
+    {
         $this->assertConfiguration();
 
         // Fail closed from the first query: until a tenant is initialised the tenant connection names a database
@@ -58,10 +65,13 @@ class TenancyServiceProvider extends ServiceProvider
                 return;
             }
 
-            // `--database=central` (or any connection but the tenant one) is fine.
+            // Registry migrations are the one use: another connection, with the central path named so the v1 schema cannot
+            // land in the registry. Fresh, refresh, reset, wipe and seed never run without a tenant.
             $database = $event->input->hasParameterOption('--database') ? $event->input->getParameterOption('--database') : null;
 
-            if ($database !== null && $database !== false && $database !== config('tenancy.tenant_connection')) {
+            if ($database !== null && $database !== false && $database !== config('tenancy.tenant_connection')
+                && in_array($event->command, self::CENTRAL_COMMANDS, true)
+                && ($event->command === 'migrate:install' || $event->input->hasParameterOption('--path'))) {
                 return;
             }
 
@@ -86,8 +96,20 @@ class TenancyServiceProvider extends ServiceProvider
             throw TenancyException::misconfigured('DB_CENTRAL_DATABASE is not set.');
         }
 
-        if (config('cache.default') === 'file' || config('cache.stores.'.config('cache.default').'.driver') === 'file') {
-            throw TenancyException::misconfigured('the file cache driver is not tenant-safe; use redis.');
+        $cache = config('cache.stores.'.config('cache.default').'.driver');
+
+        if (in_array($cache, ['file', 'database'], true)) {
+            throw TenancyException::misconfigured("the {$cache} cache driver is not tenant-safe (shared files, or a store that needs a tenant before one is set); use redis.");
+        }
+
+        $sessions = config('session.driver');
+
+        if (in_array($sessions, ['file', 'cookie'], true)) {
+            throw TenancyException::misconfigured("the {$sessions} session driver would honour one tenant's session on another host; use database or redis.");
+        }
+
+        if ($sessions === 'database' && config('session.connection') !== null && config('session.connection') !== $tenant) {
+            throw TenancyException::misconfigured('the session table is per tenant; session.connection must be unset.');
         }
 
         if (config('queue.default') === 'database') {

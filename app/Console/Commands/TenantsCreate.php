@@ -57,8 +57,9 @@ class TenantsCreate extends Command
             return self::FAILURE;
         }
 
-        if ($template !== null && (! $provisioner->exists($template) || Tenant::query()->where('database', $template)->exists())) {
-            $this->error("Template [{$template}] must be an existing database that is not a tenant's.");
+        // Only the configured template database: any other name could be the central registry or a live database.
+        if ($template !== null && ($template !== config('tenancy.template_database') || ! $provisioner->exists($template) || Tenant::query()->where('database', $template)->exists())) {
+            $this->error("Template [{$template}] must be the existing TENANCY_TEMPLATE_DATABASE and not a tenant's.");
 
             return self::FAILURE;
         }
@@ -100,9 +101,13 @@ class TenantsCreate extends Command
         } catch (Throwable $e) {
             $this->error("Creating tenant [{$slug}] failed and was rolled back: ".$e->getMessage());
 
-            $tenant?->domains()->delete();
-            $tenant?->delete();
-            $created && $provisioner->drop($database);
+            foreach ([fn () => $tenant?->domains()->delete(), fn () => $tenant?->delete(), fn () => $created && $provisioner->drop($database)] as $cleanup) {
+                try {
+                    $cleanup();
+                } catch (Throwable $cleanupFailure) {
+                    $this->error('Cleanup step failed: '.$cleanupFailure->getMessage());
+                }
+            }
 
             return self::FAILURE;
         }

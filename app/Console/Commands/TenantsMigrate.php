@@ -6,6 +6,7 @@ use App\Enums\TenantStatus;
 use App\Tenancy\DatabaseProvisioner;
 use App\Tenancy\Tenant;
 use Illuminate\Console\Command;
+use RuntimeException;
 use Throwable;
 
 class TenantsMigrate extends Command
@@ -33,6 +34,11 @@ class TenantsMigrate extends Command
             $started = hrtime(true);
 
             try {
+                // migrate --force would create a missing database; a registered tenant without one is an error.
+                if (! $provisioner->exists($tenant->database)) {
+                    throw new RuntimeException("database [{$tenant->database}] does not exist");
+                }
+
                 $provisioner->migrate($tenant);
             } catch (Throwable $e) {
                 $this->error("Migration failed on tenant [{$tenant->slug}]: ".$e->getMessage());

@@ -2,6 +2,7 @@
 
 use App\Enums\TenantStatus;
 use App\Http\Middleware\IdentifyTenant;
+use App\Providers\TenancyServiceProvider;
 use App\Tenancy\DatabaseProvisioner;
 use App\Tenancy\Exceptions\TenancyException;
 use App\Tenancy\Tenant;
@@ -23,6 +24,7 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\NullOutput;
 use Tests\Support\TenancyFixtures;
 use Tests\Tenancy\FailsTenantJob;
+use Tests\Tenancy\LeaksTransactionJob;
 use Tests\Tenancy\RecordsTenantJob;
 
 beforeEach(function () {
@@ -337,7 +339,11 @@ it('refuses schema commands on the tenant connection with no tenant, but not on 
     expect(fn () => $starting('migrate:status'))->toThrow(TenancyException::class, 'migrate:status')
         ->and(fn () => $starting('db:seed'))->toThrow(TenancyException::class, 'db:seed')
         ->and(fn () => $starting('migrate', ['--database' => 'pgsql']))->toThrow(TenancyException::class)
-        ->and(fn () => $starting('migrate:status', ['--database' => 'central']))->not->toThrow(TenancyException::class)
+        ->and(fn () => $starting('migrate', ['--database' => 'central']))->toThrow(TenancyException::class)
+        ->and(fn () => $starting('migrate:fresh', ['--database' => 'central', '--path' => 'database/migrations/central']))->toThrow(TenancyException::class)
+        ->and(fn () => $starting('db:seed', ['--database' => 'central']))->toThrow(TenancyException::class)
+        ->and(fn () => $starting('migrate', ['--database' => 'central', '--path' => 'database/migrations/central']))->not->toThrow(TenancyException::class)
+        ->and(fn () => $starting('migrate:status', ['--database' => 'central', '--path' => 'database/migrations/central']))->not->toThrow(TenancyException::class)
         ->and(fn () => $starting('queue:work'))->not->toThrow(TenancyException::class);
 
     $this->tenants->run(TenancyFixtures::tenant('x'), function () use ($starting) {
@@ -379,7 +385,13 @@ it('creates a tenant as provisioning, activates it once migrated, and refuses a 
 
         $this->artisan('tenants:create', ['slug' => 'zed2', '--host' => 'zed.test'])->expectsOutputToContain('already belongs')->assertFailed();
         $this->artisan('tenants:create', ['slug' => 'zed3', '--host' => 'bad host!'])->expectsOutputToContain('not a valid host')->assertFailed();
-        $this->artisan('tenants:create', ['slug' => 'zed4', '--template' => 'nope_no_such_db'])->expectsOutputToContain('Template')->assertFailed();
+        // Only the configured template database is accepted: not the central registry, not a tenant, not a missing one.
+        $this->artisan('tenants:create', ['slug' => 'zed4', '--template' => (string) config('database.connections.central.database')])->expectsOutputToContain('TENANCY_TEMPLATE_DATABASE')->assertFailed();
+
+        config()->set('tenancy.template_database', 'nope_no_such_db');
+        $this->artisan('tenants:create', ['slug' => 'zed4', '--template' => 'nope_no_such_db'])->expectsOutputToContain('TENANCY_TEMPLATE_DATABASE')->assertFailed();
+
+        config()->set('tenancy.template_database', $database);
         $this->artisan('tenants:create', ['slug' => 'zed5', '--template' => $database])->expectsOutputToContain('not a tenant')->assertFailed();
     } finally {
         Tenant::query()->where('slug', 'zed')->first()?->delete();
@@ -414,4 +426,80 @@ it('refuses to create or drop the sentinel, the central or the server databases'
 it('fails tenants:migrate and tenants:each for a slug that matches nothing', function () {
     $this->artisan('tenants:migrate', ['--tenant' => 'nope'])->assertFailed();
     $this->artisan('tenants:each', ['artisan' => 'list', '--tenant' => 'nope'])->assertFailed();
+});
+
+it('rolls back a transaction a job left open and still runs the next job under its own tenant', function () {
+    $queue = 'tenancy-spike-'.uniqid();
+    config()->set('queue.default', 'redis');
+    config()->set('queue.connections.redis.queue', $queue);
+    $central = DB::connection('central');
+    $central->table('failed_jobs')->delete();
+
+    $this->tenants->run(TenancyFixtures::tenant('x'), function () use ($queue) {
+        dispatch(new LeaksTransactionJob)->onQueue($queue);
+    });
+    $this->tenants->run(TenancyFixtures::tenant('y'), function () use ($queue) {
+        dispatch(new FailsTenantJob('after-leak'))->onQueue($queue);
+    });
+
+    try {
+        runWorker($queue);
+
+        expect($this->tenants->current())->toBeNull()
+            ->and(DB::connection()->transactionLevel())->toBe(0)
+            ->and($this->tenants->run(TenancyFixtures::tenant('x'), fn () => DB::table('tenancy_probe')->pluck('note')->all()))->toBe(['x-row'])
+            ->and($this->tenants->run(TenancyFixtures::tenant('y'), fn () => DB::table('tenancy_probe')->orderBy('note')->pluck('note')->all()))->toBe(['failed:after-leak', 'y-row']);
+    } finally {
+        $central->table('failed_jobs')->delete();
+    }
+});
+
+it('keeps the original exception and the previous tenant when run() leaves a transaction open', function () {
+    $this->tenants->initialize(TenancyFixtures::tenant('x'));
+
+    expect(fn () => $this->tenants->run(TenancyFixtures::tenant('y'), function () {
+        DB::beginTransaction();
+
+        throw new RuntimeException('original');
+    }))->toThrow(RuntimeException::class, 'original');
+
+    expect($this->tenants->current()->slug)->toBe('x')
+        ->and(DB::transactionLevel())->toBe(0);
+});
+
+it('refuses to enable tenancy under settings that would leak', function (string $key, mixed $value, string $message) {
+    $before = config()->all();
+
+    try {
+        config()->set('session.driver', 'database');
+        config()->set($key, $value);
+
+        expect(fn () => (new TenancyServiceProvider($this->app))->enable())->toThrow(TenancyException::class, $message);
+    } finally {
+        config()->set($before);
+    }
+})->with([
+    'a url that overrides the database name' => ['database.connections.pgsql.url', 'pgsql://u@h/db', 'DB_URL'],
+    'no central database' => ['database.connections.central.database', '', 'DB_CENTRAL_DATABASE'],
+    'file cache' => ['cache.stores.'.'array.driver', 'file', 'file cache'],
+    'database cache' => ['cache.stores.'.'array.driver', 'database', 'database cache'],
+    'database queue' => ['queue.default', 'database', 'queue'],
+    'file sessions' => ['session.driver', 'file', 'session'],
+    'cookie sessions' => ['session.driver', 'cookie', 'session'],
+    'sessions on central' => ['session.connection', 'central', 'session.connection'],
+]);
+
+it('pins the sentinel database and the failure tables to central when enabled', function () {
+    $before = config()->all();
+
+    try {
+        config()->set('session.driver', 'redis');
+        (new TenancyServiceProvider($this->app))->enable();
+
+        expect(config('database.connections.pgsql.database'))->toBe(config('tenancy.no_tenant_database'))
+            ->and(config('queue.failed.database'))->toBe(config('tenancy.central_connection'))
+            ->and(config('queue.batching.database'))->toBe(config('tenancy.central_connection'));
+    } finally {
+        config()->set($before);
+    }
 });

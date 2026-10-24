@@ -5,6 +5,7 @@ namespace App\Tenancy;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Creates, migrates and drops tenant databases. CREATE DATABASE cannot run on the database it names, so it goes
@@ -49,9 +50,14 @@ class DatabaseProvisioner
     public function migrate(Tenant $tenant): string
     {
         return app(TenantManager::class)->run($tenant, function (): string {
-            Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]);
+            $exit = Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]);
+            $output = trim(Artisan::output());
 
-            return trim(Artisan::output());
+            if ($exit !== 0) {
+                throw new RuntimeException("migrate exited {$exit}: ".$output);
+            }
+
+            return $output;
         });
     }
 

@@ -14,7 +14,7 @@ A tenant is one TrusTutor instance: a PostgreSQL database holding the v1 schema.
 
 | Name | Meaning |
 |---|---|
-| `TENANCY_ENABLED` | `false` leaves the application exactly as v1 (single database). With `true` the application refuses to boot unless: `DB_URL` is unset, `DB_CENTRAL_DATABASE` is set, the cache is not `file`, and the queue is not `database` (use redis). `SESSION_DOMAIN` must stay unset. |
+| `TENANCY_ENABLED` | `false` leaves the application exactly as v1 (single database). With `true` the application refuses to boot unless: `DB_URL` is unset, `DB_CENTRAL_DATABASE` is set, the cache is neither `file` nor `database`, the session driver is neither `file` nor `cookie`, and the queue is not `database` (use redis for cache and queue; database or redis for sessions). `SESSION_DOMAIN` must stay unset. |
 | `DB_CENTRAL_DATABASE` | The central registry database. Created by the owner in Forge _(Owner action 27)_. |
 | `TENANCY_DATABASE_PREFIX` | Prefix for tenant database names (default `tenant_`). |
 | `TENANCY_TEMPLATE_DATABASE` | Optional database cloned by `tenants:create` instead of migrating. |
@@ -32,7 +32,7 @@ The database role needs `CREATEDB` to create tenant databases. A role Forge crea
 
 All run with `--no-interaction` in scripts.
 
-A bare `php artisan migrate`, `migrate:fresh`, `db:seed` and the like **refuse to run** on a tenancy-enabled server while no tenant is set (they would target the non-existent `__no_tenant__` database). Use `tenants:migrate` for tenants and `--database=central` for the registry. `tenants:create` creates the tenant as `provisioning`, migrates it, then marks it `active`; if anything fails it removes what it created.
+A bare `php artisan migrate`, `migrate:fresh`, `db:seed` and the like **refuse to run** on a tenancy-enabled server while no tenant is set (they would target the non-existent `__no_tenant__` database). Use `tenants:migrate` for tenants; the registry migrates only with `--database=central --path=database/migrations/central` (the path is required). `tenants:create` creates the tenant as `provisioning`, migrates it, then marks it `active`; if anything fails it removes what it created.
 
 Operator how-to: create `php artisan tenants:create acme --name="Acme" --host=acme.example --no-interaction`; migrate all `php artisan tenants:migrate --no-interaction`; run a command for every tenant `php artisan tenants:each "<command>" --no-interaction`.
 
@@ -52,7 +52,7 @@ Measured (ADR-032): migrate-all with everything applied is 0.4 s for 2 tenants, 
 
 ## 7. Queues, scheduler, cache _(28c)_
 
-The queue driver must be redis: the `jobs` table is per tenant. `failed_jobs` and `job_batches` are pinned to the central database, so a job that fails (including one refused because its tenant is suspended) is recorded with no tenant set and can be retried with `queue:retry` once the tenant is back. A worker restores its previous tenant after each job. The file cache driver is refused at boot. Octane is unsupported.
+The queue driver must be redis: the `jobs` table is per tenant. `failed_jobs` and `job_batches` are pinned to the central database, so a job that fails (including one refused because its tenant is suspended) is recorded with no tenant set and can be retried with `queue:retry` once the tenant is back. A worker restores its previous tenant after each job. The file and database cache drivers are refused at boot. Octane is unsupported.
 
 One shared queue for all tenants; a payload without `tenant_id` is refused. Scheduled commands go through `tenants:each` (28c adds the unique per-tenant job). Cache keys carry the tenant in their prefix. Failed-job and batch tables and the scheduler's lock live in the central database _(28c)_.
 

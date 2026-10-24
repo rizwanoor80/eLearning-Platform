@@ -79,8 +79,28 @@ final class TenantManager
         try {
             return $callback();
         } finally {
-            $previous === null ? $this->end() : $this->initialize($previous);
+            $this->restore($previous);
         }
+    }
+
+    /**
+     * Go back to a tenant (or none) that was current before a run or a job. Whatever transaction the work left open on
+     * the tenant connection is rolled back first: staying on the old tenant because a switch was refused would run the
+     * next job's hooks against the wrong database, and the original exception would be hidden by the refusal.
+     */
+    public function restore(?Tenant $previous): void
+    {
+        if ($this->current?->is($previous) || ($previous === null && $this->current === null)) {
+            return;
+        }
+
+        $connection = DB::connection(config('tenancy.tenant_connection'));
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->rollBack(0);
+        }
+
+        $previous === null ? $this->end() : $this->initialize($previous);
     }
 
     /** The database a switch lands on: the tenant's, or the one that does not exist. */
@@ -93,6 +113,9 @@ final class TenantManager
             throw TenancyException::switchInTransaction();
         }
 
+        // Looked up first: if the registry is unreachable nothing has been switched yet.
+        $host = $tenant?->domains()->where('is_primary', true)->value('host');
+
         $this->current = $tenant;
 
         $database = $tenant->database ?? config('tenancy.no_tenant_database');
@@ -103,10 +126,10 @@ final class TenantManager
         $this->baseCachePrefix ??= (string) config('cache.prefix');
         config()->set('cache.prefix', $tenant === null ? $this->baseCachePrefix : $this->baseCachePrefix.'t'.$tenant->id.'_');
 
-        // The tenant's primary host is the base of every absolute URL built outside a request (mail, queued jobs). It
-        // keeps the scheme of app.url and drops any port.
-        $host = $tenant?->domains()->where('is_primary', true)->value('host');
-        $root = $host !== null ? parse_url((string) config('app.url'), PHP_URL_SCHEME).'://'.$host : null;
+        // Outside a request (queue worker, scheduler, console) the tenant's primary host is the base of every absolute
+        // URL (mail, queued jobs); it keeps the scheme of app.url and drops any port. Inside a request the request's own
+        // host stays the root, so a secondary domain keeps its own links, cookies and asset URLs.
+        $root = $host !== null && $this->app->runningInConsole() ? parse_url((string) config('app.url'), PHP_URL_SCHEME).'://'.$host : null;
         URL::forceRootUrl($root);
 
         Cache::forgetDriver();

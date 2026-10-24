@@ -81,7 +81,7 @@ final class TenantQueue
         $previous = $this->previous[$job];
         unset($this->previous[$job]);
 
-        $previous === null ? $this->tenants->end() : $this->tenants->initialize($previous);
+        $this->tenants->restore($previous);
     }
 
     private function restoreAll(): void
@@ -95,7 +95,7 @@ final class TenantQueue
         $this->previous = [];
 
         if ($this->tenants->enabled()) {
-            $previous === null ? $this->tenants->end() : $this->tenants->initialize($previous);
+            $this->tenants->restore($previous);
         }
     }
 }
